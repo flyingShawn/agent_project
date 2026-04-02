@@ -1,0 +1,85 @@
+# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv
+
+# IDE相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 测试相关
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Git相关
+.git/
+.gitignore
+.gitattributes
+
+# Docker相关
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# 文档
+*.md
+docs/
+
+# 本地数据（不应该打包到镜像）
+.qdrant_local/
+.qdrant_local_demo/
+.state/
+test/
+*.sqlite
+*.db
+
+# 环境变量文件（敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 前端相关（后端镜像不需要）
+agent_frontend/node_modules/
+agent_frontend/dist/
+agent_frontend/.vite/
+
+# 后端相关（前端镜像不需要）
+agent_backend/__pycache__/
+tests/
+scripts/
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 其他不需要的文件
+.trae/
+plan*.md
+task.md
