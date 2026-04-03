@@ -67,59 +67,68 @@ def handle_sql_chat(
     logger.info("【SQL处理流程】开始")
     logger.info(f"  - 问题: {question}")
     logger.info(f"  - 用户ID: {lognum}")
+    logger.info(f"  - 是否执行SQL: {execute}")
     
     if llm_client is None:
         logger.info("【SQL处理】创建新的LLM客户端")
-        llm_client = OllamaChatClient()
-
-    logger.info("【SQL处理】调用generate_secure_sql生成SQL...")
-    result = generate_secure_sql(
-        SqlGenRequest(question=question, lognum=lognum),
-    )
-
-    sql = result.sql
-    params = result.params
-    logger.info(f"【SQL处理】SQL生成完成")
-    logger.info(f"【SQL处理】SQL: {sql}")
-    logger.info(f"【SQL处理】参数: {params}")
-
-    yield f"**生成的 SQL：**\n\n```sql\n{sql}\n```\n\n"
-
-    if not execute:
-        logger.info("【SQL处理】execute=False，跳过执行")
-        yield "（未执行 SQL，DATABASE_URL 未配置）\n"
-        return
-
-    database_url = get_database_url()
-    if not database_url:
-        logger.warning("【SQL处理】DATABASE_URL未配置，跳过执行")
-        yield "（未执行 SQL，DATABASE_URL 未配置）\n"
-        return
-
-    logger.info("【SQL处理】开始执行SQL...")
+        llm_client = OllamaChatClient(use_mock=None)
+    
     try:
-        rows = execute_sql(sql=sql, params=params, max_rows=200)
-        logger.info(f"【SQL处理】执行成功，返回 {len(rows) if rows else 0} 行数据")
-
-        if not rows:
-            yield "查询结果为空。\n"
-            return
-
-        yield "**查询结果：**\n\n"
-        yield "| " + " | ".join(rows[0].keys()) + " |\n"
-        yield "| " + " | ".join(["---"] * len(rows[0])) + " |\n"
-        for row in rows:
-            yield "| " + " | ".join(str(v) for v in row.values()) + " |\n"
-
-        yield f"\n共 {len(rows)} 行数据。\n"
-        logger.info("【SQL处理】结果格式化完成")
-
+        if execute:
+            logger.info("【SQL处理】===== 开始真正的SQL处理流程 =====")
+            
+            logger.info("【SQL处理】步骤1: 生成SQL查询...")
+            sql_req = SqlGenRequest(
+                question=question,
+                lognum=lognum,
+            )
+            logger.info(f"【SQL处理】SQL生成请求: {sql_req}")
+            
+            sql_result = generate_secure_sql(sql_req, llm=llm_client)
+            logger.info(f"【SQL处理】SQL生成结果:")
+            logger.info(f"  - SQL: {sql_result.sql}")
+            
+            logger.info("【SQL处理】步骤2: 执行SQL查询...")
+            db_url = get_database_url()
+            logger.info(f"【SQL处理】数据库URL: {db_url}")
+            
+            exec_result = execute_sql(
+                sql=sql_result.sql, 
+                params=sql_result.params, 
+                database_url=db_url
+            )
+            logger.info(f"【SQL处理】SQL执行结果:")
+            if exec_result:
+                logger.info(f"  - 列名: {list(exec_result[0].keys()) if exec_result else []}")
+                logger.info(f"  - 行数: {len(exec_result)}")
+            else:
+                logger.info("  - 结果为空")
+            
+            logger.info("【SQL处理】步骤3: 格式化查询结果...")
+            yield "**查询结果：**\n\n"
+            
+            if exec_result and len(exec_result) > 0:
+                columns = list(exec_result[0].keys())
+                yield "| " + " | ".join(columns) + " |\n"
+                yield "| " + " | ".join(["---------"] * len(columns)) + " |\n"
+                
+                for row in exec_result:
+                    yield "| " + " | ".join(str(cell) if cell is not None else "" for cell in row.values()) + " |\n"
+                
+                yield f"\n共查询到 **{len(exec_result)}** 条记录。\n"
+            else:
+                yield "查询结果为空。\n"
+            
+            logger.info("【SQL处理】===== SQL处理流程完成 =====")
+        else:
+            logger.info("【SQL处理】execute=False，不执行SQL")
+            yield "SQL查询模式已禁用。"
+            
     except Exception as e:
-        logger.error(f"【SQL处理】执行出错: {type(e).__name__}: {e}")
-        error_msg = str(e)
-        if hasattr(e, 'details') and e.details:
-            error_msg = f"{e}\n详细信息: {e.details}"
-        yield f"\n**执行 SQL 出错：**\n\n```\n{error_msg}\n```\n"
+        logger.error(f"【SQL处理】发生异常: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        yield f"处理过程中发生错误：{type(e).__name__}: {e}"
     
     logger.info("【SQL处理流程】结束")
     logger.info("=" * 60)
@@ -142,7 +151,7 @@ def handle_rag_chat(
     
     if llm_client is None:
         logger.info("【RAG处理】创建新的LLM客户端")
-        llm_client = OllamaChatClient()
+        llm_client = OllamaChatClient(use_mock=None)
 
     if store is None or embedding_model is None:
         logger.info("【RAG处理】加载RAG配置...")

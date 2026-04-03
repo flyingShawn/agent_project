@@ -10,4 +10,5 @@ python-multipart>=0.0.9
 qdrant-client>=1.9
 fastembed>=0.3
 docling>=2.0
+playwright>=1.40
 

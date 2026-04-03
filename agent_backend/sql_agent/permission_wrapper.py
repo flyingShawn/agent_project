@@ -125,6 +125,11 @@ def wrap_with_permission(
 
             if anchor_alias != "m":
                 cond = re.sub(r"\bm\.", f"{anchor_alias}.", cond)
+        else:
+            for t in rule.when_tables_in_query:
+                alias = tables.get(t)
+                if alias and alias != t:
+                    cond = re.sub(r"\b{}\.".format(re.escape(t)), f"{alias}.", cond)
 
         out_sql = _append_where(out_sql, cond)
 
