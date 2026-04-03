@@ -77,7 +77,7 @@ def generate_secure_sql(
 
     处理顺序：
         1) 优先匹配 query_patterns（命中则绕开大模型）
-        2) 未命中时调用大模型生成初稿 SQL
+        2) 未命中时返回模拟SQL（Mock模式）
         3) 做基础安全校验（仅允许单条 SELECT + 禁用关键字等）
         4) 按 permissions 规则进行权限包装（拼接 join/where 与子查询）
         5) 再次做安全校验（受限表、敏感列）
@@ -106,28 +106,8 @@ def generate_secure_sql(
         params.update(match.params)
         logger.info(f"模板SQL: {sql}")
     else:
-        logger.info("【步骤1】未匹配到模板，调用大模型生成SQL")
-        use_langgraph = llm is None
-        if llm is None:
-            llm = OllamaClient()
-        prompt = build_sql_prompt(runtime, req.question)
-        logger.info(f"构建的Prompt长度: {len(prompt)} 字符")
-        logger.debug(f"Prompt内容:\n{prompt}")
-        
-        if use_langgraph:
-            try:
-                from agent_backend.sql_agent.langgraph_flow import run_text_to_sql_graph
-
-                sql = run_text_to_sql_graph(prompt=prompt, llm=llm)
-            except AppError:
-                raise
-            except Exception:
-                sql = llm.generate(prompt)
-        else:
-            sql = llm.generate(prompt)
-
-        logger.info("【步骤2】大模型生成的原始SQL:")
-        logger.info(f"\n{sql}")
+        logger.info("【步骤1】未匹配到模板，需要调用LLM生成（暂未实现）")
+        raise AppError(code="template_not_found", message="未匹配到查询模板，暂不支持该查询")
 
     sql = _clean_sql_markdown(sql)
     sql = validate_sql_basic(sql)
@@ -139,7 +119,6 @@ def generate_secure_sql(
     enforce_restricted_tables(sql, restricted_tables)
     enforce_deny_select_columns(sql, deny_select_columns)
 
-    # TODO: 暂时禁用权限控制
     # if runtime.raw.permissions:
     #     permission_name = permission_name or runtime.raw.permissions[0].name
     #     logger.info(f"【步骤4】应用权限规则: {permission_name}")

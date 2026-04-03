@@ -37,7 +37,7 @@ permissions:
     allowed_group_ids_sql: |
       SELECT g.id
       FROM s_group g
-      JOIN RoleGroupMap x ON x.GroupID = g.id AND (x.is_fake_check = 0 OR x.is_fake_check IS NULL)
+      JOIN RoleGroupMap x ON x.GroupID = g.id
       JOIN g_adminroleright y ON y.RoleID = x.RoleID
       JOIN admininfo a ON a.id = y.AdminID
       WHERE a.LogNum = :admin_lognum
@@ -632,6 +632,18 @@ policy_code_dictionary:
         meaning: 网址快捷方式名称与URL
 
 query_patterns:
+  - name: all_departments
+    user_intent: 查询所有部门
+    requires_permission: admin_department_scope_v1
+    sql: |
+      SELECT
+        g.id as 部门ID,
+        g.GroupName as 部门名称,
+        g.ParentID as 上级部门ID,
+        g.GroupType as 部门类型
+      FROM s_group g
+      ORDER BY g.id
+
   - name: machines_by_ip
     user_intent: 按IP查询设备与所属部门/绑定用户
     requires_permission: admin_department_scope_v1

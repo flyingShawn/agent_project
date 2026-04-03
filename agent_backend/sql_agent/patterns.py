@@ -63,15 +63,21 @@ def select_query_pattern(runtime: SchemaRuntime, question: str) -> TemplateMatch
     if not runtime.raw.query_patterns:
         return None
 
+    import logging
+    logger = logging.getLogger(__name__)
+
     best: tuple[int, Any] | None = None
     for p in runtime.raw.query_patterns:
         s = _score_overlap(question, f"{p.name} {p.user_intent}")
+        logger.info(f"模板匹配: 名称={p.name}, 用户意图={p.user_intent}, 得分={s}")
         if best is None or s > best[0]:
             best = (s, p)
 
-    if best is None or best[0] < 8:
+    if best is None or best[0] < 4:  # 降低最低匹配分，从8降到4
+        logger.info(f"最佳匹配得分: {best[0] if best else 0}, 低于最低阈值，不匹配")
         return None
 
+    logger.info(f"选中模板: {best[1].name}, 得分={best[0]}")
     p = best[1]
     params: dict[str, Any] = {}
 

@@ -26,6 +26,7 @@ FastAPI 应用入口文件
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from agent_backend.api.routes import router as api_router
 from agent_backend.core.errors import register_exception_handlers
@@ -49,6 +50,15 @@ def create_app() -> FastAPI:
     configure_logging()
 
     app = FastAPI(title="desk-agent-backend")
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router)

@@ -60,81 +60,106 @@ const scrollToBottom = async () => {
 }
 
 const sendMessage = async () => {
-  const text = inputText.value.trim()
-  if (!text && pendingImages.value.length === 0) return
-  if (isLoading.value) return
+    console.log('[前端 ChatBox] sendMessage 被调用')
+    const text = inputText.value.trim()
+    console.log('[前端 ChatBox] 用户输入:', text)
+    
+    if (!text && pendingImages.value.length === 0) {
+      console.log('[前端 ChatBox] 输入为空，返回')
+      return
+    }
+    if (isLoading.value) {
+      console.log('[前端 ChatBox] 正在加载中，返回')
+      return
+    }
 
-  const userMessage = {
-    id: Date.now(),
-    role: 'user',
-    content: text,
-    images: pendingImages.value.map((img) => ({
-      preview: img.preview,
-      base64: img.base64,
-    })),
-    timestamp: new Date().toISOString(),
-  }
+    const userMessage = {
+      id: Date.now(),
+      role: 'user',
+      content: text,
+      images: pendingImages.value.map((img) => ({
+        preview: img.preview,
+        base64: img.base64,
+      })),
+      timestamp: new Date().toISOString(),
+    }
 
-  messages.value.push(userMessage)
-  inputText.value = ''
-  const imagesToSend = [...pendingImages.value]
-  pendingImages.value = []
-  isLoading.value = true
+    console.log('[前端 ChatBox] 添加用户消息到聊天记录')
+    messages.value.push(userMessage)
+    inputText.value = ''
+    const imagesToSend = [...pendingImages.value]
+    pendingImages.value = []
+    isLoading.value = true
 
-  await scrollToBottom()
-
-  const assistantMessage = {
-    id: Date.now() + 1,
-    role: 'assistant',
-    content: '',
-    intent: null,
-    timestamp: new Date().toISOString(),
-    isStreaming: true,
-  }
-  messages.value.push(assistantMessage)
-  await scrollToBottom()
-
-  try {
-    const history = messages.value
-      .filter((m) => m.id !== assistantMessage.id)
-      .map((m) => ({
-        role: m.role,
-        content: m.content,
-      }))
-
-    const chatFn = useMock.value ? sendChatMessageMock : sendChatMessage
-
-    await chatFn({
-      question: text,
-      history: history,
-      images_base64: imagesToSend.map((img) => img.base64),
-      lognum: props.userName,
-      mode: 'auto',
-      onEvent: (event, data) => {
-        if (event === 'start') {
-          assistantMessage.intent = data.intent
-        } else if (event === 'delta') {
-          assistantMessage.content += data
-          scrollToBottom()
-        } else if (event === 'done') {
-          assistantMessage.isStreaming = false
-          assistantMessage.route = data.route
-        } else if (event === 'error') {
-          assistantMessage.isStreaming = false
-          assistantMessage.content = `错误: ${data.error}`
-          assistantMessage.isError = true
-        }
-      },
-    })
-  } catch (error) {
-    assistantMessage.isStreaming = false
-    assistantMessage.content = `请求失败: ${error.message}`
-    assistantMessage.isError = true
-  } finally {
-    isLoading.value = false
     await scrollToBottom()
+
+    const assistantMessageIndex = messages.value.length
+    const assistantMessageId = Date.now() + 1
+    
+    const assistantMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      intent: null,
+      timestamp: new Date().toISOString(),
+      isStreaming: true,
+    }
+    console.log('[前端 ChatBox] 添加助手消息占位符')
+    messages.value.push(assistantMessage)
+    await scrollToBottom()
+
+    try {
+      const history = messages.value
+        .filter((m) => m.id !== assistantMessageId)
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }))
+
+      console.log('[前端 ChatBox] 准备调用API，useMock:', useMock.value)
+      const chatFn = useMock.value ? sendChatMessageMock : sendChatMessage
+
+      await chatFn({
+        question: text,
+        history: history,
+        images_base64: imagesToSend.map((img) => img.base64),
+        lognum: props.userName,
+        mode: 'auto',
+        onEvent: (event, data) => {
+          console.log('[前端 ChatBox] 收到事件:', { event, data })
+          
+          const msgIndex = messages.value.findIndex(m => m.id === assistantMessageId)
+          if (msgIndex === -1) return
+          
+          if (event === 'start') {
+            messages.value[msgIndex].intent = data.intent
+          } else if (event === 'delta') {
+            messages.value[msgIndex].content += data
+            scrollToBottom()
+          } else if (event === 'done') {
+            messages.value[msgIndex].isStreaming = false
+            messages.value[msgIndex].route = data.route
+          } else if (event === 'error') {
+            messages.value[msgIndex].isStreaming = false
+            messages.value[msgIndex].content = `错误: ${data.error}`
+            messages.value[msgIndex].isError = true
+          }
+        },
+      })
+      console.log('[前端 ChatBox] API调用完成')
+    } catch (error) {
+      console.error('[前端 ChatBox] 发生错误:', error)
+      const msgIndex = messages.value.findIndex(m => m.id === assistantMessageId)
+      if (msgIndex !== -1) {
+        messages.value[msgIndex].isStreaming = false
+        messages.value[msgIndex].content = `请求失败: ${error.message}`
+        messages.value[msgIndex].isError = true
+      }
+    } finally {
+      isLoading.value = false
+      await scrollToBottom()
+    }
   }
-}
 
 const handleKeydown = (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
