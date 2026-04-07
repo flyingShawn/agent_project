@@ -16,6 +16,7 @@ const inputText = ref('')
 const isLoading = ref(false)
 const pendingImages = ref([])
 const messagesContainer = ref(null)
+const currentSessionId = ref(null)
 
 const handlePaste = (event) => {
   const items = event.clipboardData?.items
@@ -56,6 +57,36 @@ const scrollToBottom = async () => {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
+}
+
+const resetSession = async () => {
+  console.log('[前端 ChatBox] 手动重置会话')
+  if (currentSessionId.value) {
+    try {
+      await fetch('/api/v1/chat/end', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: currentSessionId.value,
+        }),
+      })
+      console.log('[前端 ChatBox] 会话已结束')
+    } catch (error) {
+      console.error('[前端 ChatBox] 结束会话失败:', error)
+    }
+  }
+  currentSessionId.value = null
+  messages.value = [
+    {
+      id: Date.now(),
+      role: 'assistant',
+      content: '你好！我是桌管系统 AI 助手。我可以帮助你：\n\n- 查询设备资产信息\n- 了解策略配置方法\n- 排查常见问题\n- 分析数据统计\n\n请问有什么可以帮你的？',
+      timestamp: new Date().toISOString(),
+    },
+  ]
+  console.log('[前端 ChatBox] 会话已重置')
 }
 
 const sendMessage = async () => {
@@ -123,6 +154,7 @@ const sendMessage = async () => {
         images_base64: imagesToSend.map((img) => img.base64),
         lognum: props.userName,
         mode: 'auto',
+        session_id: currentSessionId.value,
         onEvent: (event, data) => {
           console.log('[前端 ChatBox] 收到事件:', { event, data })
           
@@ -131,12 +163,20 @@ const sendMessage = async () => {
           
           if (event === 'start') {
             messages.value[msgIndex].intent = data.intent
+            if (data.session_id) {
+              currentSessionId.value = data.session_id
+              console.log('[前端 ChatBox] 保存会话ID:', currentSessionId.value)
+            }
           } else if (event === 'delta') {
             messages.value[msgIndex].content += data
             scrollToBottom()
           } else if (event === 'done') {
             messages.value[msgIndex].isStreaming = false
             messages.value[msgIndex].route = data.route
+            if (data.session_id) {
+              currentSessionId.value = data.session_id
+              console.log('[前端 ChatBox] 保存会话ID:', currentSessionId.value)
+            }
           } else if (event === 'error') {
             messages.value[msgIndex].isStreaming = false
             messages.value[msgIndex].content = `错误: ${data.error}`
@@ -177,6 +217,20 @@ onMounted(() => {
 
 onUnmounted(() => {
   pendingImages.value = []
+  if (currentSessionId.value) {
+    console.log('[前端 ChatBox] 组件卸载，结束会话:', currentSessionId.value)
+    fetch('/api/v1/chat/end', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: currentSessionId.value,
+      }),
+    }).catch(error => {
+      console.error('[前端 ChatBox] 结束会话失败:', error)
+    })
+  }
 })
 </script>
 
@@ -232,6 +286,18 @@ onUnmounted(() => {
     </div>
 
     <div class="border-t border-gray-200 bg-white p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-xs text-gray-400">
+          <span v-if="currentSessionId">会话ID: {{ currentSessionId.slice(0, 8) }}...</span>
+        </div>
+        <button
+          @click="resetSession"
+          :disabled="isLoading"
+          class="text-xs text-gray-500 hover:text-gray-700 disabled:text-gray-300 transition-colors"
+        >
+          🔄 重置会话
+        </button>
+      </div>
       <div class="flex items-end space-x-3">
         <ImageUploader @select="addImageFile" />
         

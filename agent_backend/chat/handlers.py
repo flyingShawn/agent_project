@@ -61,12 +61,14 @@ def handle_sql_chat(
     lognum: str,
     history: list[dict],
     images_base64: list[str] | None = None,
+    session_id: str | None = None,
     *,
     execute: bool = True,
     llm_client: OllamaChatClient | None = None,
 ) -> Iterator[str]:
     logger.info("=" * 60)
     logger.info("【SQL处理流程】开始")
+    logger.info(f"  - 会话ID: {session_id[:8] if session_id else 'None'}...")
     logger.info(f"  - 问题: {question}")
     logger.info(f"  - 用户ID: {lognum}")
     logger.info(f"  - 是否执行SQL: {execute}")
@@ -97,7 +99,8 @@ def handle_sql_chat(
             exec_result = execute_sql(
                 sql=sql_result.sql, 
                 params=sql_result.params, 
-                database_url=db_url
+                database_url=db_url,
+                session_id=session_id
             )
             logger.info(f"【SQL处理】SQL执行结果:")
             if exec_result:
@@ -218,6 +221,7 @@ def handle_rag_chat(
     question: str,
     history: list[dict],
     images_base64: list[str] | None = None,
+    session_id: str | None = None,
     *,
     llm_client: OllamaChatClient | None = None,
     store: QdrantVectorStore | None = None,

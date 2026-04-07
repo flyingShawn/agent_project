@@ -47,6 +47,7 @@ from pydantic import BaseModel, Field
 from agent_backend.chat.handlers import handle_rag_chat, handle_sql_chat
 from agent_backend.chat.router import classify_intent
 from agent_backend.chat.types import Intent
+from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +62,22 @@ class ChatRequest(BaseModel):
     lognum: str = Field(default="admin")
     mode: str = Field(default="auto")
     token: str | None = None
+    session_id: str | None = None
 
 
 class ChatMetadata(BaseModel):
     route: str
     intent: str
+
+
+class EndChatRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+
+
+class EndChatResponse(BaseModel):
+    success: bool
+    message: str
+    session_id: str
 
 
 def _sse_event(event: str, data: str | dict) -> str:
@@ -79,6 +91,11 @@ def _sse_event(event: str, data: str | dict) -> str:
 async def chat(req: ChatRequest) -> StreamingResponse:
     logger.info("=" * 80)
     logger.info("【聊天API入口】===== 收到请求 =====")
+    
+    conn_manager = get_connection_manager()
+    session_id = req.session_id or conn_manager.generate_session_id()
+    
+    logger.info(f"  - 会话ID: {session_id[:8]}...")
     logger.info(f"  - 用户问题: {req.question}")
     logger.info(f"  - 用户ID: {req.lognum}")
     logger.info(f"  - 路由模式: {req.mode}")
@@ -101,9 +118,8 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         logger.info(f"【意图识别】默认识别结果: {intent.value}")
 
     def generate() -> str:
-        logger.info(f"【SSE流】开始生成，意图: {intent.value}")
-        logger.info("【SSE流】发送start事件")
-        yield _sse_event("start", {"intent": intent.value})
+        logger.info(f"【SSE流】开始生成，意图: {intent.value}" + " 发送start事件")
+        yield _sse_event("start", {"intent": intent.value, "session_id": session_id})
 
         try:
             if intent == Intent.SQL:
@@ -114,6 +130,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                     lognum=req.lognum,
                     history=req.history,
                     images_base64=req.images_base64,
+                    session_id=session_id,
                 ):
                     chunk_count += 1
                     logger.debug(f"【SQL处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
@@ -126,6 +143,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                     question=req.question,
                     history=req.history,
                     images_base64=req.images_base64,
+                    session_id=session_id,
                 ):
                     chunk_count += 1
                     logger.debug(f"【RAG处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
@@ -137,6 +155,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                 "done",
                 {
                     "route": intent.value,
+                    "session_id": session_id,
                     "meta": {},
                 },
             )
@@ -164,3 +183,40 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/chat/end")
+async def end_chat(req: EndChatRequest) -> EndChatResponse:
+    """
+    结束对话，关闭相关的数据库连接
+    
+    参数：
+        session_id: 会话ID
+    
+    返回：
+        操作结果
+    """
+    logger.info("=" * 80)
+    logger.info("【结束对话API】===== 收到请求 =====")
+    logger.info(f"  - 会话ID: {req.session_id[:8]}...")
+    logger.info("=" * 80)
+    
+    try:
+        conn_manager = get_connection_manager()
+        conn_manager.close_connection(req.session_id, reason="用户主动结束对话")
+        
+        logger.info("✅ 对话结束处理成功")
+        return EndChatResponse(
+            success=True,
+            message="对话已结束，数据库连接已关闭",
+            session_id=req.session_id
+        )
+    except Exception as e:
+        logger.error(f"❌ 结束对话失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return EndChatResponse(
+            success=False,
+            message=f"结束对话失败: {str(e)}",
+            session_id=req.session_id
+        )
