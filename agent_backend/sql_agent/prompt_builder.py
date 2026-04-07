@@ -104,7 +104,7 @@ def build_sql_prompt(runtime: SchemaRuntime, question: str) -> str:
     instructions = [
         "你是一个严谨的数据库 SQL 助手。",
         "只输出 SQL 本体，不要输出解释、不要 Markdown。",
-        "必须只生成单条 SELECT 语句，禁止 INSERT/UPDATE/DELETE/DROP 等。",
+        "只使用 SELECT 语句，禁止 INSERT/UPDATE/DELETE/DROP 等。",
         "禁止使用受限表；禁止返回敏感列。",
         "SQL 参数使用 :param 形式（例如 :ip, :limit）。",
         "",
@@ -118,7 +118,7 @@ def build_sql_prompt(runtime: SchemaRuntime, question: str) -> str:
         "1. 优先使用简单的SQL，避免不必要的子查询",
         "2. 如果只是统计数量，用 SELECT COUNT(*) FROM 表名 即可",
         "3. 如果只是查询所有某个表数据，用 SELECT * FROM 表名 即可",
-        "4. 只有在需要关联多表时才使用 JOIN",
+        # "4. 只有在需要关联多表时才使用 JOIN",
         "",
         "当涉及权限过滤时，WHERE 中使用 m.Groupid 并保留占位 {allowed_group_ids_sql}（由后续权限包装器展开）。",
     ]

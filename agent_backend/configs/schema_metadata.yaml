@@ -96,7 +96,7 @@ synonyms:
 
 tables:
   - name: s_machine
-    description: 设备资产主表
+    description: 设备信息主表
     primary_key: DiskNum
     join_keys:
       - ID
@@ -135,11 +135,11 @@ tables:
         semantic_key: machine.version_num
       - name: VersionTime
         type: varchar(100)
-        comment: 版本时间
+        comment: 安装时间
         semantic_key: machine.version_time
       - name: MtCmt
         type: varchar(200)
-        comment: 设备备注（例如 telsafedesk 代表安卓端）
+        comment: 设备备注（其中 telsafedesk 代表安卓端，其他忽略）
         semantic_key: machine.comment
       - name: MtPingPai
         type: varchar(100)
@@ -147,8 +147,8 @@ tables:
         semantic_key: machine.platform
       - name: MtGetDate
         type: datetime
-        comment: 客户端安装时间
-        semantic_key: machine.install_time
+        comment: 最近上线时间
+        semantic_key: machine.online_time
 
   - name: s_group
     description: 部门表
@@ -164,12 +164,16 @@ tables:
         semantic_key: group.name
       - name: ParentID
         type: int
-        comment: 上级部门ID
+        comment: 上级部门ID（id为0表示的部门名称是 所有部门）
         semantic_key: group.parent_id
       - name: GroupType
         type: int
-        comment: 部门类型
+        comment: 部门展示时的排序
         semantic_key: group.type
+      - name: deppath
+        type: varchar(100)
+        comment: 部门全路径（例如：/部门1/部门2/部门3）
+        semantic_key: group.path
 
   - name: s_user
     description: 用户表（可绑定到设备 s_machine.ClientId）
@@ -242,7 +246,7 @@ tables:
         semantic_key: alert.flag
 
   - name: a_clienthardinfo2
-    description: 终端硬件信息表（MtID 指向 s_machine.ID）
+    description: 终端资产信息硬件信息表（MtID 指向 s_machine.ID）
     primary_key: ID
     columns:
       - name: ID
@@ -521,6 +525,14 @@ tables:
         type: int
         comment: 设备ID（关联 s_machine.ID）
         semantic_key: runtime.machine_id
+      - name: systemstarttime
+        type: datetime
+        comment: 系统启动时间
+        semantic_key: runtime.machine_start_time
+      - name: systemruntime
+        type: varchar(100)
+        comment: 系统运行时间（小时）
+        semantic_key: runtime.machine_run_time
 
   - name: onlineinfo
     description: 在线信息表（用于在线设备查询；字段结构为示例 SQL 所需最小集合）
@@ -573,63 +585,6 @@ relationships:
     to: s_machine.ID
     kind: many_to_one
     comment: 在线信息对应设备
-
-policy_code_dictionary:
-  - code: SystemFilterSwitch
-    description: 系统设置策略（示例子项结构）
-    items:
-      - name1: ShowDesktop_TextColor
-        value_source: Name2
-        value_type: hex_color
-        meaning: 桌面文字颜色
-      - name1: ShowDeskTip
-        value_source: nValue
-        value_type: int_bool
-        meaning: 是否开启提示
-      - name1: ShowDesktop_CName
-        value_source: nValue
-        value_type: int_bool
-        meaning: 水印是否显示计算机名
-      - name1: LockScreenWallPaper
-        enabled_source: nValue
-        enabled_type: int_bool
-        value_source: Name3
-        value_type: path
-        meaning: 锁屏壁纸路径与是否启用
-      - name1: WallPaperRotate
-        enabled_source: nValue
-        enabled_type: int_bool
-        value_source: Name1
-        value_type: int_minutes
-        meaning: 壁纸轮换间隔分钟与是否启用
-
-  - code: TelDeskSettings
-    description: 移动端桌面设置策略（示例子项结构）
-    items:
-      - name1_in:
-          - showuser
-          - showmac
-          - showip
-          - showsn
-          - showflash
-          - showwifiset
-        value_source: Name2
-        value_type: int_bool
-        meaning: 是否显示开关
-      - name1: customInfo
-        value_source: Name3
-        value_type: text
-        meaning: 自定义文字内容
-      - name1: customTextSize
-        value_source: Name2
-        value_type: int
-        meaning: 自定义文字大小
-      - name1: shortcut
-        value_source:
-          title: Name2
-          url: Name3
-        value_type: pair
-        meaning: 网址快捷方式名称与URL
 
 query_patterns:
   - name: all_departments
@@ -732,42 +687,6 @@ query_patterns:
       ORDER BY h.ChangeTime DESC
       LIMIT :limit
 
-  - name: machine_policies
-    user_intent: 查询某设备的策略列表（含策略名称）
-    requires_permission: admin_department_scope_v1
-    sql: |
-      SELECT
-        p.MtID AS MachineID,
-        p.PolicyID,
-        pn.Name AS PolicyName,
-        pn.nType AS PolicyType,
-        pn.Comment AS PolicyComment
-      FROM a_equippolicymap p
-      LEFT JOIN a_policyname pn ON p.PolicyID = pn.ID
-      JOIN s_machine m ON p.MtID = m.ID
-      WHERE p.MtID = :mtid
-        AND m.Groupid IN ({allowed_group_ids_sql})
-      ORDER BY pn.nType ASC, pn.Name ASC
-      LIMIT :limit
-
-  - name: policy_items_by_policyid_and_code
-    user_intent: 查询某策略ID下某个Code的配置项
-    requires_permission: admin_department_scope_v1
-    sql: |
-      SELECT
-        c.PolicyID,
-        c.Code,
-        c.Name1,
-        c.Name2,
-        c.Name3,
-        c.nValue,
-        c.comment
-      FROM a_policycontent c
-      WHERE c.PolicyID = :policy_id
-        AND c.Code = :code
-      ORDER BY c.Name1 ASC
-      LIMIT :limit
-
   - name: shutdown_online_machines
     user_intent: 查询关机在线机器（示例 SQL 模板）
     requires_permission: admin_department_scope_v1
@@ -803,9 +722,9 @@ sql_shots:
       LEFT JOIN s_group g ON m.Groupid = g.id
       WHERE m.Ip_C = '192.168.1.10'
         AND m.Groupid IN ({allowed_group_ids_sql})
-      LIMIT 50
+      LIMIT 20
 
-  - user_query: 查询某IP的最近100条告警
+  - user_query: 查询某IP的最近30条告警
     requires_permission: admin_department_scope_v1
     sql: |
       SELECT
@@ -819,7 +738,7 @@ sql_shots:
       WHERE m.Ip_C = :ip
         AND m.Groupid IN ({allowed_group_ids_sql})
       ORDER BY a.AlertTime DESC
-      LIMIT 100
+      LIMIT 30
 
   - user_query: 查询某IP最新硬件信息
     requires_permission: admin_department_scope_v1
@@ -861,39 +780,7 @@ sql_shots:
         AND h.IsShouldAlert = 1
         AND m.Groupid IN ({allowed_group_ids_sql})
       ORDER BY h.ChangeTime DESC
-      LIMIT 200
-
-  - user_query: 查询某设备的策略列表
-    requires_permission: admin_department_scope_v1
-    sql: |
-      SELECT
-        p.MtID AS MachineID,
-        p.PolicyID,
-        pn.Name AS PolicyName,
-        pn.nType AS PolicyType
-      FROM a_equippolicymap p
-      LEFT JOIN a_policyname pn ON p.PolicyID = pn.ID
-      JOIN s_machine m ON p.MtID = m.ID
-      WHERE p.MtID = :mtid
-        AND m.Groupid IN ({allowed_group_ids_sql})
-      ORDER BY pn.nType ASC, pn.Name ASC
-      LIMIT 200
-
-  - user_query: 查询某策略ID下 SystemFilterSwitch 的所有子项
-    requires_permission: admin_department_scope_v1
-    sql: |
-      SELECT
-        c.PolicyID,
-        c.Code,
-        c.Name1,
-        c.Name2,
-        c.Name3,
-        c.nValue
-      FROM a_policycontent c
-      WHERE c.PolicyID = :policy_id
-        AND c.Code = 'SystemFilterSwitch'
-      ORDER BY c.Name1 ASC
-      LIMIT 500
+      LIMIT 50
 
   - user_query: 查询关机在线机器（固定模板，只传账号名即可按权限过滤）
     requires_permission: admin_department_scope_v1
@@ -912,4 +799,61 @@ sql_shots:
       LEFT JOIN s_user u ON m.ClientId = u.ID
       LEFT JOIN s_group g ON m.Groupid = g.id
       WHERE m.Groupid IN ({allowed_group_ids_sql})
+
+display_fields:
+  department:
+    - name: 部门名称
+      column: s_group.GroupName
+    - name: 父部门
+      column: s_group.ParentID
+      display: true
+    - name: 直属于部门下的机器数
+      column: COUNT(s_machine.ID)
+      aggregate: true
+  
+  machine:
+    - name: 机器名
+      column: s_machine.Name_C
+    - name: IP地址
+      column: s_machine.Ip_C
+    - name: MAC地址
+      column: s_machine.Mac_c
+    - name: 用户
+      column: s_user.UserName
+      fallback: "空"
+    - name: 所属部门
+      column: s_group.deppath
+    - name: 设备类型
+      column: s_machine.MtPingPai
+    - name: 客户端版本
+      column: s_machine.VersionNum
+    - name: 是否在线
+      column: onlineinfo.mtid
+      display: true
+    - name: 客户端安装时间
+      column: s_machine.VersionTime
+    - name: 最近上线时间
+      column: s_machine.MtGetDate
+  
+  hardware:
+    - name: 设备名
+      column: s_machine.Name_C
+    - name: 部门
+      column: s_group.deppath
+    - name: CPU
+      column: a_clienthardinfo2.CUP
+    - name: 内存
+      column: a_clienthardinfo2.Memory
+    - name: 硬盘信息
+      column: a_clienthardinfo2.DiskInfo
+    - name: 硬盘大小
+      column: a_clienthardinfo2.DiskSize
+    - name: 显卡
+      column: a_clienthardinfo2.ViewCard
+    - name: 网卡列表
+      column: a_clienthardinfo2.NetCardList
+    - name: 网卡数量
+      column: a_clienthardinfo2.netcardnum
+    - name: USB设备列表
+      column: a_clienthardinfo2.USBList
 

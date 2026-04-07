@@ -1,462 +1,338 @@
-# Docker部署指南
+# Docker部署指南（外部Ollama版）
 
-## 📋 目录
-1. [前置要求](#前置要求)
-2. [快速开始](#快速开始)
-3. [详细说明](#详细说明)
-4. [常用命令](#常用命令)
-5. [故障排查](#故障排查)
-6. [生产环境建议](#生产环境建议)
+## 一、架构说明
 
----
+本项目采用前后端分离架构，Docker容器内运行：
+- **前端**：Vue3 + Nginx静态站点
+- **后端**：FastAPI Python应用
+- **Qdrant**：向量数据库
 
-## 前置要求
+Ollama大模型服务部署在Docker外部，不包含在Docker Compose中。
 
-### Windows系统
-1. **安装Docker Desktop**
-   - 下载地址：https://www.docker.com/products/docker-desktop
-   - 安装后启动Docker Desktop
-   - 确保Docker正在运行（系统托盘有Docker图标）
+## 二、部署结构
 
-2. **验证安装**
-   ```powershell
-   docker --version
-   docker-compose --version
-   ```
+```
+┌─────────────────────────────────────────────────────────┐
+│                     宿主机                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐ │
+│  │  Ollama  │  │   MySQL  │  │   ./data/docs/       │ │
+│  │  :11434  │  │  :3306   │  │   文档目录(挂载)      │ │
+│  └──────────┘  └──────────┘  │   ./agent_backend/   │ │
+│                               │   configs/(挂载)      │ │
+│                               └──────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Docker网络                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐ │
+│  │   frontend   │  │    backend   │  │   qdrant    │ │
+│  │    :80        │◄─┤   :8000      │◄─┤  :6333      │ │
+│  └──────────────┘  └──────────────┘  └─────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
 
-### Linux系统
-1. **安装Docker**
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get update
-   sudo apt-get install docker.io docker-compose-plugin
+## 三、前置要求
 
-   # CentOS/RHEL
-   sudo yum install docker docker-compose-plugin
-   ```
+### 3.1 软件要求
 
-2. **启动Docker服务**
-   ```bash
-   sudo systemctl start docker
-   sudo systemctl enable docker
-   ```
+- Docker Desktop (Windows) 或 Docker Engine (Linux)
+- Docker Compose v2+
+- Ollama服务已部署并运行（端口11434）
+- MySQL数据库（可选，如使用Text-to-SQL功能）
 
-3. **添加当前用户到docker组（可选，避免每次使用sudo）**
-   ```bash
-   sudo usermod -aG docker $USER
-   # 重新登录后生效
-   ```
+### 3.2 Ollama验证
 
----
+确保Ollama服务正常运行：
 
-## 快速开始
-
-### 1. 准备环境变量文件
 ```bash
-# 复制环境变量模板
-cp .env.example .env
-
-# 编辑.env文件，配置必要参数
-# Windows: notepad .env
-# Linux: nano .env
+curl http://localhost:11434/api/tags
 ```
 
-### 2. 启动所有服务
+确保已下载所需模型：
+
 ```bash
-# 构建并启动所有服务（首次运行）
-docker-compose up -d --build
-
-# 查看服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f
-```
-
-### 3. 访问应用
-- **前端界面**：http://localhost
-- **后端API文档**：http://localhost:8000/docs
-- **Qdrant控制台**：http://localhost:6333/dashboard
-
-### 4. 停止服务
-```bash
-# 停止所有服务
-docker-compose down
-
-# 停止并删除数据卷（清除所有数据）
-docker-compose down -v
-```
-
----
-
-## 详细说明
-
-### 项目结构
-```
-agent_project/
-├── Dockerfile.backend       # 后端镜像构建文件
-├── Dockerfile.frontend      # 前端镜像构建文件
-├── docker-compose.yml       # 服务编排配置
-├── nginx.conf               # Nginx配置文件
-├── .dockerignore            # Docker构建忽略文件
-├── .env                     # 环境变量配置
-└── requirements.txt         # Python依赖
-```
-
-### 服务架构
-```
-┌─────────────┐
-│   用户浏览器  │
-└──────┬──────┘
-       │ http://localhost
-       ↓
-┌─────────────┐
-│   Frontend  │ (Nginx + Vue.js)
-│   端口: 80   │
-└──────┬──────┘
-       │ /api/*
-       ↓
-┌─────────────┐
-│   Backend   │ (FastAPI)
-│   端口: 8000 │
-└──────┬──────┘
-       │
-       ├──────────────┐
-       ↓              ↓
-┌─────────────┐  ┌─────────────┐
-│   Qdrant    │  │   Ollama    │
-│   端口: 6333 │  │  端口: 11434 │
-└─────────────┘  └─────────────┘
-```
-
-### 环境变量说明
-
-#### 必需配置
-```bash
-# Ollama模型配置
-OLLAMA_BASE_URL=http://ollama:11434
-CHAT_MODEL=qwen2.5:7b-instruct
-VISION_MODEL=qwen2.5-vl:7b-instruct
-
-# RAG配置
-RAG_QDRANT_URL=http://qdrant:6333
-RAG_QDRANT_COLLECTION=desk_agent_docs
-```
-
-#### 可选配置
-```bash
-# 数据库连接（如果需要查询真实数据库）
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
-
-# API认证token
-CHAT_API_TOKEN=your_token_here
-```
-
----
-
-## 常用命令
-
-### 服务管理
-```bash
-# 启动所有服务
-docker-compose up -d
-
-# 停止所有服务
-docker-compose stop
-
-# 重启所有服务
-docker-compose restart
-
-# 重启单个服务
-docker-compose restart backend
-
-# 查看服务状态
-docker-compose ps
-
-# 查看资源使用情况
-docker stats
-```
-
-### 日志查看
-```bash
-# 查看所有服务日志
-docker-compose logs
-
-# 实时查看日志
-docker-compose logs -f
-
-# 查看特定服务日志
-docker-compose logs backend
-
-# 查看最近100行日志
-docker-compose logs --tail=100 backend
-```
-
-### 进入容器
-```bash
-# 进入后端容器
-docker-compose exec backend bash
-
-# 进入前端容器
-docker-compose exec frontend sh
-
-# 以root用户进入
-docker-compose exec -u root backend bash
-```
-
-### 数据管理
-```bash
-# 查看数据卷
-docker volume ls
-
-# 查看数据卷详情
-docker volume inspect agent_project_qdrant_data
-
-# 备份数据卷
-docker run --rm -v agent_project_qdrant_data:/data -v $(pwd):/backup alpine tar czf /backup/qdrant_backup.tar.gz /data
-
-# 恢复数据卷
-docker run --rm -v agent_project_qdrant_data:/data -v $(pwd):/backup alpine tar xzf /backup/qdrant_backup.tar.gz -C /
-```
-
-### 镜像管理
-```bash
-# 重新构建镜像
-docker-compose build
-
-# 强制重新构建（不使用缓存）
-docker-compose build --no-cache
-
-# 查看镜像
-docker images
-
-# 删除未使用的镜像
-docker image prune
-```
-
----
-
-## 故障排查
-
-### 1. 服务无法启动
-
-**检查端口占用**
-```bash
-# Windows
-netstat -ano | findstr :8000
-netstat -ano | findstr :80
-
-# Linux
-netstat -tulpn | grep :8000
-netstat -tulpn | grep :80
-```
-
-**解决方案**：
-- 修改docker-compose.yml中的端口映射
-- 停止占用端口的服务
-
-### 2. 后端服务健康检查失败
-
-**查看详细日志**
-```bash
-docker-compose logs backend
-```
-
-**常见原因**：
-- Ollama服务未就绪（需要下载模型）
-- Qdrant服务未启动
-- 配置文件错误
-
-**解决方案**：
-```bash
-# 重启后端服务
-docker-compose restart backend
-
-# 检查Ollama模型
-docker-compose exec ollama ollama list
-```
-
-### 3. Ollama模型下载慢
-
-**手动下载模型**
-```bash
-# 进入Ollama容器
-docker-compose exec ollama bash
-
-# 下载模型
+ollama list
+# 如果模型不存在，执行：
 ollama pull qwen2.5:7b-instruct
 ollama pull qwen2.5-vl:7b-instruct
 ```
 
-### 4. 前端无法访问后端API
+## 四、部署步骤
 
-**检查网络连接**
+### 4.1 配置环境变量
+
 ```bash
-# 进入前端容器
-docker-compose exec frontend sh
+# 复制环境变量示例文件
+cp .env.example .env
 
-# 测试后端连接
-wget -O- http://backend:8000/api/v1/health
+# 编辑.env文件，配置必要的参数
+notepad .env
 ```
 
-**检查Nginx配置**
-```bash
-# 查看Nginx配置
-docker-compose exec frontend cat /etc/nginx/conf.d/default.conf
+关键配置项说明：
 
-# 测试Nginx配置
-docker-compose exec frontend nginx -t
+```env
+# Ollama服务地址（容器内访问宿主机）
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+# 如果是Linux系统，改为：
+# OLLAMA_BASE_URL=http://172.17.0.1:11434
+
+# 文本对话模型
+CHAT_MODEL=qwen2.5:7b-instruct
+
+# 视觉模型
+VISION_MODEL=qwen2.5-vl:7b-instruct
+
+# 数据库配置（如不需要SQL功能可留空）
+DATABASE_URL=mysql+pymysql://user:password@host:3306/dbname
 ```
 
-### 5. 数据丢失问题
+### 4.2 创建必要目录
 
-**检查数据卷挂载**
 ```bash
+# 创建文档目录（用于RAG检索）
+mkdir -p data/docs
+
+# 放入需要检索的文档（PDF、Word、图片等）
+# cp your-docs/*.pdf data/docs/
+```
+
+### 4.3 构建并启动
+
+```bash
+# 构建镜像（首次运行或代码更新后）
+docker-compose build
+
+# 启动所有服务
+docker-compose up -d
+
+# 查看服务状态
 docker-compose ps
-docker volume ls
 ```
 
-**解决方案**：
-- 确保使用docker-compose.yml中定义的数据卷
-- 不要使用`docker-compose down -v`（会删除数据卷）
+### 4.4 验证部署
 
----
-
-## 生产环境建议
-
-### 1. 安全加固
-
-**修改默认端口**
-```yaml
-# docker-compose.yml
-services:
-  frontend:
-    ports:
-      - "8080:80"  # 改为非标准端口
-```
-
-**使用HTTPS**
-```yaml
-# 添加SSL证书
-services:
-  frontend:
-    volumes:
-      - ./ssl/cert.pem:/etc/nginx/ssl/cert.pem:ro
-      - ./ssl/key.pem:/etc/nginx/ssl/key.pem:ro
-```
-
-### 2. 性能优化
-
-**调整worker数量**
-```dockerfile
-# Dockerfile.backend
-CMD ["uvicorn", "agent_backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
-```
-
-**启用GPU加速**
-```yaml
-# docker-compose.yml
-services:
-  ollama:
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-```
-
-### 3. 监控和日志
-
-**添加监控服务**
-```yaml
-services:
-  prometheus:
-    image: prom/prometheus
-    ports:
-      - "9090:9090"
-  
-  grafana:
-    image: grafana/grafana
-    ports:
-      - "3000:3000"
-```
-
-**日志持久化**
-```yaml
-services:
-  backend:
-    volumes:
-      - ./logs:/app/logs
-```
-
-### 4. 备份策略
-
-**自动备份脚本**
 ```bash
-#!/bin/bash
-# backup.sh
-DATE=$(date +%Y%m%d_%H%M%S)
-docker run --rm \
-  -v agent_project_qdrant_data:/data \
-  -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/qdrant_$DATE.tar.gz /data
+# 检查后端健康状态
+curl http://localhost:8000/api/v1/health
+
+# 检查Qdrant服务
+curl http://localhost:6333/
+
+# 访问前端页面
+# 浏览器打开 http://localhost
 ```
 
-**定时任务（Linux crontab）**
+## 五、目录挂载说明
+
+为方便更新和维护，以下目录通过volume挂载到宿主机：
+
+| 容器内路径 | 宿主机路径 | 说明 |
+|-----------|-----------|------|
+| `/data/docs` | `./data/docs` | RAG文档目录，放入PDF/Word等文档 |
+| `/app/configs` | `./agent_backend/configs` | 配置文件目录，包含schema_metadata.yaml |
+
+### 5.1 schema_metadata.yaml配置
+
+该文件定义数据库表结构和权限规则，路径：`agent_backend/configs/schema_metadata.yaml`
+
+```yaml
+version: "0.1"
+db_type: "mysql"
+
+security:
+  restricted_tables:
+    - admininfo
+    - RoleGroupMap
+    - g_adminroleright
+
+permissions:
+  - name: admin_department_scope_v1
+    allowed_group_ids_sql: |
+      SELECT g.id FROM s_group g ...
+```
+
+### 5.2 更新配置或文档
+
 ```bash
-# 每天凌晨2点备份
-0 2 * * * /path/to/backup.sh
+# 更新RAG文档后，需要重新索引（进入后端容器执行）
+docker-compose exec backend bash
+
+# 在容器内执行文档索引
+python -m agent_backend.rag_engine.cli --docs-dir /data/docs
+
+# 或者使用API触发
+curl -X POST http://localhost:8000/api/v1/rag/reindex
 ```
 
----
+## 六、常用命令
 
-## 常见问题
-
-### Q1: Docker Desktop启动慢
-**A**: 增加Docker Desktop的内存和CPU配置
-- 打开Docker Desktop设置
-- Resources -> Memory: 建议8GB以上
-- Resources -> CPUs: 建议4核以上
-
-### Q2: 镜像构建失败
-**A**: 检查网络连接，可能需要配置镜像加速器
-```json
-// Docker Desktop设置 -> Docker Engine
-{
-  "registry-mirrors": [
-    "https://docker.mirrors.ustc.edu.cn"
-  ]
-}
-```
-
-### Q3: 容器内无法访问宿主机服务
-**A**: 使用特殊DNS名称
 ```bash
-# Windows/Mac
-host.docker.internal
+# 启动服务
+docker-compose up -d
 
-# Linux（需要在docker-compose.yml中添加）
-extra_hosts:
-  - "host.docker.internal:host-gateway"
+# 停止服务
+docker-compose down
+
+# 查看日志
+docker-compose logs -f
+
+# 查看后端日志
+docker-compose logs -f backend
+
+# 重启后端（代码更新后）
+docker-compose restart backend
+
+# 重新构建（代码更新后）
+docker-compose build --no-cache backend
+docker-compose up -d
+
+# 进入后端容器
+docker-compose exec backend bash
+
+# 查看容器内文件
+docker-compose exec backend ls -la /app/configs/
 ```
 
----
+## 七、端口说明
 
-## 参考资源
+| 端口 | 服务 | 说明 |
+|-----|------|------|
+| 80 | frontend | 前端页面访问 |
+| 8000 | backend | 后端API |
+| 6333 | qdrant | Qdrant REST API |
+| 6334 | qdrant | Qdrant gRPC |
+| 11434 | ollama | Ollama API（宿主机） |
 
-- [Docker官方文档](https://docs.docker.com/)
-- [Docker Compose官方文档](https://docs.docker.com/compose/)
-- [FastAPI部署指南](https://fastapi.tiangolo.com/deployment/docker/)
-- [Nginx配置指南](https://nginx.org/en/docs/)
+## 八、网络配置
 
----
+### 8.1 访问宿主机Ollama
 
-## 技术支持
+- **Windows/macOS**：使用`host.docker.internal`
+- **Linux**：使用`172.17.0.1`或宿主机IP
 
-如遇到问题，请提供以下信息：
-1. 操作系统版本
-2. Docker版本 (`docker --version`)
-3. Docker Compose版本 (`docker-compose --version`)
-4. 错误日志 (`docker-compose logs`)
+如需修改，编辑`.env`文件：
+
+```env
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+### 8.2 Ollama不在本机
+
+如果Ollama部署在远程服务器：
+
+```env
+OLLAMA_BASE_URL=http://远程IP:11434
+```
+
+确保远程Ollama服务允许外部访问（启动时加`--host 0.0.0.0`参数）。
+
+## 九、数据持久化
+
+| 数据类型 | 存储位置 | 说明 |
+|---------|---------|------|
+| 向量数据 | Docker volume `qdrant_data` | Qdrant存储的向量索引 |
+| RAG文档 | `./data/docs` | 原始文档文件（需手动备份） |
+| 配置文件 | `./agent_backend/configs` | YAML配置文件（需手动备份） |
+
+### 9.1 备份向量数据
+
+```bash
+# 备份Qdrant volume
+docker run --rm -v desk-agent_qdrant_data:/data -v $(pwd):/backup alpine tar czf /backup/qdrant_backup.tar.gz /data
+
+# 恢复备份
+docker run --rm -v desk-agent_qdrant_data:/data -v $(pwd):/backup alpine tar xzf /backup/qdrant_backup.tar.gz -C /
+```
+
+## 十、故障排查
+
+### 10.1 后端无法连接Ollama
+
+```bash
+# 检查Ollama是否运行
+curl http://localhost:11434/api/tags
+
+# 检查后端日志
+docker-compose logs backend | grep -i ollama
+```
+
+### 10.2 Qdrant连接失败
+
+```bash
+# 检查Qdrant状态
+curl http://localhost:6333/
+
+# 检查Qdrant日志
+docker-compose logs qdrant
+```
+
+### 10.3 前端无法访问后端
+
+```bash
+# 检查后端是否正常运行
+docker-compose ps
+
+# 检查后端健康状态
+curl http://localhost:8000/api/v1/health
+
+# 检查Nginx代理配置
+docker-compose logs frontend | grep -i proxy
+```
+
+### 10.4 文档RAG检索无结果
+
+```bash
+# 检查文档是否正确挂载
+docker-compose exec backend ls -la /data/docs/
+
+# 检查向量数据库是否有数据
+curl http://localhost:6333/collections
+
+# 重新索引文档
+docker-compose exec backend python -m agent_backend.rag_engine.cli --docs-dir /data/docs
+```
+
+## 十一、环境变量完整参考
+
+```env
+# ==================== 大模型配置 ====================
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+CHAT_MODEL=qwen2.5:7b-instruct
+VISION_MODEL=qwen2.5-vl:7b-instruct
+
+# ==================== 数据库配置 ====================
+DATABASE_URL=mysql+pymysql://user:password@host:3306/dbname
+
+# ==================== RAG配置 ====================
+RAG_DOCS_DIR=./data/docs
+RAG_QDRANT_URL=http://qdrant:6333
+RAG_QDRANT_PATH=/app/.qdrant_local
+RAG_QDRANT_COLLECTION=desk_agent_docs
+RAG_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+RAG_HYBRID_ALPHA=0.7
+RAG_TOP_K=5
+
+# ==================== 其他配置 ====================
+CHAT_API_TOKEN=
+```
+
+## 十二、生产环境建议
+
+1. **安全加固**
+   - 修改默认端口
+   - 启用HTTPS
+   - 设置`CHAT_API_TOKEN`进行接口鉴权
+   - 限制数据库访问权限
+
+2. **性能优化**
+   - 配置GPU支持（如有NVIDIA GPU）
+   - 调整`RAG_HYBRID_ALPHA`和`RAG_TOP_K`参数
+   - 使用`--workers 4`增加后端并发
+
+3. **监控告警**
+   - 配置日志收集（ELK/Loki）
+   - 监控容器健康状态
+   - 设置资源限制（CPU/内存）

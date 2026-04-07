@@ -95,6 +95,20 @@ def get_ollama_config() -> dict:
     }
 
 
+def get_max_rows() -> int:
+    """
+    获取SQL查询默认最大行数限制
+    
+    返回：
+        int: 默认最大行数，默认值为500
+    """
+    load_env_file()
+    try:
+        return int(os.getenv("SQL_MAX_ROWS", "500"))
+    except (ValueError, TypeError):
+        return 500
+
+
 def print_config_status():
     """打印配置状态"""
     load_env_file()

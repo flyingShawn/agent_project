@@ -12,8 +12,15 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# 彻底清理并更换为清华Debian镜像源
+# RUN rm -f /etc/apt/sources.list && \
+RUN rm -rf /etc/apt/sources.list.d/* && \
+    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ trixie main' > /etc/apt/sources.list && \
+    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ trixie-updates main' >> /etc/apt/sources.list && \
+    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ trixie-security main' >> /etc/apt/sources.list
+
 # 安装系统依赖
-# 这些是Python包所需的系统库
+# build-essential: 编译Python扩展所需的工具链
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -25,10 +32,9 @@ COPY requirements.txt .
 # --no-cache-dir: 不缓存下载的包，减小镜像大小
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制项目代码
+# 复制项目代码（不包括configs，configs通过volume挂载）
 COPY agent_backend ./agent_backend
 COPY scripts ./scripts
-COPY agent_backend/configs ./configs
 
 # 创建数据目录（用于存储文档和向量数据库）
 RUN mkdir -p /data/docs /app/.qdrant_local

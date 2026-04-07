@@ -11,6 +11,7 @@ SQL执行器模块
     2. 执行SQL查询
     3. 强制添加LIMIT（防止返回过多数据）
     4. 将结果转换为字典列表
+    5. 自动重试机制
 
 主要函数：
     - execute_sql(): 执行SQL并返回结果
@@ -19,7 +20,7 @@ SQL执行器模块
     1. 检查DATABASE_URL配置
     2. 确保SQL有LIMIT子句
     3. 创建数据库连接
-    4. 执行SQL
+    4. 执行SQL（失败时自动重试）
     5. 转换结果为字典列表
     6. 返回结果
 
@@ -27,6 +28,7 @@ SQL执行器模块
     - 强制添加LIMIT（默认200行）
     - 使用参数化查询（防止SQL注入）
     - 异常处理和错误包装
+    - 数据库查询失败自动重试（最多2次）
 
 使用场景：
     - SQL代理执行查询
@@ -40,9 +42,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from typing import Any
 
-from agent_backend.core.config_helper import get_database_url
+from agent_backend.core.config_helper import get_database_url, get_max_rows
 from agent_backend.core.errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -61,18 +64,31 @@ def execute_sql(
     sql: str,
     params: dict[str, Any],
     database_url: str | None = None,
-    max_rows: int = 200,
+    max_rows: int | None = None,
+    max_retries: int = 2,
+    retry_delay: float = 1.0,
 ) -> list[dict[str, Any]]:
     """
     执行 SQL 并返回 JSON 友好的结果数组。
 
     说明：
         - 该方法仅在配置了 DATABASE_URL 时可用；
-        - 为避免误操作，默认强制追加 LIMIT（若 SQL 未显式包含 LIMIT）。
+        - 为避免误操作，默认强制追加 LIMIT（若 SQL 未显式包含 LIMIT）；
+        - 数据库查询失败时会自动重试（最多 max_retries 次）。
+
+    参数：
+        sql: SQL语句
+        params: 查询参数
+        database_url: 数据库连接URL（可选）
+        max_rows: 最大返回行数（可选）
+        max_retries: 最大重试次数，默认2次
+        retry_delay: 重试延迟时间（秒），默认1秒
     """
-    logger.info("=" * 80)
-    logger.info("【SQL执行流程开始】")
-    logger.info("=" * 80)
+  
+    logger.info("=" * 20 +"【SQL执行流程开始】" + "=" * 20)
+    
+    if max_rows is None:
+        max_rows = get_max_rows()
     
     url = database_url or get_database_url()
     if not url:
@@ -94,39 +110,49 @@ def execute_sql(
 
     sql2, params2 = _ensure_limit(sql, params, max_rows)
     
-    logger.info("【执行的SQL】:")
-    logger.info(f"\n{sql2}")
-    logger.info(f"参数: {params2}")
-
-    try:
-        logger.info("正在连接数据库...")
-        engine = create_engine(url)
-        with engine.connect() as conn:
-            logger.info("✅ 数据库连接成功")
-            logger.info("正在执行SQL...")
-            result = conn.execute(text(sql2), params2)
-            rows = result.fetchall()
-            keys = list(result.keys())
-            logger.info(f"✅ SQL执行成功，返回 {len(rows)} 行数据")
-    except Exception as e:
-        logger.error(f"❌ 数据库查询失败: {e}")
-        raise AppError(
-            code="db_query_failed",
-            message="数据库查询失败",
-            http_status=502,
-            details={"reason": str(e)},
-        ) from e
-
-    out: list[dict[str, Any]] = []
-    for r in rows:
-        out.append({k: r[i] for i, k in enumerate(keys)})
+    logger.info(f"\n【执行的SQL】:{sql2}")
+ 
+    last_exception = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            if attempt > 1:
+                logger.info(f"🔄 第 {attempt} 次重试...")
+                time.sleep(retry_delay)
+            
+            logger.info("正在连接数据库...")
+            engine = create_engine(url)
+            with engine.connect() as conn:
+                logger.info("✅ 数据库连接成功 正在执行SQL...")
+                result = conn.execute(text(sql2), params2)
+                rows = result.fetchall()
+                keys = list(result.keys())
+                logger.info(f"✅ SQL执行成功，返回 {len(rows)} 行数据")
+                
+                out: list[dict[str, Any]] = []
+                for r in rows:
+                    out.append({k: r[i] for i, k in enumerate(keys)})
+                
+                logger.info(f"返回数据示例（前3行）:")
+                for i, row in enumerate(out[:3]):
+                    logger.info(f"  行{i+1}: {row}")
+                
+                logger.info("=" * 20 +"【SQL执行流程结束】" + "=" * 20)
+                
+                return out
+                
+        except Exception as e:
+            last_exception = e
+            logger.warning(f"⚠️ 第 {attempt} 次查询失败: {e}")
+            if attempt < max_retries:
+                logger.info(f"💡 将在 {retry_delay} 秒后重试...")
+            else:
+                logger.error(f"❌ 已达到最大重试次数 {max_retries}，放弃重试")
     
-    logger.info(f"返回数据示例（前3行）:")
-    for i, row in enumerate(out[:3]):
-        logger.info(f"  行{i+1}: {row}")
-    
-    logger.info("=" * 80)
-    logger.info("【SQL执行流程结束】")
-    logger.info("=" * 80)
-    
-    return out
+    # 所有重试都失败了
+    logger.error(f"❌ 数据库查询失败: {last_exception}")
+    raise AppError(
+        code="db_query_failed",
+        message="数据库查询失败",
+        http_status=502,
+        details={"reason": str(last_exception)},
+    ) from last_exception
