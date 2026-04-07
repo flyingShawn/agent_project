@@ -2,7 +2,7 @@
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import ImageUploader from './ImageUploader.vue'
-import { sendChatMessage, sendChatMessageMock } from '../api/chat'
+import { sendChatMessage } from '../api/chat'
 
 const props = defineProps({
   userName: {
@@ -16,7 +16,6 @@ const inputText = ref('')
 const isLoading = ref(false)
 const pendingImages = ref([])
 const messagesContainer = ref(null)
-const useMock = ref(false)
 
 const handlePaste = (event) => {
   const items = event.clipboardData?.items
@@ -116,10 +115,9 @@ const sendMessage = async () => {
           content: m.content,
         }))
 
-      console.log('[前端 ChatBox] 准备调用API，useMock:', useMock.value)
-      const chatFn = useMock.value ? sendChatMessageMock : sendChatMessage
+      console.log('[前端 ChatBox] 准备调用API')
 
-      await chatFn({
+      await sendChatMessage({
         question: text,
         history: history,
         images_base64: imagesToSend.map((img) => img.base64),
@@ -261,14 +259,6 @@ onUnmounted(() => {
       
       <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
         <span>支持粘贴截图 | Shift+Enter 换行</span>
-        <label class="flex items-center space-x-1 cursor-pointer">
-          <input
-            v-model="useMock"
-            type="checkbox"
-            class="rounded border-gray-300 text-primary-500 focus:ring-primary-500"
-          />
-          <span>Mock 模式</span>
-        </label>
       </div>
     </div>
   </div>
