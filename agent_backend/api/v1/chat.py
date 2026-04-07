@@ -71,10 +71,10 @@ class ChatMetadata(BaseModel):
 def _sse_event(event: str, data: str | dict) -> str:
     if isinstance(data, dict):
         data = json.dumps(data, ensure_ascii=False)
-    lines = data.split('\n')
+    lines = data.split('\n')  # "连接符".join(列表) 用"连接符"把列表中的元素连接成一个字符串
     return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
 
-
+#StreamingResponse是 FastAPI 的响应类，用于 流式响应
 @router.post("/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
     logger.info("=" * 80)

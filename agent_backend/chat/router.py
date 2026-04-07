@@ -140,5 +140,5 @@ def classify_intent(question: str) -> Intent:
         logger.info(f"【意图识别】结果: RAG (RAG得分更高)")
         return Intent.RAG
     else:
-        logger.info(f"【意图识别】结果: RAG (得分相等，默认RAG)")
-        return Intent.RAG
+        logger.info(f"【意图识别】结果: SQL (得分相等，默认SQL)")
+        return Intent.SQL

@@ -38,9 +38,15 @@ from __future__ import annotations
 import math
 import os
 import re
+from pathlib import Path
+from dotenv import load_dotenv
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
+
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore, SearchResult

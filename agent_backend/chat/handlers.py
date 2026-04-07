@@ -42,6 +42,8 @@ import logging
 import os
 from typing import Any, Iterator
 
+import yaml
+from pathlib import Path
 from agent_backend.core.config_helper import get_database_url
 from agent_backend.llm.clients import OllamaChatClient
 from agent_backend.rag_engine.embedding import EmbeddingModel
@@ -104,20 +106,98 @@ def handle_sql_chat(
             else:
                 logger.info("  - 结果为空")
             
-            logger.info("【SQL处理】步骤3: 格式化查询结果...")
-            yield "**查询结果：**\n\n"
+            logger.info("【SQL处理】步骤3: 用自然语言总结查询结果...")
             
+            data_summary = ""
+            data_table = ""
             if exec_result and len(exec_result) > 0:
                 columns = list(exec_result[0].keys())
-                yield "| " + " | ".join(columns) + " |\n"
-                yield "| " + " | ".join(["---------"] * len(columns)) + " |\n"
+                data_summary = f"查询到 {len(exec_result)} 条记录，列名：{', '.join(columns)}\n"
                 
+                # 构建简单的数据表格，用固定宽度格式
+                # 先计算每列的最大宽度
+                col_widths = {}
+                for col in columns:
+                    col_widths[col] = len(col)
+                    for row in exec_result:
+                        val = row.get(col, "")
+                        val_str = str(val) if val is not None else ""
+                        col_widths[col] = max(col_widths[col], len(val_str))
+                        # 限制最大宽度，防止过长
+                        col_widths[col] = min(col_widths[col], 30)
+                
+                # 构建表头
+                header = "| " + " | ".join(col.ljust(col_widths[col])[:col_widths[col]] for col in columns) + " |"
+                separator = "| " + " | ".join("-" * col_widths[col] for col in columns) + " |"
+                
+                data_table = header + "\n" + separator + "\n"
+                
+                # 添加所有数据行
                 for row in exec_result:
-                    yield "| " + " | ".join(str(cell) if cell is not None else "" for cell in row.values()) + " |\n"
-                
-                yield f"\n共查询到 **{len(exec_result)}** 条记录。\n"
+                    row_str = "| " + " | ".join(
+                        (str(row.get(col, "")) if row.get(col, "") is not None else "").ljust(col_widths[col])[:col_widths[col]]
+                        for col in columns
+                    ) + " |"
+                    data_table += row_str + "\n"
             else:
-                yield "查询结果为空。\n"
+                data_summary = "查询结果为空。"
+            
+            # 加载提示词配置文件
+            prompt_config_path = Path(__file__).resolve().parents[1] / "configs" / "prompt_config.yaml"
+            with open(prompt_config_path, 'r', encoding='utf-8') as f:
+                prompt_config = yaml.safe_load(f)
+            
+            # 构建字段配置提示
+            fields_prompt = "\n字段配置：\n"
+            for field_type, config in prompt_config.items():
+                if field_type != 'required_fields' and 'fields' in config:
+                    fields_prompt += f"{field_type}类型查询应显示的字段：\n"
+                    for field in config['fields']:
+                        fields_prompt += f"- {field['name']}"
+                        if 'note' in field:
+                            fields_prompt += f" ({field['note']})"
+                        fields_prompt += "\n"
+            
+            # 添加强调必须的字段配置
+            if 'required_fields' in prompt_config:
+                fields_prompt += "\n强调必须的字段：\n"
+                for field in prompt_config['required_fields']:
+                    fields_prompt += f"- {field}\n"
+            
+            answer_prompt = f"""你是一个专业且友好的桌管系统AI助手，需要基于数据库查询结果以人性化的方式回答用户问题。
+
+用户问题：{question}
+
+查询结果：
+{data_summary}
+
+请用自然语言回答用户的问题，要求：
+1. 回答要友好、自然，富有同理心，避免生硬的表达方式
+2. 严格基于查询结果生成回答，不得编造任何数据或信息
+3. 如果是统计类问题（比如问"多少个"），先简洁回答具体数字
+4. 不要暴露数据库表名、列名等技术细节，保持回答的专业性和易懂性
+5. 如果查询结果为空，如实告知用户并提供可能的原因或后续建议
+6. 使用自然的口语化表达，让对话感觉更像人与人之间的交流
+7. 回答简洁一些，不要超过3句话
+
+请直接回答。"""
+
+            
+            answer_messages = [
+                # {"role": "system", "content": "你是一个专业且友好的桌管系统AI助手，善于用自然语言总结数据库查询结果，回答时要人性化、富有同理心，避免生硬的表达方式。当用户要求列出详细信息时，必须使用Markdown表格格式展示所有相关字段，并参考字段配置来确保展示正确的信息。严格基于查询结果生成回答，不得编造任何数据或信息。对于查询结果中缺失的字段，显示为空或'未查询到'。对于强调必须的字段，如果未查询到，必须显示'未查询到，存在异常'。根据用户查询的类型，按照配置文件中的字段顺序和要求来展示信息，特别是查询部门信息时只显示部门名称、父部门和直属于部门下的机器数。"},
+                {"role": "system", "content": "你是一个专业且友好的桌管系统AI助手，善于用自然语言总结数据库查询结果，回答时要人性化、富有同理心，避免生硬的表达方式。当用户要求列出详细信息时，必须使用Markdown表格格式展示所有相关字段，并参考字段配置来确保展示正确的信息。严格基于查询结果生成回答，不得编造任何数据或信息。对于查询结果中缺失的字段，显示为空或'未查询到'。对于强调必须的字段，如果未查询到，必须显示'未查询到，存在异常'。根据用户查询的类型，严格按照配置文件中的字段顺序和要求来展示信息，只展示与查询类型相关的信息，不要提及其他类型的信息。表格格式必须完整且正确，确保表头和数据行对齐，不要出现格式混乱的情况。对于部门信息查询，确保正确处理直属机器数的显示，根据查询结果中的实际值展示。"},
+                {"role": "user", "content": answer_prompt}
+            ]
+            
+            logger.info("【SQL处理】调用LLM生成自然语言回答...")
+            for chunk in llm_client.chat_stream(answer_messages):
+                yield chunk
+            
+            # 如果有数据表格，直接追加到回答中
+            if data_table:
+                yield "\n\n```\n"
+                yield data_table
+                yield "```\n"
             
             logger.info("【SQL处理】===== SQL处理流程完成 =====")
         else:
@@ -219,7 +299,7 @@ def handle_rag_chat(
 文档内容：
 {context}
 
-请基于以上文档内容回答用户问题，并在回答中引用相关文档来源。如果文档中没有相关信息，请如实告知。"""
+请基于以上文档内容回答用户问题。如果文档中没有相关信息，请如实告知。"""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -234,15 +314,21 @@ def handle_rag_chat(
         yield chunk
     logger.info(f"【RAG处理】LLM回答完成，共 {chunk_count} 个文本块")
 
-    yield "\n\n**参考来源：**\n"
+    references = []
     seen_sources = set()
     for chunk in chunks:
         if chunk.source_path and chunk.source_path not in seen_sources:
-            yield f"- {chunk.source_path}"
+            from pathlib import Path
+            source_name = Path(chunk.source_path).name
+            ref_line = f"- {source_name}"
             if chunk.heading:
-                yield f"（{chunk.heading}）"
-            yield "\n"
+                ref_line += f"（{chunk.heading}）"
+            references.append(ref_line)
             seen_sources.add(chunk.source_path)
+    
+    if references:
+        yield "\n\n---\n\n**📚 参考来源：**\n"
+        yield "\n".join(references)
     
     logger.info("【RAG处理流程】结束")
     logger.info("=" * 60)

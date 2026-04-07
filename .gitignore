@@ -49,7 +49,19 @@ yarn-error.log*
 .state/
 .qdrant_local_demo/
 
-OS specific
+# Playwright test results
+playwright-report/
+test-results/
+
+# Temp directories
+temp_npx/
+temp/
+
+# User data (keep directory structure but ignore contents)
+data/docs/*
+!data/docs/.gitkeep
+
+# OS specific
 .DS_Store
 .DS_Store?
 ._*

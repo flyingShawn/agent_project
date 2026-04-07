@@ -43,7 +43,7 @@ from typing import Any
 
 from agent_backend.core.config_loader import get_schema_runtime
 from agent_backend.core.errors import AppError
-from agent_backend.sql_agent.llm_clients import LlmClient, OllamaClient
+from agent_backend.llm.clients import OllamaChatClient
 from agent_backend.sql_agent.patterns import select_query_pattern
 from agent_backend.sql_agent.permission_wrapper import wrap_with_permission
 from agent_backend.sql_agent.prompt_builder import build_sql_prompt
@@ -63,6 +63,8 @@ def _clean_sql_markdown(sql: str) -> str:
     sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
     sql = re.sub(r"^```\s*", "", sql)
     sql = re.sub(r"\s*```$", "", sql)
+    sql = re.sub(r"`([^`]+)`", r"\1", sql)
+    sql = re.sub(r"\s+IN\s*\(\s*\{allowed_group_ids_sql\}\s*\)", "", sql, flags=re.IGNORECASE)
     sql = re.sub(r"\{allowed_group_ids_sql\}", "1=1", sql)
     return sql.strip()
 
@@ -70,14 +72,15 @@ def _clean_sql_markdown(sql: str) -> str:
 def generate_secure_sql(
     req: SqlGenRequest,
     *,
-    llm: LlmClient | None = None,
+    llm: OllamaChatClient | None = None,
+    use_template: bool = False,
 ) -> SqlGenResult:
     """
     从自然语言生成"安全 SQL"。
 
     处理顺序：
-        1) 优先匹配 query_patterns（命中则绕开大模型）
-        2) 未命中时返回模拟SQL（Mock模式）
+        1) 如果 use_template=True，优先匹配 query_patterns
+        2) 未命中或 use_template=False 时，调用 LLM 生成 SQL
         3) 做基础安全校验（仅允许单条 SELECT + 禁用关键字等）
         4) 按 permissions 规则进行权限包装（拼接 join/where 与子查询）
         5) 再次做安全校验（受限表、敏感列）
@@ -86,12 +89,13 @@ def generate_secure_sql(
     logger.info("【SQL生成流程开始】")
     logger.info(f"用户问题: {req.question}")
     logger.info(f"用户ID: {req.lognum}")
+    logger.info(f"使用模板: {use_template}")
     logger.info("=" * 80)
     
     runtime = get_schema_runtime()
     security = runtime.raw.security
 
-    match = select_query_pattern(runtime, req.question)
+    match = select_query_pattern(runtime, req.question) if use_template else None
     params: dict[str, Any] = dict(req.params)
 
     used_template: str | None = None
@@ -106,8 +110,21 @@ def generate_secure_sql(
         params.update(match.params)
         logger.info(f"模板SQL: {sql}")
     else:
-        logger.info("【步骤1】未匹配到模板，需要调用LLM生成（暂未实现）")
-        raise AppError(code="template_not_found", message="未匹配到查询模板，暂不支持该查询")
+        logger.info("【步骤1】调用LLM生成SQL")
+        if llm is None:
+            llm = OllamaChatClient()
+        
+        prompt = build_sql_prompt(runtime, req.question)
+        logger.debug("Prompt:")
+        logger.debug(prompt)
+        
+        messages = [
+            {"role": "system", "content": "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"},
+            {"role": "user", "content": prompt}
+        ]
+        
+        sql = llm.chat_complete(messages)
+        logger.info(f"LLM返回SQL: {sql}")
 
     sql = _clean_sql_markdown(sql)
     sql = validate_sql_basic(sql)

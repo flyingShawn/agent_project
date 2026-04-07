@@ -1,7 +1,6 @@
 # Docker Compose配置文件
-# 用于编排多个服务：前端、后端、Qdrant向量数据库、Ollama大模型
-
-version: '3.8'
+# 用于编排多个服务：前端、后端、Qdrant向量数据库
+# Ollama大模型服务部署在Docker外部
 
 services:
   # ==================== 后端服务 ====================
@@ -14,11 +13,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # 模型配置
-      - OLLAMA_BASE_URL=http://ollama:11434
+      # 模型配置 - OLLAMA_BASE_URL指向外部Ollama服务
+      # Windows/macOS使用host.docker.internal，Linux使用宿主机IP
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - CHAT_MODEL=${CHAT_MODEL:-qwen2.5:7b-instruct}
       - VISION_MODEL=${VISION_MODEL:-qwen2.5-vl:7b-instruct}
-      
+
       # RAG配置
       - RAG_DOCS_DIR=/data/docs
       - RAG_QDRANT_URL=http://qdrant:6333
@@ -27,19 +27,18 @@ services:
       - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
       - RAG_HYBRID_ALPHA=${RAG_HYBRID_ALPHA:-0.7}
       - RAG_TOP_K=${RAG_TOP_K:-5}
-      
+
       # 数据库配置
       - DATABASE_URL=${DATABASE_URL:-}
     volumes:
-      # 挂载数据目录（持久化文档）
-      - ./data/docs:/data/docs:ro
-      # 挂载配置文件
-      - ./agent_backend/configs:/app/configs:ro
+      # 挂载数据目录（持久化文档，用于RAG检索）
+      - ${RAG_DOCS_DIR:-./data/docs}:/data/docs:ro
+      # 挂载配置文件目录（schema_metadata.yaml等）
+      - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
       # 持久化向量数据库
       - qdrant_data:/app/.qdrant_local
     depends_on:
       - qdrant
-      - ollama
     networks:
       - app-network
     healthcheck:
@@ -83,38 +82,11 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
-
-  # ==================== Ollama大模型服务 ====================
-  ollama:
-    image: ollama/ollama:latest
-    container_name: desk-agent-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      # 持久化模型文件
-      - ollama_data:/root/.ollama
-    networks:
-      - app-network
-    # GPU支持（如果有NVIDIA GPU）
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 5s
 
 # ==================== 网络配置 ====================
 networks:
@@ -124,6 +96,4 @@ networks:
 # ==================== 数据卷配置 ====================
 volumes:
   qdrant_data:
-    driver: local
-  ollama_data:
     driver: local

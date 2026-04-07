@@ -99,14 +99,23 @@ docker\deploy.bat
 desk-agent-project/
 ├── agent_backend/      # 后端代码
 │   ├── api/           # API路由
+│   ├── chat/          # 聊天核心模块
 │   ├── core/          # 核心模块
-│   ├── sql_agent/     # SQL智能查询
-│   ├── rag_engine/    # RAG文档问答
-│   └── llm/           # 大模型客户端
+│   ├── llm/           # 大模型客户端
+│   ├── rag_engine/    # RAG文档问答引擎
+│   │   ├── chunking.py      # 文档分块
+│   │   ├── docling_parser.py # 文档解析
+│   │   ├── embedding.py     # 文本向量化
+│   │   ├── ingest.py        # 文档导入
+│   │   ├── qdrant_store.py  # 向量数据库存储
+│   │   ├── retrieval.py     # 混合检索
+│   │   └── settings.py      # RAG配置
+│   └── sql_agent/     # SQL智能查询
 ├── agent_frontend/     # 前端代码
+├── data/              # 数据目录
+│   └── docs/          # 知识库文档（用户上传）
 ├── docker/            # Docker配置
 ├── help/              # 项目文档
-├── data/              # 数据目录
 ├── scripts/           # 工具脚本
 └── tests/             # 测试代码
 ```
@@ -116,6 +125,35 @@ desk-agent-project/
 - `快速测试.bat` - 快速测试环境和配置
 - `检查配置.bat` - 检查配置状态
 - `scripts/测试数据库连接.py` - 测试数据库连接
+- `scripts/smoke_demo.py` - 冒烟测试脚本
+
+## 🧠 RAG 文档问答
+
+系统支持基于知识库的文档问答功能：
+
+### 支持的文档格式
+- **Office 文档**: PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx)
+- **文本文件**: Markdown (.md), 纯文本 (.txt)
+- **图片**: PNG, JPG, JPEG, WebP（支持 OCR 识别）
+
+### 文档导入
+```bash
+# 将文档放入 data/docs/ 目录
+cp your-document.pdf data/docs/
+
+# 调用 API 同步文档
+POST /api/v1/rag/sync
+{
+  "mode": "incremental"  # 或 "full" 全量同步
+}
+```
+
+### RAG 技术架构
+1. **文档解析**: 使用 Docling 将多种格式转换为 Markdown
+2. **文档分块**: 按标题结构分块，支持重叠（默认 1800 字符，200 字符重叠）
+3. **向量化**: 使用 BAAI/bge-m3 模型生成向量
+4. **存储**: 使用 Qdrant 向量数据库存储
+5. **检索**: 混合检索（向量相似度 + BM25 关键词匹配）
 
 ## 📖 详细文档
 
@@ -139,6 +177,21 @@ desk-agent-project/
 - 修改配置后重启服务即可生效，无需修改代码
 - 所有配置都在 `.env` 文件中
 - 使用 `检查配置.bat` 验证配置是否正确
+
+## ⚙️ 环境变量配置
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `DB_TYPE` | mysql | 数据库类型 (mysql/postgresql) |
+| `DB_HOST` | localhost | 数据库主机 |
+| `DB_PORT` | 3306 | 数据库端口 |
+| `DB_NAME` | - | 数据库名 |
+| `DB_USER` | - | 数据库用户名 |
+| `DB_PASSWORD` | - | 数据库密码 |
+| `CHAT_MODEL` | qwen2.5:7b | 聊天模型 |
+| `VISION_MODEL` | qwen2.5-vl:7b | 视觉模型 |
+| `RAG_EMBEDDING_MODEL` | BAAI/bge-m3 | Embedding 模型 |
+| `RAG_QDRANT_URL` | http://localhost:6333 | Qdrant 服务地址 |
 
 ---
 

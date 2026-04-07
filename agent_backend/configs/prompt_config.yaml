@@ -1,0 +1,78 @@
+# 提示词配置文件
+# 用于配置AI查询SQL及展示、总结应该使用的字段
+
+# 部门信息查询配置
+department:
+  fields:
+    - name: 部门名称
+      required: true
+    - name: 父部门
+      required: true
+      note: "父部门id为0是最外层的\"所有部门\""
+    - name: 部门路径
+      required: true
+    - name: 直属于部门下的机器数
+      required: true
+  prompt: "当用户查询部门信息时，请列出部门名称、父部门（父部门id为0是最外层的\"所有部门\"）、部门路径、直属于部门下的机器数"
+
+# 机器信息查询配置
+machine:
+  fields:
+    - name: 机器名
+      required: true
+    - name: IP地址
+      required: true
+    - name: MAC地址
+      required: true
+    - name: 用户
+      required: false
+      fallback: "空"
+    - name: 所属部门
+      required: true
+      note: "用部门全路径表示"
+    - name: 设备类型
+      required: false
+    - name: 客户端版本
+      required: false
+    - name: 是否在线
+      required: false
+    - name: 客户端安装时间
+      required: false
+    - name: 最近上线时间
+      required: false
+  prompt: "当用户查询机器信息时，请列出机器名、IP地址、MAC地址、用户(没有就是空)、所属部门(用部门全路径表示)、设备类型、客户端版本、是否在线、客户端安装时间、最近上线时间"
+
+# 设备资产信息查询配置
+hardware:
+  fields:
+    - name: 设备名
+      required: true
+    - name: 部门
+      required: true
+      note: "用部门全路径表示"
+    - name: CPU
+      required: false
+    - name: 内存
+      required: false
+    - name: 硬盘信息
+      required: false
+    - name: 硬盘大小
+      required: false
+    - name: 显卡
+      required: false
+    - name: 网卡列表
+      required: false
+    - name: 网卡数量
+      required: false
+    - name: USB设备列表
+      required: false
+  prompt: "当用户查询设备资产信息时，请列出设备名、部门（用部门全路径表示）、CPU、内存、硬盘信息、硬盘大小、显卡、网卡列表、网卡数量、USB设备列表"
+
+# 强调必须的字段，未查询到显示"未查询到，存在异常"
+required_fields:
+  - 机器名
+  - IP地址
+  - MAC地址
+  - 所属部门
+  - 部门名称
+  - 父部门

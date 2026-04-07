@@ -41,6 +41,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from agent_backend.core.config_helper import get_max_rows
 from agent_backend.sql_agent.executor import execute_sql
 from agent_backend.sql_agent.service import generate_secure_sql
 from agent_backend.sql_agent.types import SqlGenRequest
@@ -55,7 +56,8 @@ class SqlGenerateRequest(BaseModel):
     permission_name: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
     execute: bool = False
-    max_rows: int = Field(default=200, ge=1, le=2000)
+    max_rows: int | None = Field(default=None, ge=1, le=2000)
+    use_template: bool = Field(default=False, description="是否优先使用查询模板，默认直接使用LLM生成")
 
 
 class SqlGenerateResponse(BaseModel):
@@ -73,11 +75,13 @@ def generate_sql(req: SqlGenerateRequest) -> SqlGenerateResponse:
             lognum=req.lognum,
             permission_name=req.permission_name,
             params=req.params,
-        )
+        ),
+        use_template=req.use_template,
     )
     rows = None
     if req.execute:
-        rows = execute_sql(sql=result.sql, params=result.params, max_rows=req.max_rows)
+        max_rows = req.max_rows if req.max_rows is not None else get_max_rows()
+        rows = execute_sql(sql=result.sql, params=result.params, max_rows=max_rows)
     return SqlGenerateResponse(
         sql=result.sql,
         params=result.params,

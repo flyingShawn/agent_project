@@ -25,6 +25,8 @@ FastAPI 应用入口文件
 """
 from __future__ import annotations
 
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,6 +34,10 @@ from agent_backend.api.routes import router as api_router
 from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
+
+env_path = Path(__file__).parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 
 def create_app() -> FastAPI:

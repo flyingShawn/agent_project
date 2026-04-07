@@ -175,6 +175,17 @@ class SqlShotDef(BaseModel):
     sql: str
 
 
+class DisplayFieldDef(BaseModel):
+    """显示字段定义：用于配置不同类型查询应该显示的字段。"""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    column: str
+    display: bool = True
+    fallback: str | None = None
+    aggregate: bool = False
+
+
 class PolicyCodeDictionaryItem(BaseModel):
     """
     策略子项字典条目（弱约束）。
@@ -205,6 +216,7 @@ class DatabaseContext(BaseModel):
         - 权限模板（permissions/security）
         - 关系描述（relationships）
         - SQL 模板与样例（query_patterns/sql_shots）
+        - 显示字段配置（display_fields）
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -219,4 +231,5 @@ class DatabaseContext(BaseModel):
     policy_code_dictionary: list[PolicyCodeDictionaryDef] = Field(default_factory=list)
     query_patterns: list[QueryPatternDef] = Field(default_factory=list)
     sql_shots: list[SqlShotDef] = Field(default_factory=list)
+    display_fields: dict[str, list[DisplayFieldDef]] = Field(default_factory=dict)
 
