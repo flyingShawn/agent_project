@@ -66,22 +66,16 @@ def handle_sql_chat(
     execute: bool = True,
     llm_client: OllamaChatClient | None = None,
 ) -> Iterator[str]:
-    logger.info("=" * 60)
-    logger.info("【SQL处理流程】开始")
-    logger.info(f"  - 会话ID: {session_id[:8] if session_id else 'None'}...")
-    logger.info(f"  - 问题: {question}")
-    logger.info(f"  - 用户ID: {lognum}")
-    logger.info(f"  - 是否执行SQL: {execute}")
+    logger.info(f"{'=' * 20 + '【SQL处理流程】开始' + '=' * 20}\n  - 会话ID: {session_id[:8] if session_id else 'None'}... | 问题: {question} | 用户ID: {lognum} | 是否执行SQL: {execute}")
     
     if llm_client is None:
         logger.info("【SQL处理】创建新的LLM客户端")
-        llm_client = OllamaChatClient(use_mock=None)
+        llm_client = OllamaChatClient()
     
     try:
         if execute:
-            logger.info("【SQL处理】===== 开始真正的SQL处理流程 =====")
-            
-            logger.info("【SQL处理】步骤1: 生成SQL查询...")
+            logger.info("【SQL处理】===== 开始真正的SQL处理流程 步骤1: 生成SQL查询=====")
+           
             sql_req = SqlGenRequest(
                 question=question,
                 lognum=lognum,
@@ -89,10 +83,7 @@ def handle_sql_chat(
             logger.info(f"【SQL处理】SQL生成请求: {sql_req}")
             
             sql_result = generate_secure_sql(sql_req, llm=llm_client)
-            logger.info(f"【SQL处理】SQL生成结果:")
-            logger.info(f"  - SQL: {sql_result.sql}")
-            
-            logger.info("【SQL处理】步骤2: 执行SQL查询...")
+            logger.info(f"【SQL处理】SQL生成结果 - SQL: {sql_result.sql} \n【SQL处理】步骤2: 执行SQL查询...")
             db_url = get_database_url()
             logger.info(f"【SQL处理】数据库URL: {db_url}")
             
@@ -102,12 +93,7 @@ def handle_sql_chat(
                 database_url=db_url,
                 session_id=session_id
             )
-            logger.info(f"【SQL处理】SQL执行结果:")
-            if exec_result:
-                logger.info(f"  - 列名: {list(exec_result[0].keys()) if exec_result else []}")
-                logger.info(f"  - 行数: {len(exec_result)}")
-            else:
-                logger.info("  - 结果为空")
+            logger.info(f"【SQL处理】SQL执行结果:\n  - 列名: {list(exec_result[0].keys()) if exec_result else []}\n  - 行数: {len(exec_result)}") if exec_result else logger.info(f"【SQL处理】SQL执行结果:\n  - 结果为空")
             
             logger.info("【SQL处理】步骤3: 用自然语言总结查询结果...")
             
@@ -227,26 +213,19 @@ def handle_rag_chat(
     store: QdrantVectorStore | None = None,
     embedding_model: EmbeddingModel | None = None,
 ) -> Iterator[str]:
-    logger.info("=" * 60)
-    logger.info("【RAG处理流程】开始")
-    logger.info(f"  - 问题: {question}")
-    logger.info(f"  - 历史消息数: {len(history)}")
-    logger.info(f"  - 图片数量: {len(images_base64) if images_base64 else 0}")
+    logger.info("=" * 20 + "【RAG处理流程】开始" + "=" * 20)
+    logger.info(f"  - 问题: {question} | 历史消息数: {len(history)} | 图片数量: {len(images_base64) if images_base64 else 0}")
     
     if llm_client is None:
         logger.info("【RAG处理】创建新的LLM客户端")
-        llm_client = OllamaChatClient(use_mock=None)
+        llm_client = OllamaChatClient()
 
     if store is None or embedding_model is None:
         logger.info("【RAG处理】加载RAG配置...")
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k = (
             get_rag_settings()
         )
-        logger.info(f"  - Qdrant URL: {qdrant_url}")
-        logger.info(f"  - Qdrant Path: {qdrant_path}")
-        logger.info(f"  - Collection: {collection}")
-        logger.info(f"  - Embedding模型: {embedding_model_name}")
-        logger.info(f"  - Top-K: {top_k}")
+        logger.info(f"  - Qdrant URL: {qdrant_url} | Qdrant Path: {qdrant_path} | Collection: {collection} | Embedding模型: {embedding_model_name} | Top-K: {top_k}")
 
         if embedding_model is None:
             logger.info("【RAG处理】创建Embedding模型...")

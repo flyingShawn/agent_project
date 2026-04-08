@@ -85,12 +85,7 @@ def generate_secure_sql(
         4) 按 permissions 规则进行权限包装（拼接 join/where 与子查询）
         5) 再次做安全校验（受限表、敏感列）
     """
-    logger.info("=" * 80)
-    logger.info("【SQL生成流程开始】")
-    logger.info(f"用户问题: {req.question}")
-    logger.info(f"用户ID: {req.lognum}")
-    logger.info(f"使用模板: {use_template}")
-    logger.info("=" * 80)
+    logger.info(f"{'=' * 20 + '【SQL生成流程开始】' + '=' * 20}\n用户问题: {req.question} | 用户ID: {req.lognum} | 使用模板: {use_template}\n{'=' * 80}")
     
     runtime = get_schema_runtime()
     security = runtime.raw.security
@@ -102,13 +97,11 @@ def generate_secure_sql(
     permission_name = req.permission_name
 
     if match is not None:
-        logger.info("【步骤1】匹配到查询模板")
-        logger.info(f"模板名称: {match.name}")
         used_template = match.name
         permission_name = permission_name or match.requires_permission
         sql = match.sql
         params.update(match.params)
-        logger.info(f"模板SQL: {sql}")
+        logger.info(f"【步骤1】匹配到查询模板\n模板名称: {match.name}\n模板SQL: {sql}")
     else:
         logger.info("【步骤1】调用LLM生成SQL")
         if llm is None:
@@ -128,8 +121,7 @@ def generate_secure_sql(
 
     sql = _clean_sql_markdown(sql)
     sql = validate_sql_basic(sql)
-    logger.info("【步骤3】安全校验后的SQL:")
-    logger.info(f"\n{sql}")
+    logger.info(f"【步骤3】安全校验后的SQL:\n{sql}")
 
     restricted_tables = (security.restricted_tables if security else []) if security else []
     deny_select_columns = (security.deny_select_columns if security else []) if security else []
@@ -153,10 +145,6 @@ def generate_secure_sql(
     sql = validate_sql_basic(sql)
     enforce_deny_select_columns(sql, deny_select_columns)
     
-    logger.info("=" * 80)
-    logger.info("【最终执行的SQL】:")
-    logger.info(f"\n{sql}")
-    logger.info(f"参数: {params}")
-    logger.info("=" * 80)
+    logger.info(f"{'=' * 80}\n【最终执行的SQL】:\n{sql}\n参数: {params}\n{'=' * 80}")
     
     return SqlGenResult(sql=sql, params=params, used_template=used_template)

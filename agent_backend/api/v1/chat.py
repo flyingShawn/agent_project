@@ -89,20 +89,10 @@ def _sse_event(event: str, data: str | dict) -> str:
 #StreamingResponse是 FastAPI 的响应类，用于 流式响应
 @router.post("/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
-    logger.info("=" * 80)
-    logger.info("【聊天API入口】===== 收到请求 =====")
-    
     conn_manager = get_connection_manager()
     session_id = req.session_id or conn_manager.generate_session_id()
     
-    logger.info(f"  - 会话ID: {session_id[:8]}...")
-    logger.info(f"  - 用户问题: {req.question}")
-    logger.info(f"  - 用户ID: {req.lognum}")
-    logger.info(f"  - 路由模式: {req.mode}")
-    logger.info(f"  - 历史消息数: {len(req.history)}")
-    logger.info(f"  - 历史消息: {req.history}")
-    logger.info(f"  - 图片数量: {len(req.images_base64) if req.images_base64 else 0}")
-    logger.info("=" * 80)
+    logger.info(f"{'=' * 20 + '【聊天API入口】===== 收到请求 =====' + '=' * 20}\n  - 会话ID: {session_id[:8]}... | 用户问题: {req.question} | 用户ID: {req.lognum} | 路由模式: {req.mode} | 历史消息数: {len(req.history)} | 历史消息: {req.history} | 图片数量: {len(req.images_base64) if req.images_base64 else 0}\n{'=' * 80}")
     
     if req.mode == "auto":
         intent = classify_intent(req.question)
@@ -196,10 +186,7 @@ async def end_chat(req: EndChatRequest) -> EndChatResponse:
     返回：
         操作结果
     """
-    logger.info("=" * 80)
-    logger.info("【结束对话API】===== 收到请求 =====")
-    logger.info(f"  - 会话ID: {req.session_id[:8]}...")
-    logger.info("=" * 80)
+    logger.info(f"{'=' * 20 + '【结束对话API】===== 收到请求 =====' + '=' * 20}\n  - 会话ID: {req.session_id[:8]}...\n{'=' * 80}")
     
     try:
         conn_manager = get_connection_manager()

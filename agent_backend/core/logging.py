@@ -20,6 +20,17 @@ class ColoredFormatter(logging.Formatter):
         message = super().format(record)
         reset = self.COLORS['RESET']
         
+        # 在真正的日志内容前添加换行符，确保日志内容显示在新的一行
+        # 检查消息中是否包含实际的日志内容（通常以中文括号或其他标记开始）
+        # 查找第一个中文括号或其他常见的日志标记
+        markers = ['【', '✅', '❌', '🔄', '-', '🔻']
+        for marker in markers:
+            idx = message.find(marker)
+            if idx > 0:
+                # 在标记前添加换行符
+                message = message[:idx] + '\n' + message[idx:]
+                break
+        
         # 只高亮最终的SQL语句
         if '【执行的SQL】' in message:
             return f"{self.COLORS['MAGENTA']}{message}{reset}"
@@ -59,12 +70,14 @@ def configure_logging(level: int = logging.INFO) -> None:
         level: 日志级别，默认 INFO。
     """
     root = logging.getLogger()
-    if root.handlers:
-        return
+    
+    # 清除已有的 handlers，确保我们的配置生效
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
 
     handler = logging.StreamHandler(sys.stdout)
     formatter = ColoredFormatter(
-        fmt="%(asctime)s %(levelname)s %(name)s request_id=%(request_id)s %(message)s"
+        fmt="%(asctime)s request_id=%(request_id)s %(levelname)s %(name)s %(message)s"
     )
     handler.setFormatter(formatter)
     handler.addFilter(RequestIdFilter())
@@ -72,6 +85,10 @@ def configure_logging(level: int = logging.INFO) -> None:
     root.setLevel(level)
     root.addHandler(handler)
 
-    for noisy_logger in ("uvicorn.access",):
+    # 设置其他日志器的级别
+    for noisy_logger in ("uvicorn.access", "uvicorn.error"):
         logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+    
+    # 确保我们的应用日志器使用正确的级别
+    logging.getLogger("agent_backend").setLevel(level)
 

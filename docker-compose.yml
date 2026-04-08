@@ -5,10 +5,11 @@
 services:
   # ==================== 后端服务 ====================
   backend:
+    image: agent-backend:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
-    container_name: desk-agent-backend
+    container_name: agent-backend
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -50,10 +51,11 @@ services:
 
   # ==================== 前端服务 ====================
   frontend:
+    image: agent-frontend:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
-    container_name: desk-agent-frontend
+    container_name: agent-frontend
     restart: unless-stopped
     ports:
       - "80:80"
@@ -70,8 +72,9 @@ services:
 
   # ==================== Qdrant向量数据库 ====================
   qdrant:
-    image: hub-mirror.c.163.com/qdrant/qdrant:latest
-    container_name: desk-agent-qdrant
+    # image: hub-mirror.c.163.com/qdrant/qdrant:latest
+    image: qdrant/qdrant:latest
+    container_name: agent-qdrant
     restart: unless-stopped
     ports:
       - "6333:6333"  # REST API端口
