@@ -70,7 +70,7 @@ services:
 
   # ==================== Qdrant向量数据库 ====================
   qdrant:
-    image: qdrant/qdrant:latest
+    image: hub-mirror.c.163.com/qdrant/qdrant:latest
     container_name: desk-agent-qdrant
     restart: unless-stopped
     ports:

@@ -1,7 +1,7 @@
 # 后端Dockerfile - 用于构建Python FastAPI应用镜像
 
 # 使用Python 3.11作为基础镜像（稳定且性能好）
-FROM python:3.11-slim
+FROM hub-mirror.c.163.com/library/python:3.11-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -21,8 +21,10 @@ RUN rm -rf /etc/apt/sources.list.d/* && \
 
 # 安装系统依赖
 # build-essential: 编译Python扩展所需的工具链
+# git: 用于获取提交信息
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
@@ -30,7 +32,8 @@ COPY requirements.txt .
 
 # 安装Python依赖
 # --no-cache-dir: 不缓存下载的包，减小镜像大小
-RUN pip install --no-cache-dir -r requirements.txt
+# 使用国内镜像源加速安装
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
 # 复制项目代码（不包括configs，configs通过volume挂载）
 COPY agent_backend ./agent_backend

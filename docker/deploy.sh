@@ -16,14 +16,14 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # 检查Docker Compose是否安装
-if ! command -v docker-compose &> /dev/null; then
+if ! docker compose version &> /dev/null; then
     echo "错误: Docker Compose未安装，请先安装Docker Compose"
     echo "安装指南: https://docs.docker.com/compose/install/"
     exit 1
 fi
 
 echo "✓ Docker版本: $(docker --version)"
-echo "✓ Docker Compose版本: $(docker-compose --version)"
+echo "✓ Docker Compose版本: $(docker compose version)"
 echo ""
 
 # 检查.env文件
@@ -48,17 +48,17 @@ echo ""
 
 # 停止旧容器
 echo "1. 停止现有容器..."
-docker-compose down 2>/dev/null || true
+docker compose down 2>/dev/null || true
 
 # 构建镜像
 echo ""
 echo "2. 构建Docker镜像..."
-docker-compose build
+docker compose build
 
 # 启动服务
 echo ""
 echo "3. 启动服务..."
-docker-compose up -d
+docker compose up -d
 
 # 等待服务启动
 echo ""
@@ -68,7 +68,7 @@ sleep 10
 # 检查服务状态
 echo ""
 echo "5. 检查服务状态..."
-docker-compose ps
+docker compose ps
 
 # 健康检查
 echo ""
@@ -96,7 +96,7 @@ echo "  - 后端API: http://localhost:8000/docs"
 echo "  - Qdrant控制台: http://localhost:6333/dashboard"
 echo ""
 echo "常用命令："
-echo "  - 查看日志: docker-compose logs -f"
-echo "  - 停止服务: docker-compose down"
-echo "  - 重启服务: docker-compose restart"
+echo "  - 查看日志: docker compose logs -f"
+echo "  - 停止服务: docker compose down"
+echo "  - 重启服务: docker compose restart"
 echo ""
