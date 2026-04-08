@@ -6,10 +6,11 @@ export async function sendChatMessage({
   images_base64 = null,
   lognum = 'admin',
   mode = 'auto',
+  session_id = null,
   onEvent,
 }) {
   console.log('[前端 API] 开始发送聊天请求')
-  console.log('[前端 API] 请求参数:', { question, history, lognum, mode })
+  console.log('[前端 API] 请求参数:', { question, history, lognum, mode, session_id })
   
   try {
     console.log('[前端 API] 发送请求到:', `${API_BASE}/chat`)
@@ -24,6 +25,7 @@ export async function sendChatMessage({
         images_base64,
         lognum,
         mode,
+        session_id,
       }),
     })
 

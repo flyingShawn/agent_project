@@ -47,6 +47,7 @@ from pydantic import BaseModel, Field
 from agent_backend.chat.handlers import handle_rag_chat, handle_sql_chat
 from agent_backend.chat.router import classify_intent
 from agent_backend.chat.types import Intent
+from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +62,22 @@ class ChatRequest(BaseModel):
     lognum: str = Field(default="admin")
     mode: str = Field(default="auto")
     token: str | None = None
+    session_id: str | None = None
 
 
 class ChatMetadata(BaseModel):
     route: str
     intent: str
+
+
+class EndChatRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+
+
+class EndChatResponse(BaseModel):
+    success: bool
+    message: str
+    session_id: str
 
 
 def _sse_event(event: str, data: str | dict) -> str:
@@ -77,74 +89,71 @@ def _sse_event(event: str, data: str | dict) -> str:
 #StreamingResponse是 FastAPI 的响应类，用于 流式响应
 @router.post("/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
-    logger.info("=" * 80)
-    logger.info("【聊天API入口】===== 收到请求 =====")
-    logger.info(f"  - 用户问题: {req.question}")
-    logger.info(f"  - 用户ID: {req.lognum}")
-    logger.info(f"  - 路由模式: {req.mode}")
-    logger.info(f"  - 历史消息数: {len(req.history)}")
-    logger.info(f"  - 历史消息: {req.history}")
-    logger.info(f"  - 图片数量: {len(req.images_base64) if req.images_base64 else 0}")
-    logger.info("=" * 80)
+    conn_manager = get_connection_manager()
+    session_id = req.session_id or conn_manager.generate_session_id()
+    
+    logger.info(f"{'=' * 20 + '【聊天API入口】===== 收到请求 =====' + '=' * 20}\n  - 会话ID: {session_id[:8]}... | 用户问题: {req.question} | 用户ID: {req.lognum} | 路由模式: {req.mode} | 历史消息数: {len(req.history)} | 历史消息: {req.history} | 图片数量: {len(req.images_base64) if req.images_base64 else 0}\n{'=' * 80}")
     
     if req.mode == "auto":
         intent = classify_intent(req.question)
-        logger.info(f"【意图识别】自动识别结果: {intent.value}")
+        logger.info(f"\n【意图识别】自动识别结果: {intent.value}")
     elif req.mode == "sql":
         intent = Intent.SQL
-        logger.info(f"【意图识别】强制指定: SQL模式")
+        logger.info(f"\n【意图识别】强制指定: SQL模式")
     elif req.mode == "rag":
         intent = Intent.RAG
-        logger.info(f"【意图识别】强制指定: RAG模式")
+        logger.info(f"\n【意图识别】强制指定: RAG模式")
     else:
         intent = classify_intent(req.question)
-        logger.info(f"【意图识别】默认识别结果: {intent.value}")
+        logger.info(f"\n【意图识别】默认识别结果: {intent.value}")
 
     def generate() -> str:
-        logger.info(f"【SSE流】开始生成，意图: {intent.value}")
-        logger.info("【SSE流】发送start事件")
-        yield _sse_event("start", {"intent": intent.value})
+        logger.info(f"\n【SSE流】开始生成，意图: {intent.value}" + " 发送start事件")
+        yield _sse_event("start", {"intent": intent.value, "session_id": session_id})
 
         try:
             if intent == Intent.SQL:
-                logger.info("【处理分支】===== 进入SQL处理流程 =====")
+                logger.info("\n【处理分支】===== 进入SQL处理流程 =====")
                 chunk_count = 0
                 for chunk in handle_sql_chat(
                     question=req.question,
                     lognum=req.lognum,
                     history=req.history,
                     images_base64=req.images_base64,
+                    session_id=session_id,
                 ):
                     chunk_count += 1
-                    logger.debug(f"【SQL处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
+                    logger.debug(f"\n【SQL处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
                     yield _sse_event("delta", chunk)
-                logger.info(f"【SQL处理】完成，共生成 {chunk_count} 个文本块")
+                logger.info(f"\n【SQL处理】完成，共生成 {chunk_count} 个文本块")
             else:
-                logger.info("【处理分支】===== 进入RAG处理流程 =====")
+                logger.info("\n【处理分支】===== 进入RAG处理流程 =====")
                 chunk_count = 0
                 for chunk in handle_rag_chat(
                     question=req.question,
                     history=req.history,
                     images_base64=req.images_base64,
+                    session_id=session_id,
                 ):
                     chunk_count += 1
-                    logger.debug(f"【RAG处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
+                    logger.debug(f"\n【RAG处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
                     yield _sse_event("delta", chunk)
-                logger.info(f"【RAG处理】完成，共生成 {chunk_count} 个文本块")
+                logger.info(f"\n【RAG处理】完成，共生成 {chunk_count} 个文本块")
 
-            logger.info("【SSE流】发送done事件")
+            logger.info("\n【SSE流】发送done事件")
             yield _sse_event(
                 "done",
                 {
                     "route": intent.value,
+                    "session_id": session_id,
                     "meta": {},
                 },
             )
             logger.info("=" * 80)
-            logger.info("【聊天API】===== 请求处理完成 =====")
+            logger.info("\n【聊天API】===== 请求处理完成 =====")
 
         except Exception as e:
-            logger.error(f"【错误】处理过程中发生异常: {type(e).__name__}: {e}")
+            logger.error(f"\n【错误】处理过程中发生异常: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             yield _sse_event(
@@ -154,7 +163,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                 },
             )
 
-    logger.info("【聊天API】返回StreamingResponse")
+    logger.info("\n【聊天API】返回StreamingResponse")
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
@@ -164,3 +173,37 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/chat/end")
+async def end_chat(req: EndChatRequest) -> EndChatResponse:
+    """
+    结束对话，关闭相关的数据库连接
+    
+    参数：
+        session_id: 会话ID
+    
+    返回：
+        操作结果
+    """
+    logger.info(f"{'=' * 20 + '【结束对话API】===== 收到请求 =====' + '=' * 20}\n  - 会话ID: {req.session_id[:8]}...\n{'=' * 80}")
+    
+    try:
+        conn_manager = get_connection_manager()
+        conn_manager.close_connection(req.session_id, reason="用户主动结束对话")
+        
+        logger.info("✅ 对话结束处理成功")
+        return EndChatResponse(
+            success=True,
+            message="对话已结束，数据库连接已关闭",
+            session_id=req.session_id
+        )
+    except Exception as e:
+        logger.error(f"❌ 结束对话失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return EndChatResponse(
+            success=False,
+            message=f"结束对话失败: {str(e)}",
+            session_id=req.session_id
+        )

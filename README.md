@@ -91,6 +91,10 @@ npm run dev
 ```bash
 # 一键部署
 docker\deploy.bat
+
+# 或手动执行（V2版本）
+docker compose build
+docker compose up -d
 ```
 
 ## 📁 项目结构

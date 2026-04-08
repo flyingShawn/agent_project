@@ -103,13 +103,13 @@ mkdir -p data/docs
 
 ```bash
 # 构建镜像（首次运行或代码更新后）
-docker-compose build
+docker compose build
 
 # 启动所有服务
-docker-compose up -d
+docker compose up -d
 
 # 查看服务状态
-docker-compose ps
+docker compose ps
 ```
 
 ### 4.4 验证部署
@@ -158,7 +158,7 @@ permissions:
 
 ```bash
 # 更新RAG文档后，需要重新索引（进入后端容器执行）
-docker-compose exec backend bash
+docker compose exec backend bash
 
 # 在容器内执行文档索引
 python -m agent_backend.rag_engine.cli --docs-dir /data/docs
@@ -171,29 +171,29 @@ curl -X POST http://localhost:8000/api/v1/rag/reindex
 
 ```bash
 # 启动服务
-docker-compose up -d
+docker compose up -d
 
 # 停止服务
-docker-compose down
+docker compose down
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 
 # 查看后端日志
-docker-compose logs -f backend
+docker compose logs -f backend
 
 # 重启后端（代码更新后）
-docker-compose restart backend
+docker compose restart backend
 
 # 重新构建（代码更新后）
-docker-compose build --no-cache backend
-docker-compose up -d
+docker compose build --no-cache backend
+docker compose up -d
 
 # 进入后端容器
-docker-compose exec backend bash
+docker compose exec backend bash
 
 # 查看容器内文件
-docker-compose exec backend ls -la /app/configs/
+docker compose exec backend ls -la /app/configs/
 ```
 
 ## 七、端口说明
@@ -256,7 +256,7 @@ docker run --rm -v desk-agent_qdrant_data:/data -v $(pwd):/backup alpine tar xzf
 curl http://localhost:11434/api/tags
 
 # 检查后端日志
-docker-compose logs backend | grep -i ollama
+docker compose logs backend | grep -i ollama
 ```
 
 ### 10.2 Qdrant连接失败
@@ -266,33 +266,33 @@ docker-compose logs backend | grep -i ollama
 curl http://localhost:6333/
 
 # 检查Qdrant日志
-docker-compose logs qdrant
+docker compose logs qdrant
 ```
 
 ### 10.3 前端无法访问后端
 
 ```bash
 # 检查后端是否正常运行
-docker-compose ps
+docker compose ps
 
 # 检查后端健康状态
 curl http://localhost:8000/api/v1/health
 
 # 检查Nginx代理配置
-docker-compose logs frontend | grep -i proxy
+docker compose logs frontend | grep -i proxy
 ```
 
 ### 10.4 文档RAG检索无结果
 
 ```bash
 # 检查文档是否正确挂载
-docker-compose exec backend ls -la /data/docs/
+docker compose exec backend ls -la /data/docs/
 
 # 检查向量数据库是否有数据
 curl http://localhost:6333/collections
 
 # 重新索引文档
-docker-compose exec backend python -m agent_backend.rag_engine.cli --docs-dir /data/docs
+docker compose exec backend python -m agent_backend.rag_engine.cli --docs-dir /data/docs
 ```
 
 ## 十一、环境变量完整参考

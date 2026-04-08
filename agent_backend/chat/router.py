@@ -108,19 +108,19 @@ RAG_PATTERNS = [
 
 
 def classify_intent(question: str) -> Intent:
-    logger.info(f"【意图识别】开始分析问题: {question}")
+    logger.info(f"\n【意图识别】开始分析问题: {question}")
     question_lower = question.lower()
 
     for pattern in SQL_PATTERNS:
         if re.search(pattern, question):
-            logger.info(f"【意图识别】匹配SQL正则模式: {pattern}")
-            logger.info(f"【意图识别】结果: SQL")
+            logger.info(f"\n【意图识别】匹配SQL正则模式: {pattern}")
+            logger.info(f"\n【意图识别】结果: SQL")
             return Intent.SQL
 
     for pattern in RAG_PATTERNS:
         if re.search(pattern, question):
-            logger.info(f"【意图识别】匹配RAG正则模式: {pattern}")
-            logger.info(f"【意图识别】结果: RAG")
+            logger.info(f"\n【意图识别】匹配RAG正则模式: {pattern}")
+            logger.info(f"\n【意图识别】结果: RAG")
             return Intent.RAG
 
     sql_score = sum(1 for kw in SQL_KEYWORDS if kw in question_lower)
@@ -129,16 +129,16 @@ def classify_intent(question: str) -> Intent:
     matched_sql_kw = [kw for kw in SQL_KEYWORDS if kw in question_lower]
     matched_rag_kw = [kw for kw in RAG_KEYWORDS if kw in question_lower]
     
-    logger.info(f"【意图识别】关键词评分:")
-    logger.info(f"  - SQL关键词匹配: {matched_sql_kw} (得分: {sql_score})")
-    logger.info(f"  - RAG关键词匹配: {matched_rag_kw} (得分: {rag_score})")
+    logger.info(f"\n【意图识别】关键词评分:")
+    logger.info(f"\n - SQL关键词匹配: {matched_sql_kw} (得分: {sql_score})")
+    logger.info(f"\n - RAG关键词匹配: {matched_rag_kw} (得分: {rag_score})")
 
     if sql_score > rag_score:
-        logger.info(f"【意图识别】结果: SQL (SQL得分更高)")
+        logger.info(f"\n【意图识别】结果: SQL (SQL得分更高)")
         return Intent.SQL
     elif rag_score > sql_score:
-        logger.info(f"【意图识别】结果: RAG (RAG得分更高)")
+        logger.info(f"\n【意图识别】结果: RAG (RAG得分更高)")
         return Intent.RAG
     else:
-        logger.info(f"【意图识别】结果: SQL (得分相等，默认SQL)")
+        logger.info(f"\n【意图识别】结果: SQL (得分相等，默认SQL)")
         return Intent.SQL

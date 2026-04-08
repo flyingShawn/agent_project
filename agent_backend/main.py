@@ -34,6 +34,7 @@ from agent_backend.api.routes import router as api_router
 from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
+from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 env_path = Path(__file__).parent.parent / ".env"
 if env_path.exists():
@@ -68,6 +69,15 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router)
+    
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        logger = __import__('logging').getLogger(__name__)
+        logger.info("🔻 应用正在关闭，清理数据库连接...")
+        conn_manager = get_connection_manager()
+        conn_manager.shutdown()
+        logger.info("✅ 应用关闭完成")
+    
     return app
 
 

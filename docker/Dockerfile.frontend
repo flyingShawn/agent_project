@@ -2,6 +2,7 @@
 
 # ==================== 构建阶段 ====================
 # 使用Node.js 20作为构建环境
+# FROM hub-mirror.c.163.com/library/node:20-alpine AS builder
 FROM node:20-alpine AS builder
 
 # 设置工作目录
@@ -23,6 +24,7 @@ RUN npm run build
 
 # ==================== 运行阶段 ====================
 # 使用Nginx作为Web服务器
+# FROM hub-mirror.c.163.com/library/nginx:alpine
 FROM nginx:alpine
 
 # 复制自定义Nginx配置
