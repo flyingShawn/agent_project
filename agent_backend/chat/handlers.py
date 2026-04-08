@@ -66,26 +66,26 @@ def handle_sql_chat(
     execute: bool = True,
     llm_client: OllamaChatClient | None = None,
 ) -> Iterator[str]:
-    logger.info(f"{'=' * 20 + '【SQL处理流程】开始' + '=' * 20}\n  - 会话ID: {session_id[:8] if session_id else 'None'}... | 问题: {question} | 用户ID: {lognum} | 是否执行SQL: {execute}")
+    logger.info(f"{'=' * 20 + '【SQL处理流程】开始' + '=' * 20} + '\n - 会话ID: {session_id[:8] if session_id else 'None'}... | 问题: {question} | 用户ID: {lognum} | 是否执行SQL: {execute}")
     
     if llm_client is None:
-        logger.info("【SQL处理】创建新的LLM客户端")
+        logger.info("\n【SQL处理】创建新的LLM客户端")
         llm_client = OllamaChatClient()
     
     try:
         if execute:
-            logger.info("【SQL处理】===== 开始真正的SQL处理流程 步骤1: 生成SQL查询=====")
+            logger.info("\n【SQL处理】===== 开始真正的SQL处理流程 步骤1: 生成SQL查询=====")
            
             sql_req = SqlGenRequest(
                 question=question,
                 lognum=lognum,
             )
-            logger.info(f"【SQL处理】SQL生成请求: {sql_req}")
+            logger.info(f"\n【SQL处理】SQL生成请求: {sql_req}")
             
             sql_result = generate_secure_sql(sql_req, llm=llm_client)
-            logger.info(f"【SQL处理】SQL生成结果 - SQL: {sql_result.sql} \n【SQL处理】步骤2: 执行SQL查询...")
+            logger.info(f"\n【SQL处理】SQL生成结果 - SQL: {sql_result.sql} \n【SQL处理】步骤2: 执行SQL查询...")
             db_url = get_database_url()
-            logger.info(f"【SQL处理】数据库URL: {db_url}")
+            logger.info(f"\n【SQL处理】数据库URL: {db_url}")
             
             exec_result = execute_sql(
                 sql=sql_result.sql, 
@@ -93,9 +93,9 @@ def handle_sql_chat(
                 database_url=db_url,
                 session_id=session_id
             )
-            logger.info(f"【SQL处理】SQL执行结果:\n  - 列名: {list(exec_result[0].keys()) if exec_result else []}\n  - 行数: {len(exec_result)}") if exec_result else logger.info(f"【SQL处理】SQL执行结果:\n  - 结果为空")
+            logger.info(f"\n【SQL处理】SQL执行结果:\n  - 列名: {list(exec_result[0].keys()) if exec_result else []}\n  - 行数: {len(exec_result)}") if exec_result else logger.info(f"\n【SQL处理】SQL执行结果:\n  - 结果为空")
             
-            logger.info("【SQL处理】步骤3: 用自然语言总结查询结果...")
+            logger.info("\n【SQL处理】步骤3: 用自然语言总结查询结果...")
             
             data_summary = ""
             data_table = ""
@@ -178,7 +178,7 @@ def handle_sql_chat(
                 {"role": "user", "content": answer_prompt}
             ]
             
-            logger.info("【SQL处理】调用LLM生成自然语言回答...")
+            logger.info("\n【SQL处理】调用LLM生成自然语言回答...")
             for chunk in llm_client.chat_stream(answer_messages):
                 yield chunk
             
@@ -188,18 +188,18 @@ def handle_sql_chat(
                 yield data_table
                 yield "```\n"
             
-            logger.info("【SQL处理】===== SQL处理流程完成 =====")
+            logger.info("\n【SQL处理】===== SQL处理流程完成 =====")
         else:
-            logger.info("【SQL处理】execute=False，不执行SQL")
+            logger.info("\n【SQL处理】execute=False，不执行SQL")
             yield "SQL查询模式已禁用。"
             
     except Exception as e:
-        logger.error(f"【SQL处理】发生异常: {type(e).__name__}: {e}")
+        logger.error(f"\n【SQL处理】发生异常: {type(e).__name__}: {e}")
         import traceback
         logger.error(traceback.format_exc())
         yield f"处理过程中发生错误：{type(e).__name__}: {e}"
     
-    logger.info("【SQL处理流程】结束")
+    logger.info("\n【SQL处理流程】结束")
     logger.info("=" * 60)
 
 
@@ -213,26 +213,25 @@ def handle_rag_chat(
     store: QdrantVectorStore | None = None,
     embedding_model: EmbeddingModel | None = None,
 ) -> Iterator[str]:
-    logger.info("=" * 20 + "【RAG处理流程】开始" + "=" * 20)
-    logger.info(f"  - 问题: {question} | 历史消息数: {len(history)} | 图片数量: {len(images_base64) if images_base64 else 0}")
+    logger.info("=" * 20 + "【RAG处理流程】开始" + "=" * 20 + f"\n - 问题: {question} | 历史消息数: {len(history)} | 图片数量: {len(images_base64) if images_base64 else 0}")
     
     if llm_client is None:
-        logger.info("【RAG处理】创建新的LLM客户端")
+        logger.info("\n【RAG处理】创建新的LLM客户端")
         llm_client = OllamaChatClient()
 
     if store is None or embedding_model is None:
-        logger.info("【RAG处理】加载RAG配置...")
+        logger.info("\n【RAG处理】加载RAG配置...")
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k = (
             get_rag_settings()
         )
-        logger.info(f"  - Qdrant URL: {qdrant_url} | Qdrant Path: {qdrant_path} | Collection: {collection} | Embedding模型: {embedding_model_name} | Top-K: {top_k}")
+        logger.info(f"\n - Qdrant URL: {qdrant_url} | Qdrant Path: {qdrant_path} | Collection: {collection} | Embedding模型: {embedding_model_name} | Top-K: {top_k}")
 
         if embedding_model is None:
-            logger.info("【RAG处理】创建Embedding模型...")
+            logger.info("\n【RAG处理】创建Embedding模型...")
             embedding_model = EmbeddingModel(model_name=embedding_model_name)
 
         if store is None:
-            logger.info("【RAG处理】创建Qdrant向量存储...")
+            logger.info("\n【RAG处理】创建Qdrant向量存储...")
             dim = embedding_model.dimension
             store = QdrantVectorStore(
                 url=qdrant_url,
@@ -241,41 +240,42 @@ def handle_rag_chat(
                 collection=collection,
                 dim=dim,
             )
+            store.ensure_collection()
 
-    logger.info("【RAG处理】执行混合检索...")
+    logger.info("\n【RAG处理】执行混合检索...")
     chunks = hybrid_search(
         query_text=question,
         store=store,
         embedding_model=embedding_model,
         top_k=top_k,
     )
-    logger.info(f"【RAG处理】检索完成，找到 {len(chunks) if chunks else 0} 个相关文档片段")
+    logger.info(f"\n【RAG处理】检索完成，找到 {len(chunks) if chunks else 0} 个相关文档片段")
 
     if not chunks:
-        logger.info("【RAG处理】无相关文档，使用普通对话模式")
+        logger.info("\n【RAG处理】无相关文档，使用普通对话模式")
         messages = [
             {"role": "system", "content": "你是一个有帮助的AI助手。"},
             *history,
             {"role": "user", "content": question},
         ]
-        logger.info("【RAG处理】调用LLM生成回答...")
+        logger.info("\n【RAG处理】调用LLM生成回答...")
         chunk_count = 0
         for chunk in llm_client.chat_stream(messages, images_base64=images_base64):
             chunk_count += 1
             yield chunk
-        logger.info(f"【RAG处理】LLM回答完成，共 {chunk_count} 个文本块")
-        logger.info("【RAG处理流程】结束")
+        logger.info(f"\n【RAG处理】LLM回答完成，共 {chunk_count} 个文本块")
+        logger.info("\n【RAG处理流程】结束")
         logger.info("=" * 60)
         return
 
-    logger.info("【RAG处理】构建上下文...")
+    logger.info("\n【RAG处理】构建上下文...")
     context_parts = []
     for i, chunk in enumerate(chunks, 1):
-        logger.info(f"  - 片段{i}: {chunk.source_path} (相似度: {chunk.score if hasattr(chunk, 'score') else 'N/A'})")
-        context_parts.append(f"【文档片段 {i}】\n来源：{chunk.source_path}\n{chunk.text}\n")
+        logger.info(f"\n - 片段{i}: {chunk.source_path} (相似度: {chunk.score if hasattr(chunk, 'score') else 'N/A'})")
+        context_parts.append(f"\n【文档片段 {i}】\n来源：{chunk.source_path}\n{chunk.text}\n")
 
     context = "\n".join(context_parts)
-    logger.info(f"【RAG处理】上下文构建完成，总长度: {len(context)} 字符")
+    logger.info(f"\n【RAG处理】上下文构建完成，总长度: {len(context)} 字符")
 
     system_prompt = f"""你是一个专业的AI助手，基于以下文档内容回答用户问题。
 
@@ -290,12 +290,12 @@ def handle_rag_chat(
         {"role": "user", "content": question},
     ]
     
-    logger.info("【RAG处理】调用LLM生成回答...")
+    logger.info("\n【RAG处理】调用LLM生成回答...")
     chunk_count = 0
     for chunk in llm_client.chat_stream(messages, images_base64=images_base64):
         chunk_count += 1
         yield chunk
-    logger.info(f"【RAG处理】LLM回答完成，共 {chunk_count} 个文本块")
+    logger.info(f"\n【RAG处理】LLM回答完成，共 {chunk_count} 个文本块")
 
     references = []
     seen_sources = set()
@@ -313,5 +313,5 @@ def handle_rag_chat(
         yield "\n\n---\n\n**📚 参考来源：**\n"
         yield "\n".join(references)
     
-    logger.info("【RAG处理流程】结束")
+    logger.info("\n【RAG处理流程】结束")
     logger.info("=" * 60)

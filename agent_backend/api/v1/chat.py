@@ -96,24 +96,24 @@ async def chat(req: ChatRequest) -> StreamingResponse:
     
     if req.mode == "auto":
         intent = classify_intent(req.question)
-        logger.info(f"【意图识别】自动识别结果: {intent.value}")
+        logger.info(f"\n【意图识别】自动识别结果: {intent.value}")
     elif req.mode == "sql":
         intent = Intent.SQL
-        logger.info(f"【意图识别】强制指定: SQL模式")
+        logger.info(f"\n【意图识别】强制指定: SQL模式")
     elif req.mode == "rag":
         intent = Intent.RAG
-        logger.info(f"【意图识别】强制指定: RAG模式")
+        logger.info(f"\n【意图识别】强制指定: RAG模式")
     else:
         intent = classify_intent(req.question)
-        logger.info(f"【意图识别】默认识别结果: {intent.value}")
+        logger.info(f"\n【意图识别】默认识别结果: {intent.value}")
 
     def generate() -> str:
-        logger.info(f"【SSE流】开始生成，意图: {intent.value}" + " 发送start事件")
+        logger.info(f"\n【SSE流】开始生成，意图: {intent.value}" + " 发送start事件")
         yield _sse_event("start", {"intent": intent.value, "session_id": session_id})
 
         try:
             if intent == Intent.SQL:
-                logger.info("【处理分支】===== 进入SQL处理流程 =====")
+                logger.info("\n【处理分支】===== 进入SQL处理流程 =====")
                 chunk_count = 0
                 for chunk in handle_sql_chat(
                     question=req.question,
@@ -123,11 +123,11 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                     session_id=session_id,
                 ):
                     chunk_count += 1
-                    logger.debug(f"【SQL处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
+                    logger.debug(f"\n【SQL处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
                     yield _sse_event("delta", chunk)
-                logger.info(f"【SQL处理】完成，共生成 {chunk_count} 个文本块")
+                logger.info(f"\n【SQL处理】完成，共生成 {chunk_count} 个文本块")
             else:
-                logger.info("【处理分支】===== 进入RAG处理流程 =====")
+                logger.info("\n【处理分支】===== 进入RAG处理流程 =====")
                 chunk_count = 0
                 for chunk in handle_rag_chat(
                     question=req.question,
@@ -136,11 +136,11 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                     session_id=session_id,
                 ):
                     chunk_count += 1
-                    logger.debug(f"【RAG处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
+                    logger.debug(f"\n【RAG处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
                     yield _sse_event("delta", chunk)
-                logger.info(f"【RAG处理】完成，共生成 {chunk_count} 个文本块")
+                logger.info(f"\n【RAG处理】完成，共生成 {chunk_count} 个文本块")
 
-            logger.info("【SSE流】发送done事件")
+            logger.info("\n【SSE流】发送done事件")
             yield _sse_event(
                 "done",
                 {
@@ -150,10 +150,10 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                 },
             )
             logger.info("=" * 80)
-            logger.info("【聊天API】===== 请求处理完成 =====")
+            logger.info("\n【聊天API】===== 请求处理完成 =====")
 
         except Exception as e:
-            logger.error(f"【错误】处理过程中发生异常: {type(e).__name__}: {e}")
+            logger.error(f"\n【错误】处理过程中发生异常: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             yield _sse_event(
@@ -163,7 +163,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                 },
             )
 
-    logger.info("【聊天API】返回StreamingResponse")
+    logger.info("\n【聊天API】返回StreamingResponse")
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",

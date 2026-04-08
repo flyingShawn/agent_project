@@ -101,9 +101,9 @@ def generate_secure_sql(
         permission_name = permission_name or match.requires_permission
         sql = match.sql
         params.update(match.params)
-        logger.info(f"【步骤1】匹配到查询模板\n模板名称: {match.name}\n模板SQL: {sql}")
+        logger.info(f"\n【步骤1】匹配到查询模板\n模板名称: {match.name}\n模板SQL: {sql}")
     else:
-        logger.info("【步骤1】调用LLM生成SQL")
+        logger.info("\n【步骤1】调用LLM生成SQL")
         if llm is None:
             llm = OllamaChatClient()
         
@@ -121,7 +121,7 @@ def generate_secure_sql(
 
     sql = _clean_sql_markdown(sql)
     sql = validate_sql_basic(sql)
-    logger.info(f"【步骤3】安全校验后的SQL:\n{sql}")
+    logger.info(f"\n【步骤3】安全校验后的SQL:\n{sql}")
 
     restricted_tables = (security.restricted_tables if security else []) if security else []
     deny_select_columns = (security.deny_select_columns if security else []) if security else []
@@ -130,7 +130,7 @@ def generate_secure_sql(
 
     # if runtime.raw.permissions:
     #     permission_name = permission_name or runtime.raw.permissions[0].name
-    #     logger.info(f"【步骤4】应用权限规则: {permission_name}")
+    #     logger.info(f"\n【步骤4】应用权限规则: {permission_name}")
     #     sql, params = wrap_with_permission(
     #         runtime=runtime,
     #         sql=sql,

@@ -23,13 +23,14 @@ class ColoredFormatter(logging.Formatter):
         # 在真正的日志内容前添加换行符，确保日志内容显示在新的一行
         # 检查消息中是否包含实际的日志内容（通常以中文括号或其他标记开始）
         # 查找第一个中文括号或其他常见的日志标记
-        markers = ['【', '✅', '❌', '🔄', '-', '🔻']
-        for marker in markers:
-            idx = message.find(marker)
-            if idx > 0:
-                # 在标记前添加换行符
-                message = message[:idx] + '\n' + message[idx:]
-                break
+        # markers = ['【', '✅', '❌', '🔄', '-', '🔻']
+        # markers = ['【']
+        # for marker in markers:
+        #     idx = message.find(marker)
+        #     if idx > 0:
+        #         # 在标记前添加换行符
+        #         message = message[:idx] + '\n' + message[idx:]
+        #         break
         
         # 只高亮最终的SQL语句
         if '【执行的SQL】' in message:

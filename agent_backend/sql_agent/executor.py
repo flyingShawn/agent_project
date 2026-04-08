@@ -116,7 +116,7 @@ def execute_sql(
         session_id: 会话ID（可选，用于连接复用）
     """
   
-    logger.info("=" * 20 +"【SQL执行流程开始】" + "=" * 20)
+    logger.info("=" * 20 +"\n【SQL执行流程开始】" + "=" * 20)
     
     if max_rows is None:
         max_rows = get_max_rows()
@@ -184,7 +184,7 @@ def execute_sql(
             for i, row in enumerate(out[:3]):
                 logger.info(f"  行{i+1}: {row}")
             
-            logger.info("=" * 20 +"【SQL执行流程结束】" + "=" * 20)
+            logger.info("=" * 20 +"\n【SQL执行流程结束】" + "=" * 20)
             
             return out
                 
