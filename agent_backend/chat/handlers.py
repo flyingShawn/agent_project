@@ -197,7 +197,7 @@ def handle_sql_chat(
         logger.error(f"\n【SQL处理】发生异常: {type(e).__name__}: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        yield f"处理过程中发生错误：{type(e).__name__}: {e}"
+        yield "非常抱歉，查询失败，请稍后再试"
     
     logger.info("\n【SQL处理流程】结束")
     logger.info("=" * 60)
