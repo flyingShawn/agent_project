@@ -174,6 +174,16 @@ class DisplayFieldDef(BaseModel):
     display: bool = True
     fallback: str | None = None
     aggregate: bool = False
+    required: bool = False
+    note: str | None = None
+
+
+class DisplayFieldGroupDef(BaseModel):
+    """显示字段分组定义：包含提示词和字段列表。"""
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str | None = None
+    fields: list[DisplayFieldDef] = Field(default_factory=list)
 
 
 class PolicyCodeDictionaryItem(BaseModel):
@@ -220,5 +230,6 @@ class DatabaseContext(BaseModel):
     relationships: list[RelationshipDef] = Field(default_factory=list)
     policy_code_dictionary: list[PolicyCodeDictionaryDef] = Field(default_factory=list)
     query_patterns: list[QueryPatternDef] = Field(default_factory=list)
-    display_fields: dict[str, list[DisplayFieldDef]] = Field(default_factory=dict)
+    display_fields: dict[str, DisplayFieldGroupDef] = Field(default_factory=dict)
+    required_fields: list[str] = Field(default_factory=list)
 

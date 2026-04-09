@@ -63,7 +63,7 @@ def generate_secure_sql(
             if sql_samples:
                 logger.info(f"\n  检索到 {len(sql_samples)} 个SQL样本")
                 for i, s in enumerate(sql_samples, 1):
-                    logger.info(f"  样本{i}: {s.heading} (相似度: {s.score:.4f})")
+                    logger.info(f"  样本{i}: {s.heading} (原始向量分: {s.raw_vector_score:.4f}, 混合分: {s.score:.4f})")
                     # logger.info(f"  样本{i}内容:\n{s.text[:500]}")
             else:
                 logger.info("\n  未检索到SQL样本，将使用schema信息直接生成")

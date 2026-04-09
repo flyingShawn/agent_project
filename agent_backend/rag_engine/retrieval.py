@@ -17,12 +17,18 @@ from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore, SearchResult
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class RetrievedChunk:
     text: str
     source_path: str
     heading: str
     score: float
+    raw_vector_score: float
     metadata: dict[str, Any]
 
 
@@ -110,6 +116,7 @@ def hybrid_search(
     candidate_k: int = 30,
     alpha: float = 0.7,
     min_score: float = 0.0,
+    vector_min_score: float = 0.0,
 ) -> list[RetrievedChunk]:
     query_vector = embedding_model.embed([query_text])[0]
 
@@ -117,7 +124,19 @@ def hybrid_search(
         query_vector=query_vector,
         limit=candidate_k,
         with_payload=True,
+        score_threshold=vector_min_score if vector_min_score > 0 else None,
     )
+
+    if not candidates:
+        return []
+
+    pre_filter_count = len(candidates)
+    candidates = [c for c in candidates if c.score >= vector_min_score]
+    if len(candidates) < pre_filter_count:
+        logger.info(
+            f"向量分数预过滤: {pre_filter_count} -> {len(candidates)} "
+            f"(vector_min_score={vector_min_score})"
+        )
 
     if not candidates:
         return []
@@ -157,6 +176,7 @@ def hybrid_search(
                 source_path=payload.get("source_path", ""),
                 heading=payload.get("heading", ""),
                 score=score,
+                raw_vector_score=candidate.score,
                 metadata=payload,
             )
         )
@@ -164,15 +184,16 @@ def hybrid_search(
     return results
 
 
-def get_rag_settings() -> tuple[str, str, str | None, str | None, str, int]:
+def get_rag_settings() -> tuple[str, str, str | None, str | None, str, int, float]:
     qdrant_url = os.getenv("RAG_QDRANT_URL", "http://localhost:6333")
     qdrant_path = os.getenv("RAG_QDRANT_PATH")
     qdrant_api_key = os.getenv("RAG_QDRANT_API_KEY")
     collection = os.getenv("RAG_QDRANT_COLLECTION", "desk_agent_docs")
     embedding_model_name = os.getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
     top_k = int(os.getenv("RAG_TOP_K", "5"))
+    vector_min_score = float(os.getenv("RAG_VECTOR_MIN_SCORE", "0.5"))
 
-    return qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k
+    return qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score
 
 
 def get_sql_rag_settings() -> tuple[str, str, str | None, str | None, str, int, int, float]:
@@ -194,6 +215,7 @@ def search_sql_samples(
     store: QdrantVectorStore | None = None,
     embedding_model: EmbeddingModel | None = None,
     min_score: float = 0.8,
+    vector_min_score: float = 0.6,
 ) -> list[RetrievedChunk]:
     if store is None or embedding_model is None:
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha = (
@@ -226,4 +248,5 @@ def search_sql_samples(
         candidate_k=candidate_k,
         alpha=alpha,
         min_score=min_score,
+        vector_min_score=vector_min_score,
     )

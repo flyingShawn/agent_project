@@ -725,58 +725,87 @@ query_patterns:
 
 display_fields:
   department:
-    - name: 部门名称
-      column: s_group.GroupName
-    - name: 父部门
-      column: s_group.ParentID
-      display: true
-    - name: 直属于部门下的机器数
-      column: COUNT(s_machine.ID)
-      aggregate: true
+    prompt: "当用户查询部门信息时，请列出部门名称、父部门（父部门id为0是最外层的\"所有部门\"）、部门路径、直属于部门下的机器数"
+    fields:
+      - name: 部门名称
+        column: s_group.GroupName
+        required: true
+      - name: 父部门
+        column: s_group.ParentID
+        display: true
+        required: true
+        note: "父部门id为0是最外层的\"所有部门\""
+      - name: 部门路径
+        column: s_group.deppath
+        required: true
+      - name: 直属于部门下的机器数
+        column: COUNT(s_machine.ID)
+        aggregate: true
+        required: true
   
   machine:
-    - name: 机器名
-      column: s_machine.Name_C
-    - name: IP地址
-      column: s_machine.Ip_C
-    - name: MAC地址
-      column: s_machine.Mac_c
-    - name: 用户
-      column: s_user.UserName
-      fallback: "空"
-    - name: 所属部门
-      column: s_group.deppath
-    - name: 设备类型
-      column: s_machine.MtPingPai
-    - name: 客户端版本
-      column: s_machine.VersionNum
-    - name: 是否在线
-      column: onlineinfo.mtid
-      display: true
-    - name: 客户端安装时间
-      column: s_machine.VersionTime
-    - name: 最近上线时间
-      column: s_machine.MtGetDate
+    prompt: "当用户查询机器信息时，请列出机器名、IP地址、MAC地址、用户(没有就是空)、所属部门(用部门全路径表示)、设备类型、客户端版本、是否在线、客户端安装时间、最近上线时间"
+    fields:
+      - name: 机器名
+        column: s_machine.Name_C
+        required: true
+      - name: IP地址
+        column: s_machine.Ip_C
+        required: true
+      - name: MAC地址
+        column: s_machine.Mac_c
+        required: true
+      - name: 用户
+        column: s_user.UserName
+        fallback: "空"
+      - name: 所属部门
+        column: s_group.deppath
+        required: true
+        note: "用部门全路径表示"
+      - name: 设备类型
+        column: s_machine.MtPingPai
+      - name: 客户端版本
+        column: s_machine.VersionNum
+      - name: 是否在线
+        column: onlineinfo.mtid
+        display: true
+      - name: 客户端安装时间
+        column: s_machine.VersionTime
+      - name: 最近上线时间
+        column: s_machine.MtGetDate
   
   hardware:
-    - name: 设备名
-      column: s_machine.Name_C
-    - name: 部门
-      column: s_group.deppath
-    - name: CPU
-      column: a_clienthardinfo2.CUP
-    - name: 内存
-      column: a_clienthardinfo2.Memory
-    - name: 硬盘信息
-      column: a_clienthardinfo2.DiskInfo
-    - name: 硬盘大小
-      column: a_clienthardinfo2.DiskSize
-    - name: 显卡
-      column: a_clienthardinfo2.ViewCard
-    - name: 网卡列表
-      column: a_clienthardinfo2.NetCardList
-    - name: 网卡数量
-      column: a_clienthardinfo2.netcardnum
-    - name: USB设备列表
-      column: a_clienthardinfo2.USBList
+    prompt: "当用户查询设备资产信息时，请列出设备名、部门（用部门全路径表示）、CPU、内存、硬盘信息、硬盘大小、显卡、网卡列表、网卡数量、USB设备列表"
+    fields:
+      - name: 设备名
+        column: s_machine.Name_C
+        required: true
+      - name: 部门
+        column: s_group.deppath
+        required: true
+        note: "用部门全路径表示"
+      - name: CPU
+        column: a_clienthardinfo2.CUP
+      - name: 内存
+        column: a_clienthardinfo2.Memory
+      - name: 硬盘信息
+        column: a_clienthardinfo2.DiskInfo
+      - name: 硬盘大小
+        column: a_clienthardinfo2.DiskSize
+      - name: 显卡
+        column: a_clienthardinfo2.ViewCard
+      - name: 网卡列表
+        column: a_clienthardinfo2.NetCardList
+      - name: 网卡数量
+        column: a_clienthardinfo2.netcardnum
+      - name: USB设备列表
+        column: a_clienthardinfo2.USBList
+
+required_fields:
+  - 机器名
+  - IP地址
+  - MAC地址
+  - 所属部门
+  - 部门名称
+  - 父部门
 

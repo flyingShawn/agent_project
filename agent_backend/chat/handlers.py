@@ -42,9 +42,8 @@ import logging
 from pathlib import Path
 from typing import Any, Iterator
 
-import yaml
-
 from agent_backend.core.config_helper import get_database_url
+from agent_backend.core.config_loader import get_schema_runtime
 from agent_backend.llm.clients import OllamaChatClient
 from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore
@@ -134,17 +133,15 @@ def handle_sql_chat(
         data_table = _build_markdown_table(exec_result)
         columns = list(exec_result[0].keys())
 
-        prompt_config_path = Path(__file__).resolve().parents[1] / "configs" / "prompt_config.yaml"
         fields_hint = ""
         try:
-            with open(prompt_config_path, "r", encoding="utf-8") as f:
-                prompt_config = yaml.safe_load(f)
+            schema_runtime = get_schema_runtime()
             parts = []
-            for field_type, config in prompt_config.items():
-                if field_type != "required_fields" and isinstance(config, dict) and "fields" in config:
-                    parts.append(f"{field_type}类型：{', '.join(f['name'] for f in config['fields'])}")
-            if "required_fields" in prompt_config:
-                parts.append(f"必须字段：{', '.join(prompt_config['required_fields'])}")
+            for field_type, group in schema_runtime.raw.display_fields.items():
+                if group.fields:
+                    parts.append(f"{field_type}类型：{', '.join(f.name for f in group.fields)}")
+            if schema_runtime.raw.required_fields:
+                parts.append(f"必须字段：{', '.join(schema_runtime.raw.required_fields)}")
             if parts:
                 fields_hint = "\n字段配置参考：\n" + "\n".join(f"- {p}" for p in parts)
         except Exception:
@@ -210,7 +207,7 @@ def handle_rag_chat(
         llm_client = OllamaChatClient()
 
     if store is None or embedding_model is None:
-        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k = get_rag_settings()
+        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score = get_rag_settings()
 
         if embedding_model is None:
             embedding_model = EmbeddingModel(model_name=embedding_model_name)
@@ -232,8 +229,9 @@ def handle_rag_chat(
         embedding_model=embedding_model,
         top_k=top_k,
         min_score=0.5,
+        vector_min_score=vector_min_score,
     )
-    logger.info(f"RAG检索完成，找到 {len(chunks) if chunks else 0} 个相关文档片段")
+    logger.info(f"RAG检索完成，找到 {len(chunks) if chunks else 0} 个相关文档片段 (vector_min_score={vector_min_score})")
 
     if not chunks:
         messages = [
@@ -247,7 +245,7 @@ def handle_rag_chat(
 
     context_parts = []
     for i, chunk in enumerate(chunks, 1):
-        logger.info(f"片段{i}: {chunk.source_path} (相似度: {chunk.score if hasattr(chunk, 'score') else 'N/A'})")
+        logger.info(f"片段{i}: {chunk.source_path} (原始向量分: {chunk.raw_vector_score:.4f}, 混合分: {chunk.score:.4f})")
         context_parts.append(f"【文档片段 {i}】\n来源：{chunk.source_path}\n{chunk.text}\n")
 
     context = "\n".join(context_parts)
