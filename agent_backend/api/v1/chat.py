@@ -159,7 +159,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             yield _sse_event(
                 "error",
                 {
-                    "error": f"{type(e).__name__}: {e}",
+                    "error": "非常抱歉，查询失败，请稍后再试",
                 },
             )
 

@@ -1,40 +1,3 @@
-"""
-RAG文档导入核心模块
-
-文件目的：
-    - 实现文档导入的核心流程
-    - 支持全量和增量两种导入模式
-    - 管理文档指纹和状态存储
-
-核心功能：
-    1. 扫描文档目录，收集待处理文件
-    2. 计算文档指纹（MD5），判断是否需要更新
-    3. 解析文档（支持多种格式）
-    4. 分块处理（chunking）
-    5. 向量化（embedding）
-    6. 存储到向量数据库（Qdrant）
-    7. 更新状态存储
-
-主要函数：
-    - ingest_directory(): 导入目录下的所有文档
-
-导入流程：
-    1. 收集文件 -> _collect_files()
-    2. 计算指纹 -> _fingerprint()
-    3. 判断是否需要更新（增量模式）
-    4. 解析文档 -> parse_document()
-    5. 分块 -> chunk_markdown()
-    6. 向量化 -> embedder.embed_texts()
-    7. 存储 -> store.upsert()
-    8. 更新状态 -> state_store.save()
-
-相关文件：
-    - agent_backend/rag_engine/chunking.py: 文档分块
-    - agent_backend/rag_engine/embedding.py: 向量化
-    - agent_backend/rag_engine/qdrant_store.py: 向量存储
-    - agent_backend/rag_engine/docling_parser.py: 文档解析
-    - agent_backend/rag_engine/state.py: 状态存储
-"""
 from __future__ import annotations
 
 import hashlib
@@ -63,10 +26,16 @@ def ingest_directory(
     settings: RagIngestSettings,
     state_store: IngestStateStore,
     mode: Literal["full", "incremental"] = "incremental",
+    kb_type: Literal["docs", "sql"] = "docs",
 ) -> IngestResult:
     root = Path(docs_dir)
     if not root.exists() or not root.is_dir():
         raise AppError(code="docs_dir_invalid", message=f"docs_dir 不存在或不是目录: {root}", http_status=400)
+
+    if kb_type == "sql":
+        collection = settings.qdrant_sql_collection
+    else:
+        collection = settings.qdrant_collection
 
     files = _collect_files(root, settings.allowed_extensions)
     files_scanned = len(files)
@@ -78,7 +47,7 @@ def ingest_directory(
         url=settings.qdrant_url,
         path=settings.qdrant_path,
         api_key=settings.qdrant_api_key,
-        collection=settings.qdrant_collection,
+        collection=collection,
         dim=embedder.dim,
     )
     store.ensure_collection()
@@ -121,6 +90,7 @@ def ingest_directory(
                 "content_type": parsed.content_type,
                 "mtime": int(stat.st_mtime),
                 "text": c.text,
+                "kb_type": kb_type,
             }
             points.append((chunk_id, emb.vectors[i], payload))
 

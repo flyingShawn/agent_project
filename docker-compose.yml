@@ -14,13 +14,16 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # 智能体名称
+      - AGENT_NAME=${AGENT_NAME:-desk-agent}
+
       # 模型配置 - OLLAMA_BASE_URL指向外部Ollama服务
       # Windows/macOS使用host.docker.internal，Linux使用宿主机IP
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - CHAT_MODEL=${CHAT_MODEL:-qwen2.5:7b-instruct}
       - VISION_MODEL=${VISION_MODEL:-qwen2.5-vl:7b-instruct}
 
-      # RAG配置
+      # RAG文档知识库配置
       - RAG_DOCS_DIR=/data/docs
       - RAG_QDRANT_URL=http://qdrant:6333
       - RAG_QDRANT_PATH=/app/.qdrant_local
@@ -29,11 +32,21 @@ services:
       - RAG_HYBRID_ALPHA=${RAG_HYBRID_ALPHA:-0.7}
       - RAG_TOP_K=${RAG_TOP_K:-5}
 
+      # SQL样本库配置
+      - RAG_SQL_DIR=/data/sql
+      - RAG_SQL_QDRANT_COLLECTION=${RAG_SQL_QDRANT_COLLECTION:-desk_agent_sql}
+      - RAG_SQL_TOP_K=${RAG_SQL_TOP_K:-3}
+      - RAG_SQL_CANDIDATE_K=${RAG_SQL_CANDIDATE_K:-15}
+      - RAG_SQL_HYBRID_ALPHA=${RAG_SQL_HYBRID_ALPHA:-0.8}
+
       # 数据库配置
       - DATABASE_URL=${DATABASE_URL:-}
     volumes:
-      # 挂载数据目录（持久化文档，用于RAG检索）
-      - ${RAG_DOCS_DIR:-./data/docs}:/data/docs:ro
+      # 挂载文档知识库目录（宿主机docs目录 → 容器/data/docs）
+      # 注意：挂载源使用独立的宿主机变量，不使用容器内的RAG_DOCS_DIR
+      - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/docs:ro
+      # 挂载SQL样本库目录（宿主机sql目录 → 容器/data/sql）
+      - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/sql:ro
       # 挂载配置文件目录（schema_metadata.yaml等）
       - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
       # 持久化向量数据库
