@@ -143,10 +143,15 @@ def print_config_status():
         print("  请在.env文件中配置数据库连接信息")
     
     print("\n【RAG配置】")
-    rag_docs_dir = os.getenv("RAG_DOCS_DIR", "./data/docs")
+    rag_docs_dir = os.getenv("RAG_DOCS_DIR", "./data/desk-agent/docs")
     qdrant_url = os.getenv("RAG_QDRANT_URL", "http://localhost:6333")
     print(f"  文档目录: {rag_docs_dir}")
     print(f"  Qdrant地址: {qdrant_url}")
+
+    sql_dir = os.getenv("RAG_SQL_DIR", "./data/desk-agent/sql")
+    sql_collection = os.getenv("RAG_SQL_QDRANT_COLLECTION", "desk_agent_sql")
+    print(f"  SQL样本目录: {sql_dir}")
+    print(f"  SQL样本集合: {sql_collection}")
     
     print("\n" + "="*60 + "\n")
 

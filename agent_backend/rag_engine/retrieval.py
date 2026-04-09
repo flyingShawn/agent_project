@@ -1,38 +1,3 @@
-"""
-混合检索模块（向量检索 + BM25）
-
-文件目的：
-    - 实现混合检索策略（Hybrid Search）
-    - 结合向量检索和关键词检索
-    - 提供更准确的检索结果
-
-核心功能：
-    1. 向量检索（语义相似度）
-    2. BM25检索（关键词匹配）
-    3. 检索结果融合（RRF算法）
-    4. 结果重排序
-
-主要类：
-    - BM25: BM25检索算法实现
-    - RetrievedChunk: 检索结果数据结构
-
-主要函数：
-    - hybrid_search(): 混合检索主函数
-
-检索流程：
-    1. 向量检索 -> 获取top-k候选
-    2. BM25检索 -> 获取top-k候选
-    3. 结果融合 -> RRF算法合并
-    4. 返回最终结果
-
-使用场景：
-    - RAG查询检索
-    - 语义搜索
-
-相关文件：
-    - agent_backend/rag_engine/qdrant_store.py: 向量存储
-    - agent_backend/rag_engine/embedding.py: 向量化
-"""
 from __future__ import annotations
 
 import math
@@ -86,27 +51,20 @@ class BM25:
 
     def _tokenize(self, text: str) -> list[str]:
         text = text.lower()
-        # 简单的中文分词实现
-        # 对于英文和数字，按单词分割
-        # 对于中文，按字符分割
         tokens = []
         current_token = ""
         
         for char in text:
             if char.isalpha() and not ('\u4e00' <= char <= '\u9fa5'):
-                # 英文，继续积累
                 current_token += char
             elif char.isdigit():
-                # 数字，继续积累
                 current_token += char
             elif '\u4e00' <= char <= '\u9fa5':
-                # 中文字符，单独作为一个词
                 if current_token:
                     tokens.append(current_token)
                     current_token = ""
                 tokens.append(char)
             else:
-                # 其他字符，作为分隔符
                 if current_token:
                     tokens.append(current_token)
                     current_token = ""
@@ -212,3 +170,55 @@ def get_rag_settings() -> tuple[str, str, str | None, str | None, str, int]:
     top_k = int(os.getenv("RAG_TOP_K", "5"))
 
     return qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k
+
+
+def get_sql_rag_settings() -> tuple[str, str, str | None, str | None, str, int, int, float]:
+    qdrant_url = os.getenv("RAG_QDRANT_URL", "http://localhost:6333")
+    qdrant_path = os.getenv("RAG_QDRANT_PATH")
+    qdrant_api_key = os.getenv("RAG_QDRANT_API_KEY")
+    collection = os.getenv("RAG_SQL_QDRANT_COLLECTION", "desk_agent_sql")
+    embedding_model_name = os.getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
+    top_k = int(os.getenv("RAG_SQL_TOP_K", "3"))
+    candidate_k = int(os.getenv("RAG_SQL_CANDIDATE_K", "15"))
+    alpha = float(os.getenv("RAG_SQL_HYBRID_ALPHA", "0.8"))
+
+    return qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha
+
+
+def search_sql_samples(
+    query_text: str,
+    *,
+    store: QdrantVectorStore | None = None,
+    embedding_model: EmbeddingModel | None = None,
+) -> list[RetrievedChunk]:
+    if store is None or embedding_model is None:
+        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha = (
+            get_sql_rag_settings()
+        )
+
+        if embedding_model is None:
+            embedding_model = EmbeddingModel(model_name=embedding_model_name)
+
+        if store is None:
+            dim = embedding_model.dimension
+            store = QdrantVectorStore(
+                url=qdrant_url,
+                path=qdrant_path,
+                api_key=qdrant_api_key,
+                collection=collection,
+                dim=dim,
+            )
+            store.ensure_collection()
+    else:
+        top_k = int(os.getenv("RAG_SQL_TOP_K", "3"))
+        candidate_k = int(os.getenv("RAG_SQL_CANDIDATE_K", "15"))
+        alpha = float(os.getenv("RAG_SQL_HYBRID_ALPHA", "0.8"))
+
+    return hybrid_search(
+        query_text=query_text,
+        store=store,
+        embedding_model=embedding_model,
+        top_k=top_k,
+        candidate_k=candidate_k,
+        alpha=alpha,
+    )

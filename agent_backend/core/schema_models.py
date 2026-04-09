@@ -24,7 +24,6 @@ Schema元数据Pydantic模型定义
     
     查询相关：
     - QueryPatternDef: 查询模式（SQL模板）
-    - SqlShotDef: SQL示例
     
     顶层模型：
     - DatabaseContext: 数据库上下文配置（根模型）
@@ -166,15 +165,6 @@ class QueryPatternDef(BaseModel):
     sql: str
 
 
-class SqlShotDef(BaseModel):
-    """SQL 示例（shots）：用于给大模型/检索提供“问法 -> SQL”的少量样例。"""
-    model_config = ConfigDict(extra="forbid")
-
-    user_query: str
-    requires_permission: str | None = None
-    sql: str
-
-
 class DisplayFieldDef(BaseModel):
     """显示字段定义：用于配置不同类型查询应该显示的字段。"""
     model_config = ConfigDict(extra="forbid")
@@ -215,7 +205,7 @@ class DatabaseContext(BaseModel):
         - 同义词（synonyms）
         - 权限模板（permissions/security）
         - 关系描述（relationships）
-        - SQL 模板与样例（query_patterns/sql_shots）
+        - SQL 模板（query_patterns）
         - 显示字段配置（display_fields）
     """
     model_config = ConfigDict(extra="forbid")
@@ -230,6 +220,5 @@ class DatabaseContext(BaseModel):
     relationships: list[RelationshipDef] = Field(default_factory=list)
     policy_code_dictionary: list[PolicyCodeDictionaryDef] = Field(default_factory=list)
     query_patterns: list[QueryPatternDef] = Field(default_factory=list)
-    sql_shots: list[SqlShotDef] = Field(default_factory=list)
     display_fields: dict[str, list[DisplayFieldDef]] = Field(default_factory=dict)
 
