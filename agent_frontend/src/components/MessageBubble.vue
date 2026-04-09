@@ -129,9 +129,12 @@ const getIntentLabel = (intent) => {
 }
 
 .message-content table {
-  display: block;
-  width: max-content;
-  max-width: 100%;
+  border-collapse: collapse;
+  width: 100%;
+  display: table;
+}
+
+.message-content .message-content-inner {
   overflow-x: auto;
 }
 

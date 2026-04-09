@@ -54,7 +54,7 @@ export async function sendChatMessage({
       buffer = lines.pop() || ''
 
       let currentEvent = null
-      let currentData = ''
+      let currentData = null
 
       for (const line of lines) {
         if (line.startsWith('event: ')) {
@@ -62,12 +62,12 @@ export async function sendChatMessage({
           console.log('[前端 API] 收到event:', currentEvent)
         } else if (line.startsWith('data: ')) {
           const dataContent = line.slice(6)
-          if (currentData === '') {
+          if (currentData === null) {
             currentData = dataContent
           } else {
             currentData = currentData + '\n' + dataContent
           }
-        } else if (line === '' && currentEvent && currentData !== '') {
+        } else if (line === '' && currentEvent && currentData !== null) {
           try {
             const parsedData = JSON.parse(currentData)
             console.log('[前端 API] 解析data成功:', { event: currentEvent, data: parsedData })
@@ -77,7 +77,7 @@ export async function sendChatMessage({
             onEvent(currentEvent, currentData)
           }
           currentEvent = null
-          currentData = ''
+          currentData = null
         }
       }
     }
