@@ -109,6 +109,7 @@ def hybrid_search(
     top_k: int = 5,
     candidate_k: int = 30,
     alpha: float = 0.7,
+    min_score: float = 0.0,
 ) -> list[RetrievedChunk]:
     query_vector = embedding_model.embed([query_text])[0]
 
@@ -147,6 +148,8 @@ def hybrid_search(
 
     results = []
     for score, candidate in combined_results[:top_k]:
+        if score < min_score:
+            continue
         payload = candidate.payload
         results.append(
             RetrievedChunk(
@@ -190,6 +193,7 @@ def search_sql_samples(
     *,
     store: QdrantVectorStore | None = None,
     embedding_model: EmbeddingModel | None = None,
+    min_score: float = 0.8,
 ) -> list[RetrievedChunk]:
     if store is None or embedding_model is None:
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha = (
@@ -221,4 +225,5 @@ def search_sql_samples(
         top_k=top_k,
         candidate_k=candidate_k,
         alpha=alpha,
+        min_score=min_score,
     )

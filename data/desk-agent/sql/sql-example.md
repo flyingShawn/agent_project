@@ -4,7 +4,7 @@
 
 ---
 
-#### 查询指定IP的机器详细信息
+#### 查询指定IP的机器信息
 
 适用场景：当用户询问某IP地址对应的设备详细信息时使用，包括设备名称、IP、MAC、用户名、所属部门、操作系统、在线状态等。
 
@@ -42,6 +42,37 @@ ORDER BY INET_ATON(a.IP_C)
 ```
 
 ---
+
+#### 查询机器在线信息
+
+```sql
+SELECT
+    a.ID AS "设备id",
+    a.Name_C AS "设备名称",
+    a.IP_C AS "ip地址",
+    a.MAC_C AS "mac地址",
+    c.UserName AS "用户名",
+    a.zccmt AS "资产信息",
+    b.Deppath AS "所属部门",
+    f.paravalue AS "操作系统",
+    a.VersionNum AS "客户端版本",
+    g.systemruntime AS "机器运行时间(小时)",
+    g.systemstarttime AS "客户端开机时间"
+FROM
+    s_Machine a
+    LEFT OUTER JOIN s_Group b ON a.GroupID = b.ID
+    LEFT OUTER JOIN s_User c ON a.ClientID = c.ID
+    LEFT OUTER JOIN onlineinfo d ON a.id = d.MtID
+    LEFT OUTER JOIN a_clientpara f ON a.ID = f.MtID AND f.Paraname = 'p_windowsversion'
+    LEFT OUTER JOIN a_machineruntime g ON a.ID = g.MtID
+WHERE
+	d.ID IS NOT NULL
+ORDER BY INET_ATON(a.IP_C)
+```
+
+
+
+
 
 #### 查询部门信息
 

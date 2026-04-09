@@ -64,6 +64,7 @@ def generate_secure_sql(
                 logger.info(f"\n  检索到 {len(sql_samples)} 个SQL样本")
                 for i, s in enumerate(sql_samples, 1):
                     logger.info(f"  样本{i}: {s.heading} (相似度: {s.score:.4f})")
+                    # logger.info(f"  样本{i}内容:\n{s.text[:500]}")
             else:
                 logger.info("\n  未检索到SQL样本，将使用schema信息直接生成")
         except Exception as e:
@@ -74,8 +75,7 @@ def generate_secure_sql(
             llm = OllamaChatClient()
         
         prompt = build_sql_prompt(runtime, req.question, sql_samples=sql_samples)
-        logger.debug("Prompt:")
-        logger.debug(prompt)
+        logger.info(f"\n【步骤1.2】构建的完整Prompt:\n{prompt}")
         
         messages = [
             {"role": "system", "content": "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"},

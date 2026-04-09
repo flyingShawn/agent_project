@@ -66,8 +66,14 @@ def _build_markdown_table(rows: list[dict]) -> str:
     separator = "| " + " | ".join("---" for _ in columns) + " |"
     lines = [header, separator]
     for row in rows[:MAX_DISPLAY_ROWS]:
-        line = "| " + " | ".join(str(row.get(col, "")) if row.get(col) is not None else "" for col in columns) + " |"
-        lines.append(line)
+        cells = []
+        for col in columns:
+            val = row.get(col, "")
+            if val is None:
+                val = ""
+            val = str(val).replace("|", "\\|").replace("\n", " ").replace("\r", "")
+            cells.append(val)
+        lines.append("| " + " | ".join(cells) + " |")
     if len(rows) > MAX_DISPLAY_ROWS:
         lines.append(f"| ... | 共 {len(rows)} 条，仅显示前 {MAX_DISPLAY_ROWS} 条 |")
     return "\n".join(lines)
@@ -161,17 +167,21 @@ def handle_sql_chat(
 5. 不要暴露数据库表名、列名等技术细节
 6. 回答完后主动询问用户是否需要更详细的信息，使用友好的列表格式展示可选项
 7. 绝对不要编造示例数据，只根据查询结果生成回答
-8. 不要重复输出上面的数据表格，只做文字总结即可
+8. 不要重复输出上面的数据表格，只做文字总结即可，数据表格会在回答后自动展示
 
 请直接回答。"""
 
         messages = [
-            {"role": "system", "content": "你是一个专业且友好的桌管系统AI助手，善于用自然语言总结数据库查询结果。严格基于查询结果生成回答，不得编造任何数据或信息。不要重复输出数据表格，只做文字总结。"},
+            {"role": "system", "content": "你是一个专业且友好的桌管系统AI助手，善于用自然语言总结数据库查询结果。严格基于查询结果生成回答，不得编造任何数据或信息。不要重复输出数据表格，只做文字总结，数据表格会在你回答后自动展示给用户。"},
             {"role": "user", "content": answer_prompt},
         ]
 
         for chunk in llm_client.chat_stream(messages):
             yield chunk
+
+        if data_table:
+            yield "\n\n"
+            yield data_table
 
         logger.info("SQL处理流程完成")
 
@@ -221,6 +231,7 @@ def handle_rag_chat(
         store=store,
         embedding_model=embedding_model,
         top_k=top_k,
+        min_score=0.5,
     )
     logger.info(f"RAG检索完成，找到 {len(chunks) if chunks else 0} 个相关文档片段")
 

@@ -11,7 +11,7 @@
 核心功能：
     1. 会话级连接管理
     2. 连接复用机制
-    3. 10分钟自动过期
+    3. 60分钟自动过期
     4. 主动关闭连接
     5. 连接健康检查和自动重连
 """
@@ -89,13 +89,13 @@ class ConnectionManager:
         self._cleanup_thread.start()
     
     def _cleanup_expired_connections(self) -> None:
-        """清理过期的连接（10分钟未使用）"""
+        """清理过期的连接（60分钟未使用）"""
         current_time = time.time()
         expired_sessions = []
         
         with self._lock:
             for session_id, conn_info in self._connections.items():
-                if conn_info.is_active and (current_time - conn_info.last_used_at > 600):
+                if conn_info.is_active and (current_time - conn_info.last_used_at > 3600):
                     expired_sessions.append(session_id)
         
         for session_id in expired_sessions:

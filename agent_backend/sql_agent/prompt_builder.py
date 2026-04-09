@@ -6,6 +6,25 @@ from agent_backend.core.config_loader import SchemaRuntime
 from agent_backend.rag_engine.retrieval import RetrievedChunk
 
 
+def _extract_tables_from_samples(samples: list[RetrievedChunk]) -> set[str]:
+    tables = set()
+    for sample in samples:
+        text = sample.text
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("关键表：") or stripped.startswith("关键表:"):
+                table_str = stripped.split("：", 1)[-1].split(":", 1)[-1].strip()
+                for t in table_str.split(","):
+                    t = t.strip()
+                    if t:
+                        tables.add(t.lower())
+        from_pattern = re.findall(r'\bFROM\s+(\w+)', text, re.IGNORECASE)
+        join_pattern = re.findall(r'\bJOIN\s+(\w+)', text, re.IGNORECASE)
+        for t in from_pattern + join_pattern:
+            tables.add(t.lower())
+    return tables
+
+
 def build_sql_prompt(
     runtime: SchemaRuntime,
     question: str,
@@ -15,15 +34,32 @@ def build_sql_prompt(
     naming = runtime.raw.naming
     security = runtime.raw.security
 
+    sample_tables: set[str] = set()
+    if sql_samples:
+        sample_tables = _extract_tables_from_samples(sql_samples)
+
     schema_lines: list[str] = []
     for t in runtime.raw.tables:
+        if sample_tables and t.name.lower() not in sample_tables:
+            continue
         cols = ", ".join([f"{c.name}({c.semantic_key})" for c in t.columns[:30]])
         more = "" if len(t.columns) <= 30 else f" ...(+{len(t.columns) - 30})"
         schema_lines.append(f"- {t.name}: {cols}{more}")
 
-    synonym_lines: list[str] = []
-    for k, v in list(runtime.raw.synonyms.items())[:50]:
-        synonym_lines.append(f"- {k}: {', '.join(v[:8])}")
+    if not schema_lines:
+        for t in runtime.raw.tables:
+            cols = ", ".join([f"{c.name}({c.semantic_key})" for c in t.columns[:30]])
+            more = "" if len(t.columns) <= 30 else f" ...(+{len(t.columns) - 30})"
+            schema_lines.append(f"- {t.name}: {cols}{more}")
+
+    related_synonyms: list[str] = []
+    for k, v in runtime.raw.synonyms.items():
+        table_prefix = k.split(".")[0].lower() if "." in k else ""
+        if not sample_tables or table_prefix in sample_tables:
+            related_synonyms.append(f"- {k}: {', '.join(v[:8])}")
+    if not related_synonyms:
+        for k, v in list(runtime.raw.synonyms.items())[:50]:
+            related_synonyms.append(f"- {k}: {', '.join(v[:8])}")
 
     restricted = ", ".join(security.restricted_tables) if security else ""
     denied_cols = ", ".join(security.deny_select_columns) if security else ""
@@ -54,6 +90,13 @@ def build_sql_prompt(
         "2. 如果只是统计数量，用 SELECT COUNT(*) FROM 表名 即可",
         "3. 如果只是查询所有某个表数据，用 SELECT * FROM 表名 即可",
         "",
+        "【重要】字段使用约束（必须严格遵守）：",
+        "禁止使用任何未在下方「数据库表与列」或「参考SQL样本」中出现的字段名。",
+        "只能使用以下来源中明确列出的字段：",
+        "  - 「数据库表与列」中列出的列名（括号内为语义别名）",
+        "  - 「参考SQL样本」中出现的列名",
+        "如果用户问题涉及的字段不在上述来源中，只使用最接近的已知字段，绝不编造不存在的字段。",
+        "",
         "当涉及权限过滤时，WHERE 中使用 m.Groupid 并保留占位 {allowed_group_ids_sql}（由后续权限包装器展开）。",
     ]
     if quote:
@@ -68,8 +111,8 @@ def build_sql_prompt(
         "数据库表与列(列后括号为 semantic_key)：",
         "\n".join(schema_lines),
         "",
-        "同义词(部分)：",
-        "\n".join(synonym_lines) if synonym_lines else "- 无",
+        "同义词：",
+        "\n".join(related_synonyms) if related_synonyms else "- 无",
     ]
 
     if shot_block:

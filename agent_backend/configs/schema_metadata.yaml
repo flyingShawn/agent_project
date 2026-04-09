@@ -77,6 +77,23 @@ synonyms:
     - 设备名称
     - 终端名称
     - 机器名
+  s_machine.VersionNum:
+    - 客户端版本
+    - 版本号
+    - 客户端版本号
+  s_machine.VersionTime:
+    - 客户端安装时间
+    - 安装时间
+    - 版本安装时间
+  s_machine.MtPingPai:
+    - 设备类型
+    - 设备品牌
+    - 操作系统类型
+    - 平台类型
+  s_machine.MtGetDate:
+    - 最近上线时间
+    - 上线时间
+    - 最后上线时间
   s_group.GroupName:
     - 部门
     - 组织
