@@ -1,3 +1,36 @@
+"""
+SQL 行级权限包装模块
+
+文件功能：
+    根据 schema_metadata.yaml 中的权限模板配置，对生成的 SQL 自动注入行级权限过滤条件，
+    确保用户只能查询其权限范围内的数据。
+
+核心作用与设计目的：
+    - 不改变原 SQL 的业务含义，仅追加权限过滤条件
+    - 支持自动注入 JOIN 和 WHERE 片段，实现基于部门/设备组的权限隔离
+    - 展开 {allowed_group_ids_sql} 占位符为子查询，获取用户可见的组 ID 集合
+    - 自动注入 lognum 等权限变量到 SQL 参数中
+
+主要使用场景：
+    - SQL Agent 生成 SQL 后的权限包装环节
+    - 确保不同管理员只能查看其管辖范围内的设备/部门数据
+
+包含的主要函数：
+    - wrap_with_permission(): 权限包装主函数，返回包装后的 SQL 和参数
+    - _find_permission(): 查找权限模板定义（内部方法）
+    - _insert_before_tail(): 在 SQL 尾部关键字前插入片段（内部方法）
+    - _append_where(): 追加 WHERE 条件（内部方法）
+
+安全注意事项：
+    - 权限包装是数据安全的最后一道防线，必须确保条件正确注入
+    - {allowed_group_ids_sql} 展开为子查询，依赖数据库中的权限表数据
+    - lognum 参数用于标识当前用户，必须从可信来源获取
+
+相关联的调用文件：
+    - agent_backend/sql_agent/service.py: SQL 生成后调用权限包装
+    - agent_backend/core/config_loader.py: 提供 SchemaRuntime 和权限配置
+    - agent_backend/sql_agent/sql_safety.py: 提供 extract_tables() 和 normalize_sql()
+"""
 from __future__ import annotations
 
 import re

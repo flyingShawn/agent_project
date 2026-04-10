@@ -45,6 +45,10 @@ ORDER BY INET_ATON(a.IP_C)
 
 #### 查询机器在线信息
 
+适用场景：当用户查询在线设备列表时，要查询在线机器信息，需展示这个语句中的几列。
+
+关键表：s_machine, s_group, s_user, onlineinfo, a_clientpara, a_machineruntime
+
 ```sql
 SELECT
     a.ID AS "设备id",

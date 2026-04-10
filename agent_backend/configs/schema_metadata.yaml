@@ -183,6 +183,10 @@ tables:
         type: int
         comment: 上级部门ID（id为0表示的部门名称是 所有部门）
         semantic_key: group.parent_id
+      - name: groupPhone
+        type: varchar(100)
+        comment: 部门电话
+        semantic_key: group.phone
       - name: GroupType
         type: int
         comment: 部门展示时的排序
@@ -204,14 +208,6 @@ tables:
         type: varchar(100)
         comment: 用户名
         semantic_key: user.name
-      - name: UserNum
-        type: varchar(50)
-        comment: 用户编号
-        semantic_key: user.num
-      - name: UserUUID
-        type: varchar(50)
-        comment: 用户UUID
-        semantic_key: user.uuid
       - name: GroupId
         type: int
         comment: 所属部门ID
@@ -220,22 +216,22 @@ tables:
         type: varchar(50)
         comment: 电话号码
         semantic_key: user.phone
-      - name: WorkUnit
-        type: varchar(200)
-        comment: 工作单位
-        semantic_key: user.work_unit
-      - name: UserMail
-        type: varchar(50)
-        comment: 邮箱
-        semantic_key: user.email
-      - name: HasAudit
-        type: int
-        comment: 是否已审计
-        semantic_key: user.has_audit
-      - name: UserAuditTime
-        type: datetime
-        comment: 审计时间
-        semantic_key: user.audit_time
+      # - name: UserNum
+      #   type: varchar(50)
+      #   comment: 用户编号
+      #   semantic_key: user.num
+      # - name: UserUUID
+      #   type: varchar(50)
+      #   comment: 用户UUID
+      #   semantic_key: user.uuid
+      # - name: WorkUnit
+      #   type: varchar(200)
+      #   comment: 工作单位
+      #   semantic_key: user.work_unit
+      # - name: UserMail
+      #   type: varchar(50)
+      #   comment: 邮箱
+      #   semantic_key: user.email
 
   - name: alertsystemdb
     description: 告警记录表（MtID 指向 s_machine.ID）
@@ -310,17 +306,37 @@ tables:
         type: varchar(600)
         comment: USB设备列表
         semantic_key: hard.usb_list
+      - name: COMPortList
+        type: varchar(600)
+        comment: 串口设备列表
+        semantic_key: hard.com_port_list  
+      - name: PrintList
+        type: varchar(400)
+        comment: 打印机设备列表
+        semantic_key: hard.print_list    
+      - name: CDRom
+        type: varchar(400)
+        comment: 光驱设备列表
+        semantic_key: hard.cdrom_list  
+      - name: Mouse
+        type: varchar(200)
+        comment: 鼠标
+        semantic_key: hard.mouse  
+      - name: KeyBoard
+        type: varchar(200)
+        comment: 键盘
+        semantic_key: hard.keyboard  
       - name: ChangeTime
         type: timestamp
         comment: 记录时间
         semantic_key: hard.change_time
       - name: IsNew
         type: int
-        comment: 是否最新记录
+        comment: 是否最新记录（最重要字段之一！代表此条为最新记录）
         semantic_key: hard.is_new
       - name: IsChange
         type: int
-        comment: 是否发生改变
+        comment: 是否发生改变（最重要字段之一！代表此条为最新记录的改变）
         semantic_key: hard.is_change
       - name: IsShouldAlert
         type: int

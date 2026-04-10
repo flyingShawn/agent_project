@@ -1,40 +1,35 @@
 """
 聊天处理器模块
 
-文件目的：
-    - 处理不同类型的聊天请求
-    - 支持SQL查询和RAG问答两种模式
-    - 提供流式响应生成
+文件功能：
+    处理不同意图类型的聊天请求，提供 SQL 查询和 RAG 问答两种处理模式，
+    并以流式迭代器方式逐步返回 LLM 生成的文本片段。
 
-核心功能：
-    1. SQL聊天处理：生成SQL、执行查询、格式化结果
-    2. RAG聊天处理：检索文档、生成回答
-    3. 流式输出：逐步返回结果
+核心作用与设计目的：
+    - SQL 模式：将自然语言问题转为 SQL → 执行查询 → 将结果交给 LLM 生成自然语言总结
+    - RAG 模式：通过混合检索获取相关文档片段 → 构建上下文 Prompt → LLM 生成回答
+    - 两种模式均通过 Iterator[str] 流式输出，适配 SSE 推送
 
-主要函数：
-    - handle_sql_chat(): 处理SQL查询聊天
-    - handle_rag_chat(): 处理RAG问答聊天
+主要使用场景：
+    - 统一聊天 API (/api/v1/chat) 的后端处理核心
+    - 可被其他模块直接调用（传入参数即可获取流式输出）
 
-SQL聊天流程：
-    1. 生成SQL -> generate_secure_sql()
-    2. 执行SQL -> execute_sql()
-    3. 将真实查询结果提供给LLM生成自然语言总结
-    4. 流式返回
+包含的主要函数：
+    - _build_markdown_table(): 将查询结果列表转为 Markdown 表格（内部方法）
+    - handle_sql_chat(): 处理 SQL 查询聊天，生成 SQL → 执行 → LLM 总结 → 流式返回
+    - handle_rag_chat(): 处理 RAG 问答聊天，检索文档 → LLM 生成 → 流式返回
 
-RAG聊天流程：
-    1. 检索相关文档 -> hybrid_search()
-    2. 构建prompt（问题+上下文）
-    3. 调用LLM生成回答
-    4. 流式返回
+专有技术说明：
+    - RAG 检索使用 hybrid_search() 混合检索（向量检索 + BM25 关键词检索加权融合）
+    - 向量模型为 FastEmbed (BAAI/bge-small-zh-v1.5)，向量数据库为 Qdrant
+    - LLM 调用通过 OllamaChatClient 封装，支持文本模型和视觉模型自动切换
 
-使用场景：
-    - 统一聊天API的后端处理
-    - 多模式问答系统
-
-相关文件：
-    - agent_backend/chat/router.py: 意图识别
-    - agent_backend/sql_agent/service.py: SQL生成
-    - agent_backend/rag_engine/retrieval.py: 文档检索
+相关联的调用文件：
+    - agent_backend/api/v1/chat.py: 调用 handle_sql_chat/handle_rag_chat
+    - agent_backend/sql_agent/service.py: SQL 生成服务
+    - agent_backend/sql_agent/executor.py: SQL 执行器
+    - agent_backend/rag_engine/retrieval.py: 混合检索
+    - agent_backend/llm/clients.py: LLM 客户端
 """
 from __future__ import annotations
 
@@ -58,6 +53,20 @@ MAX_DISPLAY_ROWS = 50
 
 
 def _build_markdown_table(rows: list[dict]) -> str:
+    """
+    将查询结果字典列表转为 Markdown 表格字符串。
+
+    参数：
+        rows: 查询结果列表，每个元素为 {列名: 值} 的字典
+
+    返回：
+        str: Markdown 格式的表格字符串；rows 为空时返回空字符串
+
+    注意事项：
+        - 最多显示 MAX_DISPLAY_ROWS (50) 行，超出部分显示省略提示
+        - 单元格中的 | 和换行符会被转义，避免破坏表格格式
+        - None 值会被替换为空字符串
+    """
     if not rows:
         return ""
     columns = list(rows[0].keys())
@@ -88,6 +97,35 @@ def handle_sql_chat(
     execute: bool = True,
     llm_client: OllamaChatClient | None = None,
 ) -> Iterator[str]:
+    """
+    处理 SQL 查询聊天，将自然语言问题转为 SQL 并执行，流式返回自然语言总结。
+
+    处理流程：
+        1. 调用 generate_secure_sql() 生成安全的 SQL 语句
+        2. 调用 execute_sql() 执行查询获取结果
+        3. 若结果为空，LLM 生成"无数据"的友好提示
+        4. 若有结果，将 Markdown 表格和字段配置提示交给 LLM 生成自然语言总结
+        5. 流式返回 LLM 输出，最后附带 Markdown 表格和推荐追问
+
+    参数：
+        question: 用户自然语言问题
+        lognum: 用户工号，用于权限过滤
+        history: 对话历史列表，格式 [{"role": "user/assistant", "content": "..."}]
+        images_base64: Base64 编码图片列表（当前 SQL 模式未使用）
+        session_id: 会话 ID，用于数据库连接复用
+        execute: 是否执行 SQL，默认 True；为 False 时直接返回提示
+        llm_client: LLM 客户端实例，为 None 时自动创建
+
+    返回：
+        Iterator[str]: 流式文本片段迭代器，每个元素为 LLM 生成的一段文本
+
+    异常处理：
+        - 捕获所有异常后 yield 错误信息字符串，不会向上抛出
+
+    性能考量：
+        - SQL 执行可能耗时较长（取决于查询复杂度），建议配合 session_id 复用连接
+        - LLM 流式输出可减少用户感知延迟
+    """
     logger.info(f"{'=' * 20}【SQL处理流程】开始{'=' * 20}\n会话ID: {session_id[:8] if session_id else 'None'}... | 问题: {question} | 用户ID: {lognum}")
 
     if llm_client is None:
@@ -200,6 +238,37 @@ def handle_rag_chat(
     store: QdrantVectorStore | None = None,
     embedding_model: EmbeddingModel | None = None,
 ) -> Iterator[str]:
+    """
+    处理 RAG 问答聊天，检索相关文档片段后由 LLM 生成回答，流式返回。
+
+    处理流程：
+        1. 初始化 QdrantVectorStore 和 EmbeddingModel（若未传入）
+        2. 调用 hybrid_search() 进行混合检索（向量 + BM25），获取相关文档片段
+        3. 若无检索结果，直接将问题交给 LLM 作为普通对话处理
+        4. 若有结果，将文档片段作为上下文构建 Prompt，交给 LLM 生成回答
+        5. 流式返回 LLM 输出，最后附带参考来源列表
+
+    参数：
+        question: 用户问题
+        history: 对话历史列表
+        images_base64: Base64 编码图片列表，用于多模态输入
+        session_id: 会话 ID（当前 RAG 模式未使用数据库连接）
+        llm_client: LLM 客户端实例，为 None 时自动创建
+        store: Qdrant 向量存储实例，为 None 时自动创建
+        embedding_model: 向量模型实例，为 None 时自动创建
+
+    返回：
+        Iterator[str]: 流式文本片段迭代器
+
+    专有技术说明：
+        - 混合检索使用 hybrid_search()，融合向量检索（FastEmbed BAAI/bge-small-zh-v1.5）
+          和 BM25 关键词检索，alpha 参数控制权重配比
+        - 向量数据库为 Qdrant，使用 COSINE 距离度量
+        - 检索阈值：min_score=0.5, vector_min_score 由环境变量配置
+
+    异常处理：
+        - 检索失败时退化为普通对话模式（无上下文）
+    """
     logger.info(f"{'=' * 20}【RAG处理流程】开始{'=' * 20}\n问题: {question} | 历史消息数: {len(history)} | 图片数量: {len(images_base64) if images_base64 else 0}")
 
     if llm_client is None:

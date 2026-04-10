@@ -1,3 +1,31 @@
+"""
+SQL 查询模板匹配模块
+
+文件功能：
+    基于 schema_metadata.yaml 中的 query_patterns 配置，对用户问题进行"模板优先"匹配，
+    命中时直接返回预定义的 SQL 模板，绕过大模型生成，获得更稳定和安全的 SQL。
+
+核心作用与设计目的：
+    - 通过关键字评分机制匹配用户问题与查询模板
+    - 自动提取问题中的 IP 地址、数字、limit 等参数填入模板
+    - 命中模板时无需调用 LLM，降低延迟和成本
+    - 模板 SQL 经过人工审核，安全性更高
+
+主要使用场景：
+    - SQL Agent 生成流程的第一步：优先尝试模板匹配
+    - 常见查询模式（如"查询某IP设备信息"、"统计在线设备数量"）的快速响应
+
+包含的主要函数：
+    - select_query_pattern(): 模板匹配主函数，返回 TemplateMatch 或 None
+    - _extract_ip(): 从文本中提取 IP 地址（内部方法）
+    - _extract_first_int(): 从文本中提取第一个整数（内部方法）
+    - _extract_limit(): 从文本中提取 limit 数值（内部方法）
+    - _score_overlap(): 计算问题与模板意图的关键字重叠评分（内部方法）
+
+相关联的调用文件：
+    - agent_backend/sql_agent/service.py: SQL 生成流程中调用 select_query_pattern()
+    - agent_backend/core/config_loader.py: 提供 SchemaRuntime 和 query_patterns 数据
+"""
 from __future__ import annotations
 
 import re

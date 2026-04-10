@@ -1,3 +1,39 @@
+"""
+SQL 生成核心服务模块
+
+文件功能：
+    编排 SQL 生成的完整流程，包括模板匹配、RAG 样本检索、LLM 生成和安全校验，
+    是 SQL Agent 的核心入口。
+
+核心作用与设计目的：
+    - 优先尝试查询模板匹配，命中时直接返回预定义 SQL（低延迟、高安全性）
+    - 未命中模板时，通过 RAG 检索相似 SQL 样本辅助 LLM 生成
+    - 生成后经过安全校验（仅 SELECT、禁止危险关键字、受限表/列检查）
+    - 清理 LLM 输出中的 Markdown 格式标记
+
+主要使用场景：
+    - SQL Agent API (/api/v1/sql/generate) 的核心逻辑
+    - 聊天 SQL 模式的后端处理
+
+包含的主要函数：
+    - generate_secure_sql(): SQL 生成主入口，返回 SqlGenResult
+    - _clean_sql_markdown(): 清理 LLM 输出中的 Markdown 格式（内部方法）
+
+处理流程：
+    1. 尝试模板匹配 → 命中则直接使用模板 SQL
+    2. 未命中 → RAG 检索 SQL 样本 → 构建 Prompt → LLM 生成 SQL
+    3. 清理 Markdown 格式
+    4. 安全校验（validate_sql_basic + enforce_restricted_tables + enforce_deny_select_columns）
+
+相关联的调用文件：
+    - agent_backend/api/v1/sql_agent.py: API 端点调用
+    - agent_backend/chat/handlers.py: 聊天 SQL 模式调用
+    - agent_backend/sql_agent/patterns.py: 模板匹配
+    - agent_backend/sql_agent/prompt_builder.py: Prompt 构建
+    - agent_backend/sql_agent/sql_safety.py: 安全校验
+    - agent_backend/rag_engine/retrieval.py: SQL 样本检索
+    - agent_backend/llm/clients.py: LLM 调用
+"""
 from __future__ import annotations
 
 import logging
@@ -36,6 +72,32 @@ def generate_secure_sql(
     llm: OllamaChatClient | None = None,
     use_template: bool = False,
 ) -> SqlGenResult:
+    """
+    SQL 生成主入口，编排模板匹配/RAG 检索/LLM 生成/安全校验的完整流程。
+
+    参数：
+        req: SQL 生成请求，包含 question（用户问题）、lognum（用户工号）、
+             permission_name（权限模板名）、params（SQL 参数）
+        llm: LLM 客户端实例，为 None 时自动创建
+        use_template: 是否优先使用查询模板，默认 False
+
+    返回：
+        SqlGenResult: 包含 sql（生成的 SQL）、params（参数）、
+                      used_template（使用的模板名，无则为 None）、warnings（警告列表）
+
+    处理流程：
+        1. 若 use_template=True，尝试模板匹配
+        2. 未命中模板时：RAG 检索 SQL 样本 → 构建 Prompt → LLM 生成
+        3. 清理 Markdown 格式标记
+        4. 安全校验（基础验证 + 受限表检查 + 敏感列检查）
+
+    异常：
+        AppError: SQL 安全校验失败时抛出（如包含危险关键字、访问受限表等）
+
+    性能考量：
+        - 模板匹配为纯字符串操作，延迟极低
+        - RAG 检索和 LLM 生成是主要耗时环节
+    """
     logger.info(f"{'=' * 20 + '【SQL生成流程开始】' + '=' * 20}\n用户问题: {req.question} | 用户ID: {req.lognum} | 使用模板: {use_template}\n{'=' * 80}")
     
     runtime = get_schema_runtime()
