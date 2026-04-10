@@ -168,9 +168,14 @@ def handle_sql_chat(
                 yield chunk
             return
 
-        data_table = _build_markdown_table(exec_result)
+        # 这是我生成表格的地方,非大模型生成的,之前大模型给的不标准
+        # 检查如果数据只有一列,就不生成表格了
+        if len(exec_result) == 1 and len(exec_result[0]) == 1:
+            data_table = ""
+        else:
+            data_table = _build_markdown_table(exec_result)
         columns = list(exec_result[0].keys())
-
+      
         fields_hint = ""
         try:
             schema_runtime = get_schema_runtime()
@@ -205,7 +210,7 @@ def handle_sql_chat(
 8. 只输出文字总结，不要在末尾添加追问、建议或询问用户是否需要更多信息
 
 请直接回答。"""
-
+# 出现查询全部或者要求列表时,一定要将数据结果展示成列表
         messages = [
             {"role": "system", "content": "你是一个专业且友好的桌管系统AI助手，善于用自然语言总结数据库查询结果。严格基于查询结果生成回答，不得编造任何数据或信息。不要重复输出数据表格，只做文字总结，数据表格会在你回答后自动展示给用户。只输出文字总结，不要在末尾添加追问或建议。"},
             {"role": "user", "content": answer_prompt},

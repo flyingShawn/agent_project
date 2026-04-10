@@ -189,7 +189,7 @@ tables:
         semantic_key: group.phone
       - name: GroupType
         type: int
-        comment: 部门展示时的排序
+        comment: 部门展示时的顺序(只能用于order By时排序)
         semantic_key: group.type
       - name: deppath
         type: varchar(100)
@@ -342,10 +342,6 @@ tables:
         type: int
         comment: 是否需要告警
         semantic_key: hard.should_alert
-      - name: MD5
-        type: varchar(50)
-        comment: 硬件信息摘要
-        semantic_key: hard.md5
       - name: serialnum
         type: varchar(255)
         comment: 序列号
@@ -369,40 +365,40 @@ tables:
         semantic_key: equip_policy_map.machine_id
       - name: PolicyName
         type: varchar(45)
-        comment: 策略名称（冗余字段）
-        semantic_key: policy.name
+        comment: 策略英文字段表示（p_url_policy、p_log_policy等）
+        semantic_key: equip_policy_map.name
       - name: PolicyID
         type: int
         comment: 策略ID（关联 a_policyname.ID；也用于关联 a_policycontent.PolicyID）
-        semantic_key: policy.id
+        semantic_key: equip_policy_map.policy_id
       - name: nFlag
         type: varchar(45)
         comment: 标志位
-        semantic_key: policy.flag
+        semantic_key: equip_policy_map.flag
 
   - name: a_policyname
-    description: 策略名称表
+    description: 策略名称表 （关联策略内容表）
     primary_key: ID
     columns:
       - name: ID
         type: int
-        comment: 策略ID
-        semantic_key: policy_name.id
+        comment: 自增策略ID（关联 a_equippolicymap.PolicyID；也用于关联 a_policycontent.PolicyID）
+        semantic_key: policy_name.policy_id
       - name: Name
         type: varchar(100)
         comment: 策略名称
         semantic_key: policy_name.name
       - name: nType
         type: int
-        comment: 策略类型
+        comment: 策略类型(代表是日志策略还是网址策略窗口策略等几十种)
         semantic_key: policy_name.type
-      - name: Comment
-        type: varchar(100)
-        comment: 备注/编码
-        semantic_key: policy_name.comment
+      # - name: Comment
+      #   type: varchar(100)
+      #   comment: 备注/编码   systemdefaultpolicy是默认，其他没看到作用
+      #   semantic_key: policy_name.comment
 
   - name: a_policycontent
-    description: 策略内容表（不同 Code 下 Name1/Name2/Name3/nValue 的语义不同）
+    description: 策略具体内容表（不同 Code 下 Name1/Name2/Name3/nValue 的语义不同，需要参考sql文档）
     primary_key: ID
     columns:
       - name: ID
@@ -411,7 +407,7 @@ tables:
         semantic_key: policy_content.id
       - name: PolicyID
         type: int
-        comment: 策略ID（通常与 a_equippolicymap.PolicyID 对应）
+        comment: 策略ID（关联 a_policyname.ID；也用于关联 a_policycontent.PolicyID）
         semantic_key: policy_content.policy_id
       - name: Code
         type: varchar(50)
@@ -419,7 +415,7 @@ tables:
         semantic_key: policy_content.code
       - name: nType
         type: int
-        comment: 类型
+        comment: 参数之一，几乎不用
         semantic_key: policy_content.type
       - name: Name1
         type: varchar(100)
@@ -439,37 +435,38 @@ tables:
         semantic_key: policy_content.value_int
       - name: comment
         type: varchar(100)
-        comment: 备注
+        comment: 备注（部分 Code 以 comment 做进一步区）
         semantic_key: policy_content.comment
 
-  - name: a_adminpolicymap
-    description: 管理员-策略映射表（仅保留结构；权限以管理员-部门为主）
-    primary_key: ID
-    columns:
-      - name: ID
-        type: int
-        comment: 自增ID
-        semantic_key: admin_policy_map.id
-      - name: AdminID
-        type: int
-        comment: 管理员ID
-        semantic_key: admin.id
-      - name: PolicyID
-        type: int
-        comment: 策略ID
-        semantic_key: policy.id
-      - name: nFlag
-        type: int
-        comment: 标志位
-        semantic_key: admin_policy_map.flag
+  #   和角色相关的先忽略
+  # - name: a_adminpolicymap
+  #   description: 管理员-策略映射表（仅保留结构；权限以管理员-部门为主）
+  #   primary_key: ID
+  #   columns:
+  #     - name: ID
+  #       type: int
+  #       comment: 自增ID
+  #       semantic_key: admin_policy_map.id
+  #     - name: AdminID
+  #       type: int
+  #       comment: 管理员ID
+  #       semantic_key: admin.id
+  #     - name: PolicyID
+  #       type: int
+  #       comment: 策略ID
+  #       semantic_key: policy.id
+  #     - name: nFlag
+  #       type: int
+  #       comment: 标志位
+  #       semantic_key: admin_policy_map.flag
 
   - name: a_remoteinfo
-    description: 远程协助历史记录表（保留最近十条记录）
+    description: 远程协助历史记录表
     primary_key: null
     columns:
       - name: ip
         type: varchar(50)
-        comment: 远程设备IP
+        comment: 被远程客户端的IP
         semantic_key: remote.ip
       - name: machinename
         type: varchar(30)
@@ -477,11 +474,11 @@ tables:
         semantic_key: remote.machine_name
       - name: department
         type: varchar(20)
-        comment: 部门
+        comment: 设备部门
         semantic_key: remote.department
       - name: lasttime
         type: datetime
-        comment: 最近远程时间
+        comment: 最近被远程时间
         semantic_key: remote.last_time
       - name: mtid
         type: int
@@ -489,9 +486,34 @@ tables:
         semantic_key: remote.machine_id
       - name: managerid
         type: varchar(20)
-        comment: 发起远程的管理机ID
+        comment: 发起远程的管理机ID(关联 manageinfo.ID)
         semantic_key: remote.manager_id
 
+  - name: manageinfo
+    description: 管理机登录信息表，需要查询指定管理机ID或指定管理机IP地址对应的具体信息时使用
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 管理员ID
+        semantic_key: manageinfo.id
+      - name: ManageIP
+        type: varchar(100)
+        comment: 管理机IP地址
+        semantic_key: manageinfo.ip
+      - name: MachineName
+        type: varchar(100)
+        comment: 管理机机器名
+        semantic_key: manageinfo.name
+      - name: versionnum
+        type: varchar(20)
+        comment: 管理机版本号
+        semantic_key: manageinfo.version_num
+      # - name: nFlag
+      #   type: int
+      #   comment: 标志位
+      #   semantic_key: manageinfo.flag
+      
   - name: admininfo
     description: 管理员信息表
     primary_key: LogNum
@@ -513,37 +535,67 @@ tables:
         comment: 密码（禁止查询返回）
         semantic_key: admin.password
 
-  - name: RoleGroupMap
-    description: 角色-部门映射表（用于权限子查询；字段结构为示例 SQL 所需最小集合）
-    primary_key: null
-    partial: true
+  - name: AdminLog
+    description: 管理员日志表
+    primary_key: ID
     columns:
-      - name: GroupID
+      - name: ID
         type: int
-        comment: 部门ID（关联 s_group.id）
-        semantic_key: role_group.group_id
-      - name: RoleID
-        type: int
-        comment: 角色ID
-        semantic_key: role_group.role_id
-      - name: is_fake_check
-        type: int
-        comment: 过滤字段（0 或 NULL 代表有效）
-        semantic_key: role_group.is_fake_check
-
-  - name: g_adminroleright
-    description: 管理员-角色权限表（用于权限子查询；字段结构为示例 SQL 所需最小集合）
-    primary_key: null
-    partial: true
-    columns:
+        comment: 自增ID
+        semantic_key: admin_log.id
       - name: AdminID
-        type: int
-        comment: 管理员ID（关联 admininfo.ID）
-        semantic_key: admin_role.admin_id
-      - name: RoleID
-        type: int
-        comment: 角色ID
-        semantic_key: admin_role.role_id
+        type: varchar(100)
+        comment: 管理员账号（登录名）
+        semantic_key: admin_log.lognum
+      - name: doinfo
+        type: varchar(600)
+        comment: 事件
+        semantic_key: admin_log.info
+      - name: AddDate
+        type: timestamp
+        comment: 发送时间
+        semantic_key: admin_log.time
+      - name: IP
+        type: varchar(50)
+        comment: ip地址
+        semantic_key: admin_log.ip
+      - name: MAC
+        type: varchar(50)
+        comment: mac地址
+        semantic_key: admin_log.mac
+
+  # 角色相关先不处理
+  # - name: RoleGroupMap
+  #   description: 角色-部门映射表（用于权限子查询；字段结构为示例 SQL 所需最小集合）
+  #   primary_key: null
+  #   partial: true
+  #   columns:
+  #     - name: GroupID
+  #       type: int
+  #       comment: 部门ID（关联 s_group.id）
+  #       semantic_key: role_group.group_id
+  #     - name: RoleID
+  #       type: int
+  #       comment: 角色ID
+  #       semantic_key: role_group.role_id
+  #     - name: is_fake_check
+  #       type: int
+  #       comment: 过滤字段（0 或 NULL 代表有效）
+  #       semantic_key: role_group.is_fake_check
+
+  # - name: g_adminroleright
+  #   description: 管理员-角色权限表（用于权限子查询；字段结构为示例 SQL 所需最小集合）
+  #   primary_key: null
+  #   partial: true
+  #   columns:
+  #     - name: AdminID
+  #       type: int
+  #       comment: 管理员ID（关联 admininfo.ID）
+  #       semantic_key: admin_role.admin_id
+  #     - name: RoleID
+  #       type: int
+  #       comment: 角色ID
+  #       semantic_key: admin_role.role_id
 
   - name: a_machineruntime
     description: 终端运行状态表（用于在线/关机在线等查询；字段结构为示例 SQL 所需最小集合）
@@ -566,7 +618,6 @@ tables:
         type: varchar(100)
         comment: 系统运行时间（小时）
         semantic_key: runtime.machine_run_time
-
   - name: onlineinfo
     description: 在线信息表（用于在线设备查询；字段结构为示例 SQL 所需最小集合）
     primary_key: null
@@ -576,7 +627,62 @@ tables:
         type: int
         comment: 设备ID（关联 s_machine.ID）
         semantic_key: online.machine_id
-
+# #查询日志的范围
+# CREATE TABLE `usbdb` (
+#   `ID` int NOT NULL AUTO_INCREMENT,
+#   `MtID` int NOT NULL,
+#   `DeviceDesc` varchar(400) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci DEFAULT NULL,
+#   `FriendName` varchar(400) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci DEFAULT NULL,
+#   `USBPlugTime` datetime DEFAULT NULL,
+#   `USBUnPlugTime` datetime DEFAULT NULL,
+#   `LogonUser` varchar(100) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci DEFAULT NULL,
+#   `IsForbit` int DEFAULT NULL,
+#   `isinsert` int DEFAULT NULL,
+#   PRIMARY KEY (`ID`) USING BTREE,
+#   KEY `IX_USBDB` (`USBPlugTime`) USING BTREE,
+#   KEY `IX_USBDB_1` (`MtID`) USING BTREE,
+#   KEY `IX_USBDB_2` (`ID`) USING BTREE
+# ) ENGINE=InnoDB AUTO_INCREMENT=46706 DEFAULT CHARSET=utf8mb3 ROW_FORMAT=DYNAMIC;
+  - name: usbdb
+    description: usb插入拔出和禁用操作日志
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: usb.id
+      - name: MtID
+        type: int
+        comment: 设备ID（关联 s_machine.ID）
+        semantic_key: usb.machine_id
+      - name: DeviceDesc
+        type: varchar(400)
+        comment: usb名称
+        semantic_key: usb.name
+      - name: FriendName
+        type: varchar(400)
+        comment: usb备注
+        semantic_key: usb.remark
+      - name: USBPlugTime
+        type: datetime
+        comment: 插入时间
+        semantic_key: usb.plug_time
+      - name: USBUnPlugTime
+        type: datetime
+        comment: 移除时间
+        semantic_key: usb.unplug_time
+      - name: LogonUser
+        type: varchar(100)
+        comment: 登录用户
+        semantic_key: usb.login_user
+      - name: IsForbit
+        type: int
+        comment: 是否禁用
+        semantic_key: usb.is_forbit
+      - name: isinsert
+        type: int
+        comment: 是否插入
+        semantic_key: usb.is_insert 
 relationships:
   - from: s_machine.Groupid
     to: s_group.id
@@ -627,10 +733,9 @@ query_patterns:
       SELECT
         g.id as 部门ID,
         g.GroupName as 部门名称,
-        g.ParentID as 上级部门ID,
-        g.GroupType as 部门类型
+        g.ParentID as 上级部门ID
       FROM s_group g
-      ORDER BY g.id
+      ORDER BY g.GroupType ,g.id
 
   - name: machines_by_ip
     user_intent: 按IP查询设备与所属部门/绑定用户
