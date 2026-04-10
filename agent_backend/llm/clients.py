@@ -130,7 +130,7 @@ class OllamaChatClient:
                 ollama_msg["images"] = images_base64
             ollama_messages.append(ollama_msg)
 
-        payload = {"model": model, "messages": ollama_messages, "stream": True}
+        payload = {"model": model, "messages": ollama_messages, "stream": True, "think": False}
         logger.debug(f"\n【LLM调用】Payload: {json.dumps(payload, ensure_ascii=False)[:500]}...")
 
         req = urllib.request.Request(

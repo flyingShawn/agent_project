@@ -90,10 +90,6 @@ synonyms:
     - 设备品牌
     - 操作系统类型
     - 平台类型
-  s_machine.MtGetDate:
-    - 最近上线时间
-    - 上线时间
-    - 最后上线时间
   s_group.GroupName:
     - 部门
     - 组织
@@ -598,7 +594,7 @@ tables:
   #       semantic_key: admin_role.role_id
 
   - name: a_machineruntime
-    description: 终端运行状态表（用于在线/关机在线等查询；字段结构为示例 SQL 所需最小集合）
+    description: 终端运行时间表（用于运行时间查询）
     primary_key: ID
     partial: true
     columns:
@@ -612,20 +608,20 @@ tables:
         semantic_key: runtime.machine_id
       - name: systemstarttime
         type: datetime
-        comment: 系统启动时间
+        comment: 系统启动时间(设备/机器/电脑开机时间)
         semantic_key: runtime.machine_start_time
       - name: systemruntime
         type: varchar(100)
-        comment: 系统运行时间（小时）
+        comment: 系统运行时间（小时）(设备/机器/电脑开机后运行时间)
         semantic_key: runtime.machine_run_time
   - name: onlineinfo
-    description: 在线信息表（用于在线设备查询；字段结构为示例 SQL 所需最小集合）
+    description: 在线信息表,用于在线设备查询,只要这个表里有的设备,就认为是在线的
     primary_key: null
     partial: true
     columns:
       - name: mtid
         type: int
-        comment: 设备ID（关联 s_machine.ID）
+        comment: 设备ID（关联 s_machine.ID,存在就代表在线）
         semantic_key: online.machine_id
 # #查询日志的范围
 # CREATE TABLE `usbdb` (
@@ -892,7 +888,7 @@ display_fields:
         display: true
       - name: 客户端安装时间
         column: s_machine.VersionTime
-      - name: 最近上线时间
+      - name: 最近上线的时间
         column: s_machine.MtGetDate
   
   hardware:
