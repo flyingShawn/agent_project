@@ -1,15 +1,33 @@
 """
 配置助手模块
 
-文件目的：
-    - 从.env文件加载配置
-    - 自动生成DATABASE_URL
-    - 提供配置验证
+文件功能：
+    从 .env 文件加载环境变量，并为数据库连接、Ollama 大模型、SQL 查询限制等
+    提供统一的配置获取接口。支持 MySQL 和 PostgreSQL 两种数据库的 URL 自动拼装。
 
-使用方法：
-    from agent_backend.core.config_helper import get_database_url
-    
-    db_url = get_database_url()
+核心作用与设计目的：
+    - 将分散的环境变量归一化为可直接使用的配置值
+    - 支持 DATABASE_URL 直接配置和 DB_HOST/DB_PORT/DB_USER 等分离配置两种方式
+    - 数据库密码自动 URL 编码，避免特殊字符导致连接失败
+    - 模块导入时自动加载 .env 文件，确保后续调用无需手动初始化
+
+主要使用场景：
+    - SQL Agent 获取数据库连接 URL 和最大查询行数
+    - LLM 客户端获取 Ollama 服务地址和模型名称
+    - 运维脚本通过 print_config_status() 快速检查配置完整性
+
+包含的主要函数：
+    - load_env_file(): 加载 .env 文件到环境变量（不覆盖已存在的变量）
+    - get_database_url(): 获取数据库连接 URL，支持 MySQL/PostgreSQL 自动拼装
+    - get_ollama_config(): 获取 Ollama 大模型配置（base_url, chat_model, vision_model）
+    - get_max_rows(): 获取 SQL 查询默认最大行数限制
+    - print_config_status(): 打印当前所有配置状态（用于运维诊断）
+
+相关联的调用文件：
+    - agent_backend/sql_agent/executor.py: 调用 get_database_url() 和 get_max_rows()
+    - agent_backend/sql_agent/service.py: 间接通过 executor 使用数据库配置
+    - agent_backend/llm/clients.py: 使用 OLLAMA_BASE_URL/CHAT_MODEL/VISION_MODEL 环境变量
+    - agent_backend/chat/handlers.py: 调用 get_database_url() 检查数据库可用性
 """
 from __future__ import annotations
 
@@ -20,10 +38,15 @@ from pathlib import Path
 
 def load_env_file(env_file: Path | None = None) -> None:
     """
-    加载.env文件到环境变量
-    
+    加载 .env 文件到环境变量。
+
+    行为：
+        - 逐行解析 .env 文件，跳过空行和 # 开头的注释行
+        - 仅在环境变量尚未设置时才写入（不覆盖已有值）
+        - 文件不存在时静默返回，不抛异常
+
     参数：
-        env_file: .env文件路径，默认为项目根目录下的.env
+        env_file: .env 文件路径，默认为项目根目录（agent_backend 的上级目录）下的 .env
     """
     if env_file is None:
         env_file = Path(__file__).parent.parent.parent / ".env"
@@ -42,14 +65,23 @@ def load_env_file(env_file: Path | None = None) -> None:
 
 def get_database_url() -> str | None:
     """
-    获取数据库连接URL
-    
+    获取数据库连接 URL。
+
     优先级：
-        1. 环境变量中的 DATABASE_URL
-        2. 从分离的配置项自动生成（DB_HOST, DB_PORT, DB_USER等）
-    
+        1. 环境变量 DATABASE_URL（直接使用，不做任何处理）
+        2. 从分离配置项自动拼装（DB_TYPE, DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME）
+
+    拼装规则：
+        - MySQL: mysql+pymysql://{user}:{encoded_password}@{host}:{port}/{db}?charset=utf8mb4
+        - PostgreSQL: postgresql://{user}:{encoded_password}@{host}:{port}/{db}
+        - 密码中的特殊字符会自动进行 URL 编码
+
     返回：
-        数据库连接URL，如果未配置则返回None
+        str | None: 数据库连接 URL；若必需配置缺失（DB_HOST/DB_NAME/DB_USER）则返回 None。
+
+    安全注意事项：
+        - 密码通过 urllib.parse.quote 编码，防止特殊字符破坏 URL 格式
+        - 返回的 URL 包含明文密码，不应记录到日志中
     """
     load_env_file()
     
@@ -81,10 +113,13 @@ def get_database_url() -> str | None:
 
 def get_ollama_config() -> dict:
     """
-    获取Ollama配置
-    
+    获取 Ollama 大模型服务配置。
+
     返回：
-        包含base_url, chat_model, vision_model的字典
+        dict: 包含以下键的配置字典：
+            - base_url (str): Ollama 服务地址，默认 http://localhost:11434
+            - chat_model (str): 文本对话模型名称，默认 qwen2.5:7b
+            - vision_model (str): 视觉模型名称，默认 qwen2.5-vl:7b
     """
     load_env_file()
     
@@ -97,10 +132,11 @@ def get_ollama_config() -> dict:
 
 def get_max_rows() -> int:
     """
-    获取SQL查询默认最大行数限制
-    
+    获取 SQL 查询默认最大行数限制。
+
     返回：
-        int: 默认最大行数，默认值为500
+        int: 最大行数，取自环境变量 SQL_MAX_ROWS，默认 500。
+             若环境变量值无法转为整数则回退为默认值。
     """
     load_env_file()
     try:
@@ -110,7 +146,18 @@ def get_max_rows() -> int:
 
 
 def print_config_status():
-    """打印配置状态"""
+    """
+    打印当前所有配置状态到标准输出。
+
+    输出内容：
+        - 大模型配置：Ollama 地址、对话模型、视觉模型
+        - 数据库配置：类型、主机、端口、数据库名、用户名、配置状态
+        - RAG 配置：文档目录、Qdrant 地址、SQL 样本目录和集合
+
+    使用场景：
+        - 运维诊断：快速确认服务启动时各项配置是否正确
+        - 可通过 python -m agent_backend.core.config_helper 直接运行
+    """
     load_env_file()
     
     print("\n" + "="*60)

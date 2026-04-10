@@ -1,3 +1,28 @@
+"""
+统一日志配置模块
+
+文件功能：
+    配置应用全局日志格式、输出目标与彩色高亮规则，并注入 request_id 实现请求级链路追踪。
+
+核心作用与设计目的：
+    - 提供统一的日志格式（时间戳 + request_id + 级别 + 模块名 + 消息）
+    - 通过 RequestIdFilter 将当前请求的 request_id 自动注入每条日志记录
+    - 通过 ColoredFormatter 对 SQL 执行日志和错误日志进行彩色高亮，提升开发调试效率
+    - 清除 root logger 已有 handler 后重新配置，避免重复输出
+
+主要使用场景：
+    - 应用启动时调用 configure_logging() 初始化日志系统
+    - 所有模块通过 logging.getLogger(__name__) 获取的 logger 均自动继承此配置
+
+包含的主要类与函数：
+    - ColoredFormatter: 彩色日志格式化器，高亮 SQL 日志（紫色）和错误日志（红色）
+    - RequestIdFilter: 日志过滤器，将 request_id 注入日志记录的额外字段
+    - configure_logging(): 全局日志配置入口，设置格式、handler 和级别
+
+相关联的调用文件：
+    - agent_backend/main.py: 在 create_app() 中调用 configure_logging()
+    - agent_backend/core/request_id.py: 提供 get_request_id() 用于日志注入
+"""
 from __future__ import annotations
 
 import logging
@@ -7,7 +32,15 @@ from agent_backend.core.request_id import get_request_id
 
 class ColoredFormatter(logging.Formatter):
     """
-    彩色日志格式化器
+    彩色日志格式化器，基于日志内容与级别应用 ANSI 颜色高亮。
+
+    高亮规则：
+        - 包含「【执行的SQL】」的日志 → 紫色（MAGENTA），便于快速定位 SQL 执行
+        - ERROR/CRITICAL 级别或包含 ❌ 的日志 → 红色（RED），突出错误信息
+        - 其他日志 → 不染色，保持默认终端颜色
+
+    说明：
+        - ANSI 颜色码在 Windows 终端可能不被支持，建议在支持 ANSI 的终端中使用
     """
     
     COLORS = {
@@ -17,6 +50,15 @@ class ColoredFormatter(logging.Formatter):
     }
     
     def format(self, record: logging.LogRecord) -> str:
+        """
+        格式化日志记录并应用颜色高亮。
+
+        参数：
+            record: Python 标准库的日志记录对象。
+
+        返回：
+            str: 经过格式化和颜色处理后的日志字符串。
+        """
         message = super().format(record)
         reset = self.COLORS['RESET']
         

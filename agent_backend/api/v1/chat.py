@@ -81,14 +81,50 @@ class EndChatResponse(BaseModel):
 
 
 def _sse_event(event: str, data: str | dict) -> str:
+    """
+    构造 SSE (Server-Sent Events) 格式的事件字符串。
+
+    参数：
+        event: 事件类型名称（如 "start", "delta", "done", "error"）
+        data: 事件数据，支持字符串或字典（字典会自动序列化为 JSON）
+
+    返回：
+        str: 符合 SSE 规范的事件字符串，格式为 "event: {type}\\ndata: {content}\\n\\n"
+    """
     if isinstance(data, dict):
         data = json.dumps(data, ensure_ascii=False)
     lines = data.split('\n')  # "连接符".join(列表) 用"连接符"把列表中的元素连接成一个字符串
     return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
 
-#StreamingResponse是 FastAPI 的响应类，用于 流式响应
 @router.post("/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
+    """
+    统一聊天接口，支持 SSE 流式响应。
+
+    处理流程：
+        1. 根据 mode 参数决定意图路由方式（auto 自动识别 / sql 强制 SQL / rag 强制 RAG）
+        2. 生成或复用 session_id 用于数据库连接管理
+        3. 通过 SSE 流式返回处理结果，事件类型依次为：start → delta(多次) → done
+        4. 异常时发送 error 事件
+
+    参数：
+        req: 聊天请求体
+            - question (str): 用户问题，必填
+            - history (list): 对话历史，格式 [{"role": "user/assistant", "content": "..."}]
+            - images_base64 (list | None): Base64 编码的图片列表（用于多模态输入）
+            - lognum (str): 用户工号，默认 "admin"
+            - mode (str): 路由模式，"auto"(自动) / "sql" / "rag"，默认 "auto"
+            - session_id (str | None): 会话 ID，用于数据库连接复用
+
+    返回：
+        StreamingResponse: SSE 流式响应，media_type="text/event-stream"
+
+    SSE 事件格式：
+        event: start  data: {"intent": "sql|rag", "session_id": "..."}
+        event: delta  data: "文本片段"
+        event: done   data: {"route": "...", "session_id": "...", "meta": {}}
+        event: error  data: {"error": "错误信息"}
+    """
     conn_manager = get_connection_manager()
     session_id = req.session_id or conn_manager.generate_session_id()
     
@@ -178,13 +214,22 @@ async def chat(req: ChatRequest) -> StreamingResponse:
 @router.post("/chat/end")
 async def end_chat(req: EndChatRequest) -> EndChatResponse:
     """
-    结束对话，关闭相关的数据库连接
-    
+    结束对话，关闭相关的数据库连接。
+
+    当用户主动结束对话时调用，释放该会话占用的数据库连接资源。
+
     参数：
-        session_id: 会话ID
-    
+        req: 结束对话请求体
+            - session_id (str): 会话 ID，必填
+
     返回：
-        操作结果
+        EndChatResponse: 操作结果
+            - success (bool): 是否成功
+            - message (str): 结果描述
+            - session_id (str): 会话 ID
+
+    注意事项：
+        - 即使关闭连接失败也会返回响应（success=False），不会抛出异常
     """
     logger.info(f"{'=' * 20 + '【结束对话API】===== 收到请求 =====' + '=' * 20}\n  - 会话ID: {req.session_id[:8]}...\n{'=' * 80}")
     

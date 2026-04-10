@@ -1,3 +1,33 @@
+"""
+统一异常处理模块
+
+文件功能：
+    定义应用级异常体系与全局异常处理器，确保所有 HTTP 错误以统一 JSON 结构返回。
+
+核心作用与设计目的：
+    - 提供可预期的业务异常类 AppError，携带错误码、HTTP 状态码和结构化详情
+    - 注册 FastAPI 全局异常处理器，将 AppError 与未捕获异常统一转为 JSON 响应
+    - 所有错误响应自动附带 request_id，便于链路追踪与问题排查
+
+主要使用场景：
+    - 业务逻辑中抛出可预期异常（如参数校验失败、权限不足、资源不存在）
+    - 全局兜底捕获未处理异常，避免向调用方泄露内部堆栈信息
+
+包含的主要类与函数：
+    - AppError: 应用级可预期异常类，支持错误码、消息、HTTP状态码和结构化详情
+    - _error_payload(): 构造统一错误响应结构（内部方法）
+    - register_exception_handlers(): 注册 FastAPI 全局异常处理器
+
+安全注意事项：
+    - 未捕获异常的 handler 仅返回 "Internal Server Error"，不泄露堆栈信息
+    - AppError 的 details 字段可携带调试信息，生产环境需注意不要包含敏感数据
+
+相关联的调用文件：
+    - agent_backend/main.py: 在 create_app() 中调用 register_exception_handlers()
+    - agent_backend/core/request_id.py: 错误响应中注入 request_id
+    - agent_backend/sql_agent/sql_safety.py: 安全校验失败时抛出 AppError
+    - agent_backend/rag_engine/docling_parser.py: 文档解析失败时抛出 AppError
+"""
 from __future__ import annotations
 
 import logging

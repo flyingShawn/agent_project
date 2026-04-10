@@ -69,6 +69,31 @@ class SqlGenerateResponse(BaseModel):
 
 @router.post("/sql/generate", response_model=SqlGenerateResponse)
 def generate_sql(req: SqlGenerateRequest) -> SqlGenerateResponse:
+    """
+    自然语言转 SQL 接口，支持仅生成或生成并执行两种模式。
+
+    处理流程：
+        1. 调用 generate_secure_sql() 将自然语言问题转为安全的 SQL
+        2. 若 execute=True，调用 execute_sql() 执行生成的 SQL 并返回查询结果
+        3. 返回 SQL 语句、参数、使用的模板名及查询结果（如有）
+
+    参数：
+        req: SQL 生成请求体
+            - question (str): 自然语言问题，必填
+            - lognum (str): 用户工号，必填
+            - permission_name (str | None): 权限模板名称
+            - params (dict): SQL 参数，默认空字典
+            - execute (bool): 是否执行生成的 SQL，默认 False
+            - max_rows (int | None): 最大返回行数，1-2000，默认使用配置值
+            - use_template (bool): 是否优先使用查询模板，默认 False
+
+    返回：
+        SqlGenerateResponse: 包含 sql、params、used_template 和 rows（执行时）
+
+    安全注意事项：
+        - 生成的 SQL 经过安全校验（仅允许 SELECT，禁止危险关键字和受限表/列）
+        - 执行时强制添加 LIMIT 限制返回行数
+    """
     result = generate_secure_sql(
         SqlGenRequest(
             question=req.question,

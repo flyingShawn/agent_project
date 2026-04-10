@@ -130,6 +130,7 @@ class QdrantVectorStore:
         limit: int = 10,
         filter_: dict[str, Any] | None = None,
         with_payload: bool = True,
+        score_threshold: float | None = None,
     ) -> list[SearchResult]:
         from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
@@ -147,6 +148,7 @@ class QdrantVectorStore:
             limit=limit,
             query_filter=flt,
             with_payload=with_payload,
+            score_threshold=score_threshold,
         )
 
         return [

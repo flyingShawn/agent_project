@@ -56,7 +56,8 @@ body {
   }
   
   .message-content table {
-    @apply w-full border-collapse my-3;
+    @apply border-collapse my-3 w-full;
+    display: table;
   }
   
   .message-content th,

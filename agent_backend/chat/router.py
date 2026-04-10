@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 SQL_KEYWORDS = [
     "查询",
+    "列举",
     "统计",
     "多少",
     "几个",

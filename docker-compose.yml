@@ -41,6 +41,12 @@ services:
 
       # 数据库配置
       - DATABASE_URL=${DATABASE_URL:-}
+      - DB_TYPE=${DB_TYPE:-mysql}
+      - DB_HOST=${DB_HOST:-}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME:-}
+      - DB_USER=${DB_USER:-}
+      - DB_PASSWORD=${DB_PASSWORD:-}
     volumes:
       # 挂载文档知识库目录（宿主机docs目录 → 容器/data/docs）
       # 注意：挂载源使用独立的宿主机变量，不使用容器内的RAG_DOCS_DIR
