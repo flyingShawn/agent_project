@@ -888,7 +888,7 @@ display_fields:
         display: true
       - name: 客户端安装时间
         column: s_machine.VersionTime
-      - name: 最近上线的时间
+      - name: 上线的时间
         column: s_machine.MtGetDate
   
   hardware:
