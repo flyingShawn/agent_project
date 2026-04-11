@@ -116,13 +116,14 @@ class OllamaChatClient:
         url = f"{self.base_url}/api/chat"
         model = self.vision_model if images_base64 else self.model
         
-        logger.info("=" * 50)
-        logger.info("\n【LLM调用】开始流式聊天")
-        logger.info(f"\n - URL: {url}")
-        logger.info(f"\n - 模型: {model}")
-        logger.info(f"\n - 消息数: {len(messages)}")
-        logger.info(f"\n - 图片数: {len(images_base64) if images_base64 else 0}")
-
+        logger.info(f"""
+{'=' * 50}
+【LLM调用】开始流式聊天
+ - URL: {url}
+ - 模型: {model}
+ - 消息数: {len(messages)}
+ - 图片数: {len(images_base64) if images_base64 else 0}
+""")
         ollama_messages = []
         for msg in messages:
             ollama_msg = {"role": msg["role"], "content": msg["content"]}
@@ -211,7 +212,7 @@ class OllamaChatClient:
                 ollama_msg["images"] = images_base64
             ollama_messages.append(ollama_msg)
 
-        payload = {"model": model, "messages": ollama_messages, "stream": False}
+        payload = {"model": model, "messages": ollama_messages, "stream": False, "think": False}
 
         req = urllib.request.Request(
             url,
