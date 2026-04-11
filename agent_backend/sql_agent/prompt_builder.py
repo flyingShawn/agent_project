@@ -91,15 +91,17 @@ def build_sql_prompt(
     for t in runtime.raw.tables:
         if sample_tables and t.name.lower() not in sample_tables:
             continue
-        cols = ", ".join([f"{c.name}({c.semantic_key})" for c in t.columns[:30]])
+        cols = ", ".join([f"{c.name}({c.comment or c.semantic_key})" for c in t.columns[:30]])
         more = "" if len(t.columns) <= 30 else f" ...(+{len(t.columns) - 30})"
-        schema_lines.append(f"- {t.name}: {cols}{more}")
+        desc = f"({t.description})" if t.description else ""
+        schema_lines.append(f"- {t.name}{desc}: {cols}{more}")
 
     if not schema_lines:
         for t in runtime.raw.tables:
-            cols = ", ".join([f"{c.name}({c.semantic_key})" for c in t.columns[:30]])
+            cols = ", ".join([f"{c.name}({c.comment or c.semantic_key})" for c in t.columns[:30]])
             more = "" if len(t.columns) <= 30 else f" ...(+{len(t.columns) - 30})"
-            schema_lines.append(f"- {t.name}: {cols}{more}")
+            desc = f"({t.description})" if t.description else ""
+            schema_lines.append(f"- {t.name}{desc}: {cols}{more}")
 
     related_synonyms: list[str] = []
     for k, v in runtime.raw.synonyms.items():
@@ -163,7 +165,7 @@ def build_sql_prompt(
         f"受限表: {restricted}" if restricted else "受限表: 无",
         f"敏感列(禁止返回): {denied_cols}" if denied_cols else "敏感列(禁止返回): 无",
         "",
-        "数据库表与列(列后括号为 semantic_key)：",
+        "数据库表与列(表后括号为表说明，列后括号为列注释)：",
         "\n".join(schema_lines),
         "",
         "同义词：",

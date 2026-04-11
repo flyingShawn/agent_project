@@ -182,7 +182,7 @@ def handle_sql_chat(
             parts = []
             for field_type, group in schema_runtime.raw.display_fields.items():
                 if group.fields:
-                    parts.append(f"{field_type}类型：{', '.join(f.name for f in group.fields)}")
+                    parts.append(f"{field_type}类型：{', '.join(f'{f.name}({f.note})' if f.note else f.name for f in group.fields)}")
             if schema_runtime.raw.required_fields:
                 parts.append(f"必须字段：{', '.join(schema_runtime.raw.required_fields)}")
             if parts:
