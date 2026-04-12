@@ -75,7 +75,7 @@ class RagIngestSettings(BaseSettings):
         "webp",
     ]
 
-    vision_base_url: str = "http://localhost:11434"
+    vision_base_url: str = "http://localhost:11434/v1"
     vision_model: str = "qwen2.5-vl:7b"
 
     def model_post_init(self, __context) -> None:
