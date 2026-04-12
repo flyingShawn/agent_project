@@ -113,18 +113,20 @@ def get_database_url() -> str | None:
 
 def get_ollama_config() -> dict:
     """
-    获取 Ollama 大模型服务配置。
+    获取大模型服务配置。
 
     返回：
         dict: 包含以下键的配置字典：
-            - base_url (str): Ollama 服务地址，默认 http://localhost:11434
+            - base_url (str): LLM 服务地址，默认 http://localhost:11434/v1
+            - api_key (str): LLM API Key，默认为空（本地模式不需要）
             - chat_model (str): 文本对话模型名称，默认 qwen2.5:7b
             - vision_model (str): 视觉模型名称，默认 qwen2.5-vl:7b
     """
     load_env_file()
     
     return {
-        "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        "base_url": os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"),
+        "api_key": os.getenv("LLM_API_KEY", ""),
         "chat_model": os.getenv("CHAT_MODEL", "qwen2.5:7b"),
         "vision_model": os.getenv("VISION_MODEL", "qwen2.5-vl:7b"),
     }
@@ -166,7 +168,8 @@ def print_config_status():
     
     print("\n【大模型配置】")
     ollama_config = get_ollama_config()
-    print(f"  Ollama地址: {ollama_config['base_url']}")
+    print(f"  LLM地址: {ollama_config['base_url']}")
+    print(f"  API Key: {'已配置' if ollama_config['api_key'] else '未配置(本地模式)'}")
     print(f"  对话模型: {ollama_config['chat_model']}")
     print(f"  视觉模型: {ollama_config['vision_model']}")
     

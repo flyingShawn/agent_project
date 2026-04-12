@@ -22,7 +22,7 @@
 专有技术说明：
     - RAG 检索使用 hybrid_search() 混合检索（向量检索 + BM25 关键词检索加权融合）
     - 向量模型为 FastEmbed (BAAI/bge-small-zh-v1.5)，向量数据库为 Qdrant
-    - LLM 调用通过 OllamaChatClient 封装，支持文本模型和视觉模型自动切换
+    - LLM 调用通过 OpenAICompatibleClient 封装，支持文本模型和视觉模型自动切换
 
 相关联的调用文件：
     - agent_backend/api/v1/chat.py: 调用 handle_sql_chat/handle_rag_chat
@@ -39,7 +39,7 @@ from typing import Any, Iterator
 
 from agent_backend.core.config_helper import get_database_url
 from agent_backend.core.config_loader import get_schema_runtime
-from agent_backend.llm.clients import OllamaChatClient
+from agent_backend.llm.clients import OpenAICompatibleClient
 from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore
 from agent_backend.rag_engine.retrieval import get_rag_settings, hybrid_search
@@ -95,7 +95,7 @@ def handle_sql_chat(
     session_id: str | None = None,
     *,
     execute: bool = True,
-    llm_client: OllamaChatClient | None = None,
+    llm_client: OpenAICompatibleClient | None = None,
 ) -> Iterator[str]:
     """
     处理 SQL 查询聊天，将自然语言问题转为 SQL 并执行，流式返回自然语言总结。
@@ -129,7 +129,7 @@ def handle_sql_chat(
     logger.info(f"{'=' * 20}【SQL处理流程】开始{'=' * 20}\n会话ID: {session_id[:8] if session_id else 'None'}... | 问题: {question} | 用户ID: {lognum}")
 
     if llm_client is None:
-        llm_client = OllamaChatClient()
+        llm_client = OpenAICompatibleClient()
 
     try:
         if not execute:
@@ -239,7 +239,7 @@ def handle_rag_chat(
     images_base64: list[str] | None = None,
     session_id: str | None = None,
     *,
-    llm_client: OllamaChatClient | None = None,
+    llm_client: OpenAICompatibleClient | None = None,
     store: QdrantVectorStore | None = None,
     embedding_model: EmbeddingModel | None = None,
 ) -> Iterator[str]:
@@ -277,7 +277,7 @@ def handle_rag_chat(
     logger.info(f"{'=' * 20}【RAG处理流程】开始{'=' * 20}\n问题: {question} | 历史消息数: {len(history)} | 图片数量: {len(images_base64) if images_base64 else 0}")
 
     if llm_client is None:
-        llm_client = OllamaChatClient()
+        llm_client = OpenAICompatibleClient()
 
     if store is None or embedding_model is None:
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score = get_rag_settings()

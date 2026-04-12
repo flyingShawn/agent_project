@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Iterable
 
 from agent_backend.core.errors import AppError
-from agent_backend.rag_engine.vision import OllamaVisionClient, VisionClient
+from agent_backend.rag_engine.vision import OpenAIVisionClient, VisionClient
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,7 @@ def parse_document(path: Path, *, vision_base_url: str | None = None, vision_mod
         if not md:
             md = _parse_image_with_vision(
                 path,
-                client=OllamaVisionClient(base_url=vision_base_url, model=vision_model),
+                client=OpenAIVisionClient(base_url=vision_base_url, model=vision_model),
             )
         return ParsedDoc(source_path=str(path), markdown=(md or "").strip(), content_type=content_type)
 

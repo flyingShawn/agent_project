@@ -41,7 +41,7 @@ import re
 from typing import Any
 
 from agent_backend.core.config_loader import get_schema_runtime
-from agent_backend.llm.clients import OllamaChatClient
+from agent_backend.llm.clients import OpenAICompatibleClient
 from agent_backend.rag_engine.retrieval import RetrievedChunk, search_sql_samples
 from agent_backend.sql_agent.patterns import select_query_pattern
 from agent_backend.sql_agent.prompt_builder import build_sql_prompt
@@ -69,7 +69,7 @@ def _clean_sql_markdown(sql: str) -> str:
 def generate_secure_sql(
     req: SqlGenRequest,
     *,
-    llm: OllamaChatClient | None = None,
+    llm: OpenAICompatibleClient | None = None,
     use_template: bool = False,
 ) -> SqlGenResult:
     """
@@ -134,7 +134,7 @@ def generate_secure_sql(
             sql_samples = None
 
         if llm is None:
-            llm = OllamaChatClient()
+            llm = OpenAICompatibleClient()
         
         prompt = build_sql_prompt(runtime, req.question, sql_samples=sql_samples)
         logger.info(f"\n【步骤1.2】构建的完整Prompt:\n{prompt}")
