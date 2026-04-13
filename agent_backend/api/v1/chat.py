@@ -1,205 +1,170 @@
 """
-聊天 API 端点 (支持SSE流式响应)
+聊天API接口模块
 
-文件目的：
-    - 提供统一的聊天接口，自动路由到SQL或RAG模式
-    - 支持Server-Sent Events (SSE)流式响应
-    - 支持多轮对话和图片输入
+文件功能：
+    定义聊天相关的HTTP API端点，作为前端与Agent编排层的桥梁。
+    接收用户请求，构建AgentState，调用LangGraph Graph，以SSE流式返回结果。
 
-API端点：
-    POST /api/v1/chat
-    请求体: {
-        "question": "用户问题",
-        "history": [{"role": "user/assistant", "content": "..."}],
-        "images_base64": ["base64编码图片"],  # 可选
-        "lognum": "用户工号",
-        "mode": "auto|sql|rag",  # 路由模式
-        "token": "认证token"     # 可选
-    }
-    
-    返回: SSE流式事件
-    event: start   data: {"intent": "sql|rag"}
-    event: delta   data: "文本片段"
-    event: done    data: {"route": "...", "meta": {}}
-    event: error   data: {"error": "错误信息"}
+在系统架构中的定位：
+    位于API层，是前端与Agent系统的唯一交互入口。
+    替代旧架构中chat/handlers.py的硬编码分支路由逻辑。
 
-调用流程：
-    客户端 -> POST /chat 
-    -> classify_intent() -> 意图识别
-    -> handle_sql_chat() 或 handle_rag_chat() 
-    -> 流式返回结果
+主要使用场景：
+    - 前端发送聊天请求（POST /api/v1/chat）
+    - 前端结束对话关闭数据库连接（POST /api/v1/chat/end）
 
-相关文件：
-    - agent_backend/chat/router.py: 意图识别路由
-    - agent_backend/chat/handlers.py: 聊天处理器
-    - agent_backend/chat/types.py: 类型定义
+核心端点：
+    - chat: 接收ChatRequest，构建初始State，调用Graph，返回SSE流式响应
+    - end_chat: 接收EndChatRequest，关闭数据库连接
+
+SSE事件流顺序：
+    start → [delta(多次)] → done
+    异常时：start → [delta(多次)] → error
+
+专有技术说明：
+    - 使用async生成器配合FastAPI StreamingResponse实现真正的流式推送
+    - 图片多模态使用LangChain的HumanMessage content数组格式
+    - 前端发送的mode字段被Pydantic静默忽略（不再需要auto/sql/rag模式）
+
+关联文件：
+    - agent_backend/agent/graph.py: get_agent_graph获取Graph实例
+    - agent_backend/agent/stream.py: stream_graph_response实现SSE流式适配
+    - agent_backend/sql_agent/connection_manager.py: 数据库连接管理
 """
 from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from agent_backend.chat.handlers import handle_rag_chat, handle_sql_chat
-from agent_backend.chat.router import classify_intent
-from agent_backend.chat.types import Intent
+from agent_backend.agent.graph import get_agent_graph
+from agent_backend.agent.stream import stream_graph_response
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)
-
 
 router = APIRouter(tags=["chat"])
 
 
 class ChatRequest(BaseModel):
+    """聊天请求模型，与前端API契约保持兼容"""
     question: str = Field(min_length=1)
     history: list[dict[str, str]] = Field(default_factory=list)
     images_base64: list[str] | None = None
     lognum: str = Field(default="admin")
-    mode: str = Field(default="auto")
     token: str | None = None
     session_id: str | None = None
 
 
-class ChatMetadata(BaseModel):
-    route: str
-    intent: str
-
-
 class EndChatRequest(BaseModel):
+    """结束对话请求模型"""
     session_id: str = Field(..., min_length=1)
 
 
 class EndChatResponse(BaseModel):
+    """结束对话响应模型"""
     success: bool
     message: str
     session_id: str
 
 
-def _sse_event(event: str, data: str | dict) -> str:
-    """
-    构造 SSE (Server-Sent Events) 格式的事件字符串。
-
-    参数：
-        event: 事件类型名称（如 "start", "delta", "done", "error"）
-        data: 事件数据，支持字符串或字典（字典会自动序列化为 JSON）
-
-    返回：
-        str: 符合 SSE 规范的事件字符串，格式为 "event: {type}\\ndata: {content}\\n\\n"
-    """
-    if isinstance(data, dict):
-        data = json.dumps(data, ensure_ascii=False)
-    lines = data.split('\n')  # "连接符".join(列表) 用"连接符"把列表中的元素连接成一个字符串
-    return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
-
 @router.post("/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
     """
-    统一聊天接口，支持 SSE 流式响应。
+    聊天API端点，接收用户问题并以SSE流式返回Agent回答。
 
     处理流程：
-        1. 根据 mode 参数决定意图路由方式（auto 自动识别 / sql 强制 SQL / rag 强制 RAG）
-        2. 生成或复用 session_id 用于数据库连接管理
-        3. 通过 SSE 流式返回处理结果，事件类型依次为：start → delta(多次) → done
-        4. 异常时发送 error 事件
+    1. 构建初始AgentState（含系统Prompt、历史消息、用户问题）
+    2. 调用LangGraph Graph执行Agent循环
+    3. 通过astream_events捕获LLM token流和工具执行事件
+    4. 以SSE格式逐事件推送到前端
 
     参数：
-        req: 聊天请求体
-            - question (str): 用户问题，必填
-            - history (list): 对话历史，格式 [{"role": "user/assistant", "content": "..."}]
-            - images_base64 (list | None): Base64 编码的图片列表（用于多模态输入）
-            - lognum (str): 用户工号，默认 "admin"
-            - mode (str): 路由模式，"auto"(自动) / "sql" / "rag"，默认 "auto"
-            - session_id (str | None): 会话 ID，用于数据库连接复用
+        req: ChatRequest，包含question/history/images_base64/lognum等
 
     返回：
-        StreamingResponse: SSE 流式响应，media_type="text/event-stream"
-
-    SSE 事件格式：
-        event: start  data: {"intent": "sql|rag", "session_id": "..."}
-        event: delta  data: "文本片段"
-        event: done   data: {"route": "...", "session_id": "...", "meta": {}}
-        event: error  data: {"error": "错误信息"}
+        StreamingResponse: SSE流式响应，事件格式为start/delta/done/error
     """
+    t_start = time.time()
     conn_manager = get_connection_manager()
     session_id = req.session_id or conn_manager.generate_session_id()
-    
-    logger.info(f"{'=' * 20 + '【聊天API入口】===== 收到请求 =====' + '=' * 20}\n  - 会话ID: {session_id[:8]}... | 用户问题: {req.question} | 用户ID: {req.lognum} | 路由模式: {req.mode} | 历史消息数: {len(req.history)} | 历史消息: {req.history} | 图片数量: {len(req.images_base64) if req.images_base64 else 0}\n{'=' * 80}")
-    
-    if req.mode == "auto":
-        intent = classify_intent(req.question)
-        logger.info(f"\n【意图识别】自动识别结果: {intent.value}")
-    elif req.mode == "sql":
-        intent = Intent.SQL
-        logger.info(f"\n【意图识别】强制指定: SQL模式")
-    elif req.mode == "rag":
-        intent = Intent.RAG
-        logger.info(f"\n【意图识别】强制指定: RAG模式")
-    else:
-        intent = classify_intent(req.question)
-        logger.info(f"\n【意图识别】默认识别结果: {intent.value}")
 
-    def generate() -> str:
-        logger.info(f"\n【SSE流】开始生成，意图: {intent.value}" + " 发送start事件")
-        yield _sse_event("start", {"intent": intent.value, "session_id": session_id})
+    logger.info(
+        f"{'=' * 20}【聊天API入口】收到请求{'=' * 20}\n"
+        f"  会话ID: {session_id[:8]}... | 问题: {req.question} | 用户: {req.lognum} | "
+        f"历史: {len(req.history)} | 图片: {len(req.images_base64) if req.images_base64 else 0}"
+    )
+
+    initial_state = {
+        "messages": [],
+        "question": req.question,
+        "session_id": session_id,
+        "lognum": req.lognum,
+        "images_base64": req.images_base64,
+        "sql_results": [],
+        "rag_results": [],
+        "metadata_results": [],
+        "tool_call_count": 0,
+        "max_tool_calls": 5,
+        "data_tables": [],
+        "references": [],
+    }
+
+    for msg in req.history:
+        if msg.get("role") == "user":
+            initial_state["messages"].append(HumanMessage(content=msg["content"]))
+        elif msg.get("role") == "assistant":
+            from langchain_core.messages import AIMessage
+            initial_state["messages"].append(AIMessage(content=msg["content"]))
+
+    if req.images_base64:
+        content = [{"type": "text", "text": req.question}]
+        content.extend([
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{img}"},
+            }
+            for img in req.images_base64
+        ])
+        initial_state["messages"].append(HumanMessage(content=content))
+    else:
+        initial_state["messages"].append(HumanMessage(content=req.question))
+
+    async def generate():
+        """SSE事件生成器，将Graph事件流转为SSE格式推送到前端"""
+        logger.info(f"【SSE流】开始生成，会话: {session_id[:8]}...")
+        yield _sse_event("start", {"intent": "agent", "session_id": session_id})
 
         try:
-            if intent == Intent.SQL:
-                logger.info("\n【处理分支】===== 进入SQL处理流程 =====")
-                chunk_count = 0
-                for chunk in handle_sql_chat(
-                    question=req.question,
-                    lognum=req.lognum,
-                    history=req.history,
-                    images_base64=req.images_base64,
-                    session_id=session_id,
-                ):
-                    chunk_count += 1
-                    logger.debug(f"\n【SQL处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
-                    yield _sse_event("delta", chunk)
-                logger.info(f"\n【SQL处理】完成，共生成 {chunk_count} 个文本块")
-            else:
-                logger.info("\n【处理分支】===== 进入RAG处理流程 =====")
-                chunk_count = 0
-                for chunk in handle_rag_chat(
-                    question=req.question,
-                    history=req.history,
-                    images_base64=req.images_base64,
-                    session_id=session_id,
-                ):
-                    chunk_count += 1
-                    logger.debug(f"\n【RAG处理】生成第 {chunk_count} 个文本块，长度: {len(chunk)}")
-                    yield _sse_event("delta", chunk)
-                logger.info(f"\n【RAG处理】完成，共生成 {chunk_count} 个文本块")
+            graph = get_agent_graph()
+            async for sse_event in stream_graph_response(graph, initial_state):
+                yield sse_event
 
-            logger.info("\n【SSE流】发送done事件")
             yield _sse_event(
                 "done",
                 {
-                    "route": intent.value,
+                    "route": "agent",
                     "session_id": session_id,
                     "meta": {},
                 },
             )
-            logger.info("=" * 80)
-            logger.info("\n【聊天API】===== 请求处理完成 =====")
+            logger.info(f"【聊天API】请求处理完成，会话: {session_id[:8]}...，总耗时: {time.time() - t_start:.2f}秒")
 
         except Exception as e:
-            logger.error(f"\n【错误】处理过程中发生异常: {type(e).__name__}: {e}")
+            logger.error(f"【错误】处理异常: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             yield _sse_event(
                 "error",
-                {
-                    "error": "非常抱歉，查询失败，请稍后再试",
-                },
+                {"error": "非常抱歉，查询失败，请稍后再试"},
             )
 
-    logger.info("\n【聊天API】返回StreamingResponse")
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
@@ -214,41 +179,46 @@ async def chat(req: ChatRequest) -> StreamingResponse:
 @router.post("/chat/end")
 async def end_chat(req: EndChatRequest) -> EndChatResponse:
     """
-    结束对话，关闭相关的数据库连接。
-
-    当用户主动结束对话时调用，释放该会话占用的数据库连接资源。
+    结束对话API端点，关闭对应的数据库连接。
 
     参数：
-        req: 结束对话请求体
-            - session_id (str): 会话 ID，必填
+        req: EndChatRequest，包含session_id
 
     返回：
-        EndChatResponse: 操作结果
-            - success (bool): 是否成功
-            - message (str): 结果描述
-            - session_id (str): 会话 ID
-
-    注意事项：
-        - 即使关闭连接失败也会返回响应（success=False），不会抛出异常
+        EndChatResponse: 包含success/message/session_id
     """
-    logger.info(f"{'=' * 20 + '【结束对话API】===== 收到请求 =====' + '=' * 20}\n  - 会话ID: {req.session_id[:8]}...\n{'=' * 80}")
-    
+    logger.info(f"【结束对话API】会话ID: {req.session_id[:8]}...")
+
     try:
         conn_manager = get_connection_manager()
         conn_manager.close_connection(req.session_id, reason="用户主动结束对话")
-        
-        logger.info("✅ 对话结束处理成功")
+
         return EndChatResponse(
             success=True,
             message="对话已结束，数据库连接已关闭",
-            session_id=req.session_id
+            session_id=req.session_id,
         )
     except Exception as e:
-        logger.error(f"❌ 结束对话失败: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"结束对话失败: {e}")
         return EndChatResponse(
             success=False,
             message=f"结束对话失败: {str(e)}",
-            session_id=req.session_id
+            session_id=req.session_id,
         )
+
+
+def _sse_event(event: str, data: str | dict) -> str:
+    """
+    格式化SSE事件字符串。
+
+    参数：
+        event: SSE事件名称（start/delta/done/error）
+        data: 事件数据，字符串或字典（字典自动转JSON）
+
+    返回：
+        str: 格式化后的SSE事件字符串
+    """
+    if isinstance(data, dict):
+        data = json.dumps(data, ensure_ascii=False)
+    lines = data.split("\n")
+    return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
