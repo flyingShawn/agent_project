@@ -17,8 +17,10 @@ services:
       # 智能体名称
       - AGENT_NAME=${AGENT_NAME:-desk-agent}
 
-      # 模型配置 - OLLAMA_BASE_URL指向外部Ollama服务
+      # 模型配置 - LLM_BASE_URL指向外部LLM服务（OpenAI兼容协议）
       # Windows/macOS使用host.docker.internal，Linux使用宿主机IP
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - CHAT_MODEL=${CHAT_MODEL:-qwen2.5:7b-instruct}
       - VISION_MODEL=${VISION_MODEL:-qwen2.5-vl:7b-instruct}
@@ -29,6 +31,7 @@ services:
       - RAG_QDRANT_PATH=/app/.qdrant_local
       - RAG_QDRANT_COLLECTION=${RAG_QDRANT_COLLECTION:-desk_agent_docs}
       - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
+      # RAG_HYBRID_ALPHA 当前代码未读取，文档检索未使用混合权重
       - RAG_HYBRID_ALPHA=${RAG_HYBRID_ALPHA:-0.7}
       - RAG_TOP_K=${RAG_TOP_K:-5}
 
@@ -47,6 +50,7 @@ services:
       - DB_NAME=${DB_NAME:-}
       - DB_USER=${DB_USER:-}
       - DB_PASSWORD=${DB_PASSWORD:-}
+      - SQL_MAX_ROWS=${SQL_MAX_ROWS:-500}
     volumes:
       # 挂载文档知识库目录（宿主机docs目录 → 容器/data/docs）
       # 注意：挂载源使用独立的宿主机变量，不使用容器内的RAG_DOCS_DIR

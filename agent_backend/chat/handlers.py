@@ -171,7 +171,9 @@ def handle_sql_chat(
         # 这是我生成表格的地方,非大模型生成的,之前大模型给的不标准
         # 检查如果数据只有一列,就不生成表格了
         if len(exec_result) == 1 and len(exec_result[0]) == 1:
-            data_table = ""
+            col_name = list(exec_result[0].keys())[0]
+            col_value = list(exec_result[0].values())[0]
+            data_table = f"{col_name}: {col_value}"
         else:
             data_table = _build_markdown_table(exec_result)
         columns = list(exec_result[0].keys())
