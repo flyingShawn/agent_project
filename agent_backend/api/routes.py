@@ -33,11 +33,13 @@ from agent_backend.api.v1.health import router as health_router
 from agent_backend.api.v1.metadata import router as metadata_router
 from agent_backend.api.v1.rag import router as rag_router
 from agent_backend.api.v1.sql_agent import router as sql_agent_router
+from agent_backend.api.v1.export import router as export_router
 
 router = APIRouter()
 router.include_router(health_router, prefix="/api/v1")
 router.include_router(metadata_router, prefix="/api/v1")
 router.include_router(rag_router, prefix="/api/v1")
 router.include_router(sql_agent_router, prefix="/api/v1")
+router.include_router(export_router, prefix="/api/v1")
 router.include_router(chat_router, prefix="/api/v1")
 

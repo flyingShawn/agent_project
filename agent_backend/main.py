@@ -89,10 +89,10 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def shutdown_event():
         logger = __import__('logging').getLogger(__name__)
-        logger.info("🔻 应用正在关闭，清理数据库连接...")
+        logger.info("\n🔻 应用正在关闭，清理数据库连接...")
         conn_manager = get_connection_manager()
         conn_manager.shutdown()
-        logger.info("✅ 应用关闭完成")
+        logger.info("\n✅ 应用关闭完成")
     
     return app
 
