@@ -91,5 +91,5 @@ def get_agent_graph() -> StateGraph:
     workflow.add_edge("respond", END)
 
     _graph_instance = workflow.compile()
-    logger.info("[get_agent_graph] Agent Graph 构建完成")
+    logger.info("\n[get_agent_graph] Agent Graph 构建完成")
     return _graph_instance

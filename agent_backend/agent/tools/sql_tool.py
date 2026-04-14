@@ -133,7 +133,7 @@ def sql_query(question: str) -> str:
         str: JSON格式字符串，包含sql/rows/row_count/columns/data_table字段；
              校验失败时包含error/hint字段
     """
-    logger.info(f"[sql_query] 开始处理: {question}")
+    logger.info(f"\n[sql_query] 开始处理: {question}")
 
     try:
         runtime = get_schema_runtime()
@@ -143,17 +143,17 @@ def sql_query(question: str) -> str:
         try:
             sql_samples = search_sql_samples(question)
             if sql_samples:
-                logger.info(f"[sql_query] 检索到 {len(sql_samples)} 个SQL样本")
+                logger.info(f"\n[sql_query] 检索到 {len(sql_samples)} 个SQL样本")
             else:
-                logger.info("[sql_query] 未检索到SQL样本")
+                logger.info("\n[sql_query] 未检索到SQL样本")
         except Exception as e:
-            logger.warning(f"[sql_query] SQL样本检索失败: {e}")
+            logger.warning(f"\n[sql_query] SQL样本检索失败: {e}")
 
         prompt = build_sql_prompt(runtime, question, sql_samples=sql_samples)
         prompt += "\n\n【最重要】你必须严格模仿参考SQL样本的写法风格，包括：\n"
         prompt += "- 表关联方式（JOIN条件和关联表）\n"
         prompt += "- 别名规则（s_machine用m，s_group用g等）\n"
-        prompt += "- 列别名写法（AS 中文别名）\n"
+        prompt += "- 列别名写法（AS \"中文别名\"，中文别名必须用双引号包裹）\n"
         prompt += "- WHERE条件构建方式\n"
         prompt += "- 聚合函数使用方式\n"
         prompt += "如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。\n"
@@ -171,21 +171,21 @@ def sql_query(question: str) -> str:
         ]
         response = sql_llm.invoke(lc_messages)
         sql = response.content.strip()
-        logger.info(f"[sql_query] LLM生成SQL: {sql}")
+        logger.info(f"\n[sql_query] LLM生成SQL: {sql}")
 
         sql = _clean_sql_markdown(sql)
 
         try:
             sql = validate_sql_basic(sql)
         except AppError as e:
-            logger.warning(f"[sql_query] SQL基础校验失败: {e.message}")
+            logger.warning(f"\n[sql_query] SQL基础校验失败: {e.message}")
             return json.dumps({"error": f"SQL安全校验失败: {e.message}", "hint": "请重新生成SQL，确保只使用SELECT语句且不包含危险关键字"}, ensure_ascii=False)
 
         deny_select_columns = (security.deny_select_columns if security else []) if security else []
         try:
             enforce_deny_select_columns(sql, deny_select_columns)
         except AppError as e:
-            logger.warning(f"[sql_query] SQL敏感列校验失败: {e.message}")
+            logger.warning(f"\n[sql_query] SQL敏感列校验失败: {e.message}")
             return json.dumps({"error": f"SQL安全校验失败: {e.message}", "hint": "请重新生成SQL，确保不查询敏感列"}, ensure_ascii=False)
 
         db_url = get_database_url()
@@ -193,7 +193,7 @@ def sql_query(question: str) -> str:
             return json.dumps({"error": "数据库未配置", "hint": "请检查DATABASE_URL配置"}, ensure_ascii=False)
 
         exec_result = execute_sql(sql=sql, params={}, database_url=db_url)
-        logger.info(f"[sql_query] 执行结果: {len(exec_result) if exec_result else 0} 行")
+        logger.info(f"\n[sql_query] 执行结果: {len(exec_result) if exec_result else 0} 行")
 
         if not exec_result or len(exec_result) == 0:
             return json.dumps({
@@ -207,6 +207,7 @@ def sql_query(question: str) -> str:
 
         columns = list(exec_result[0].keys())
 
+        # 这里是保留了之前总结查询结果的逻辑，多行还会表格，如何llm够智能，这个应该交给llm来做最合适。
         if len(exec_result) == 1 and len(exec_result[0]) == 1:
             col_name = list(exec_result[0].keys())[0]
             col_value = list(exec_result[0].values())[0]

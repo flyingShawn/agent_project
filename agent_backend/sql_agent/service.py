@@ -33,7 +33,7 @@ def generate_secure_sql(
     llm: OpenAICompatibleClient | None = None,
     use_template: bool = False,
 ) -> SqlGenResult:
-    logger.info(f"{'=' * 20}【SQL生成流程开始】{'=' * 20}\n用户问题: {req.question} | 用户ID: {req.lognum} | 使用模板: {use_template}\n{'=' * 80}")
+    logger.info(f"\n{'=' * 20}【SQL生成流程开始】{'=' * 20}\n用户问题: {req.question} | 用户ID: {req.lognum} | 使用模板: {use_template}\n{'=' * 80}")
 
     runtime = get_schema_runtime()
     security = runtime.raw.security
@@ -47,20 +47,20 @@ def generate_secure_sql(
         used_template = match.name
         sql = match.sql
         params.update(match.params)
-        logger.info(f"【步骤1】匹配到查询模板: {match.name}")
+        logger.info(f"\n【步骤1】匹配到查询模板: {match.name}")
     else:
-        logger.info("【步骤1】调用LLM生成SQL")
+        logger.info("\n【步骤1】调用LLM生成SQL")
 
-        logger.info("【步骤1.1】RAG检索SQL样本...")
+        logger.info("\n【步骤1.1】RAG检索SQL样本...")
         sql_samples: list[RetrievedChunk] | None = None
         try:
             sql_samples = search_sql_samples(req.question)
             if sql_samples:
-                logger.info(f"  检索到 {len(sql_samples)} 个SQL样本")
+                logger.info(f"\n  检索到 {len(sql_samples)} 个SQL样本")
             else:
-                logger.info("  未检索到SQL样本，将使用schema信息直接生成")
+                logger.info("\n  未检索到SQL样本，将使用schema信息直接生成")
         except Exception as e:
-            logger.warning(f"  SQL样本检索失败: {e}，将使用schema信息直接生成")
+            logger.warning(f"\n  SQL样本检索失败: {e}，将使用schema信息直接生成")
             sql_samples = None
 
         if llm is None:
@@ -74,11 +74,11 @@ def generate_secure_sql(
         ]
 
         sql = llm.chat_complete(messages)
-        logger.info(f"LLM返回SQL: {sql}")
+        logger.info(f"\nLLM返回SQL: {sql}")
 
     sql = _clean_sql_markdown(sql)
     sql = validate_sql_basic(sql)
-    logger.info(f"【步骤3】安全校验后的SQL:\n{sql}")
+    logger.info(f"\n【步骤3】安全校验后的SQL:\n{sql}")
 
     deny_select_columns = (security.deny_select_columns if security else []) if security else []
     enforce_deny_select_columns(sql, deny_select_columns)
@@ -86,6 +86,6 @@ def generate_secure_sql(
     sql = validate_sql_basic(sql)
     enforce_deny_select_columns(sql, deny_select_columns)
 
-    logger.info(f"{'=' * 80}\n【最终执行的SQL】:\n{sql}\n参数: {params}\n{'=' * 80}")
+    logger.info(f"\n{'=' * 80}\n【最终执行的SQL】:\n{sql}\n参数: {params}\n{'=' * 80}")
 
     return SqlGenResult(sql=sql, params=params, used_template=used_template)

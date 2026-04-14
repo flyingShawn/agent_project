@@ -90,10 +90,12 @@ async def stream_graph_response(
         - 首个token到达时间取决于LLM推理速度和Tool执行耗时
         - on_chat_model_stream事件实现真正的逐token流式推送
     """
-    logger.info("[stream] 开始流式输出 (astream_events v2)")
+    logger.info("\n[stream] 开始流式输出 (astream_events v2)")
 
     data_tables: list[str] = []
     references: list[str] = []
+    chart_configs: list[dict] = []
+    export_results: list[dict] = []
     first_token = True
 
     try:
@@ -105,18 +107,18 @@ async def stream_graph_response(
                 chunk = event["data"].get("chunk")
                 if chunk and hasattr(chunk, "content") and chunk.content:
                     if first_token:
-                        logger.info("[stream] 收到首个token，流式输出已生效")
+                        logger.info("\n[stream] 收到首个token，流式输出已生效")
                         first_token = False
                     yield _sse_event("delta", chunk.content)
 
             elif kind == "on_chat_model_end":
-                logger.info(f"[stream] LLM调用完成: {name}")
+                logger.info(f"\n[stream] LLM调用完成: {name}")
 
             elif kind == "on_tool_start":
-                logger.info(f"[stream] 开始执行工具: {name}")
+                logger.info(f"\n[stream] 开始执行工具: {name}")
 
             elif kind == "on_tool_end":
-                logger.info(f"[stream] 工具执行完成: {name}")
+                logger.info(f"\n[stream] 工具执行完成: {name}")
                 output = event["data"].get("output")
                 output_str = ""
                 if isinstance(output, str):
@@ -138,6 +140,20 @@ async def stream_graph_response(
                             references.extend(parsed["sources"])
                     except (json.JSONDecodeError, TypeError):
                         pass
+                elif name == "generate_chart" and output_str:
+                    try:
+                        parsed = json.loads(output_str)
+                        if "echarts_option" in parsed:
+                            chart_configs.append(parsed)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                elif name == "export_data" and output_str:
+                    try:
+                        parsed = json.loads(output_str)
+                        if "download_url" in parsed:
+                            export_results.append(parsed)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
 
     except Exception as e:
         logger.error(f"[stream] 流式输出异常: {type(e).__name__}: {e}")
@@ -154,4 +170,10 @@ async def stream_graph_response(
         yield _sse_event("delta", "\n\n---\n\n**📚 参考来源：**\n")
         yield _sse_event("delta", "\n".join(references))
 
-    logger.info("[stream] 流式输出完成")
+    for chart in chart_configs:
+        yield _sse_event("chart", chart)
+
+    for export_item in export_results:
+        yield _sse_event("export", export_item)
+
+    logger.info("\n[stream] 流式输出完成")

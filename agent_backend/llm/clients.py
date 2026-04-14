@@ -179,7 +179,7 @@ class OllamaChatClient:
             )
         finally:
             logger.info("\n【LLM调用】结束")
-            logger.info("=" * 50)
+            logger.info("\n" + "=" * 50)
 
     def chat_complete(
         self,
@@ -208,7 +208,7 @@ class OllamaChatClient:
             - 同步调用会阻塞直到模型完成推理，耗时可能较长
             - 适用于 SQL 生成等需要完整结果的场景，不适用于实时对话
         """
-        logger.info(f"{'=' * 20 + 'chat_complete' + '=' * 20 }")
+        logger.info(f"\n{'=' * 20 + 'chat_complete' + '=' * 20 }")
         url = f"{self.base_url}/api/chat"
         model = self.vision_model if images_base64 else self.model
 
@@ -409,7 +409,7 @@ class OpenAICompatibleClient:
             )
         finally:
             logger.info("\n【LLM调用】结束")
-            logger.info("=" * 50)
+            logger.info("\n" + "=" * 50)
 
     def chat_complete(
         self,
@@ -419,7 +419,7 @@ class OpenAICompatibleClient:
     ) -> str:
 
     
-        logger.info(f"{'=' * 20 + 'open ai chat_complete' + '=' * 20 }")
+        logger.info(f"\n{'=' * 20 + 'open ai chat_complete' + '=' * 20 }")
 
         url = f"{self.base_url}/chat/completions"
         model = self.vision_model if images_base64 else self.model

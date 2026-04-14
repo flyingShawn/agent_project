@@ -252,7 +252,7 @@ def hybrid_search(
     candidates = [c for c in candidates if c.score >= vector_min_score]
     if len(candidates) < pre_filter_count:
         logger.info(
-            f"向量分数预过滤: {pre_filter_count} -> {len(candidates)} "
+            f"\n向量分数预过滤: {pre_filter_count} -> {len(candidates)} "
             f"(vector_min_score={vector_min_score})"
         )
 

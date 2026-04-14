@@ -24,5 +24,19 @@ Agent工具定义模块入口
 from agent_backend.agent.tools.sql_tool import sql_query
 from agent_backend.agent.tools.rag_tool import rag_search
 from agent_backend.agent.tools.metadata_tool import metadata_query
+from agent_backend.agent.tools.time_tool import get_current_time
+from agent_backend.agent.tools.calculator_tool import calculator
+from agent_backend.agent.tools.chart_tool import generate_chart
+from agent_backend.agent.tools.export_tool import export_data
+from agent_backend.agent.tools.web_search_tool import web_search
 
-ALL_TOOLS = [sql_query, rag_search, metadata_query]
+ALL_TOOLS = [
+    sql_query,
+    rag_search,
+    metadata_query,
+    get_current_time,
+    calculator,
+    generate_chart,
+    export_data,
+    web_search,
+]

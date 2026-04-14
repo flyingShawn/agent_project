@@ -61,7 +61,7 @@ def rag_search(question: str) -> str:
         str: JSON格式字符串，包含context/chunk_count/sources字段；
              检索失败时包含error字段
     """
-    logger.info(f"[rag_search] 开始检索: {question}")
+    logger.info(f"\n[rag_search] 开始检索: {question}")
 
     try:
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score = get_rag_settings()
@@ -86,7 +86,7 @@ def rag_search(question: str) -> str:
             min_score=0.5,
             vector_min_score=vector_min_score,
         )
-        logger.info(f"[rag_search] 检索到 {len(chunks) if chunks else 0} 个文档片段")
+        logger.info(f"\n[rag_search] 检索到 {len(chunks) if chunks else 0} 个文档片段")
 
         if not chunks:
             return "未检索到相关文档片段。请直接根据你的知识回答用户问题，并告知用户未找到相关文档参考。"
@@ -96,7 +96,7 @@ def rag_search(question: str) -> str:
         seen_sources = set()
 
         for i, chunk in enumerate(chunks, 1):
-            logger.info(f"[rag_search] 片段{i}: {chunk.source_path} (混合分: {chunk.score:.4f})")
+            logger.info(f"\n[rag_search] 片段{i}: {chunk.source_path} (混合分: {chunk.score:.4f})")
             context_parts.append(f"【文档片段 {i}】\n来源：{chunk.source_path}\n{chunk.text}\n")
 
             if chunk.source_path and chunk.source_path not in seen_sources:

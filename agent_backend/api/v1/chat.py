@@ -138,7 +138,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
 
     async def generate():
         """SSE事件生成器，将Graph事件流转为SSE格式推送到前端"""
-        logger.info(f"【SSE流】开始生成，会话: {session_id[:8]}...")
+        logger.info(f"\n【SSE流】开始生成，会话: {session_id[:8]}...")
         yield _sse_event("start", {"intent": "agent", "session_id": session_id})
 
         try:
@@ -154,7 +154,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                     "meta": {},
                 },
             )
-            logger.info(f"【聊天API】请求处理完成，会话: {session_id[:8]}...，总耗时: {time.time() - t_start:.2f}秒")
+            logger.info(f"\n【聊天API】请求处理完成，会话: {session_id[:8]}...，总耗时: {time.time() - t_start:.2f}秒")
 
         except Exception as e:
             logger.error(f"【错误】处理异常: {type(e).__name__}: {e}")
@@ -187,7 +187,7 @@ async def end_chat(req: EndChatRequest) -> EndChatResponse:
     返回：
         EndChatResponse: 包含success/message/session_id
     """
-    logger.info(f"【结束对话API】会话ID: {req.session_id[:8]}...")
+    logger.info(f"\n【结束对话API】会话ID: {req.session_id[:8]}...")
 
     try:
         conn_manager = get_connection_manager()

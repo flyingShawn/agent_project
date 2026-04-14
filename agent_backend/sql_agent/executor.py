@@ -116,7 +116,7 @@ def execute_sql(
         session_id: 会话ID（可选，用于连接复用）
     """
   
-    logger.info("=" * 20 +"\n【SQL执行流程开始】" + "=" * 20)
+    logger.info("\n" + "=" * 20 +"\n【SQL执行流程开始】" + "=" * 20)
     
     if max_rows is None:
         max_rows = get_max_rows()
@@ -126,7 +126,7 @@ def execute_sql(
         logger.error("❌ 未配置 DATABASE_URL")
         raise AppError(code="db_not_configured", message="未配置 DATABASE_URL", http_status=500)
 
-    logger.info(f"数据库URL: {url[:30]}...")
+    logger.info(f"\n数据库URL: {url[:30]}...")
 
     try:
         from sqlalchemy import create_engine, text
@@ -150,55 +150,55 @@ def execute_sql(
     for attempt in range(1, max_retries + 1):
         try:
             if attempt > 1:
-                logger.info(f"🔄 第 {attempt} 次重试...")
+                logger.info(f"\n🔄 第 {attempt} 次重试...")
                 time.sleep(retry_delay)
             
-            logger.info("正在获取数据库连接...")
+            logger.info("\n正在获取数据库连接...")
             
             if session_id:
                 if connection_recreated:
-                    logger.info("🔄 强制重新创建连接...")
+                    logger.info("\n🔄 强制重新创建连接...")
                     conn_manager.mark_connection_invalid(session_id)
                 
                 conn = conn_manager.get_or_create_connection(session_id, url)
-                logger.info("✅ 数据库连接获取成功 正在执行SQL...")
+                logger.info("\n✅ 数据库连接获取成功 正在执行SQL...")
                 result = conn.execute(text(sql2), params2)
                 rows = result.fetchall()
                 keys = list(result.keys())
             else:
-                logger.info("⚠️ 未提供会话ID，使用临时连接")
+                logger.info("\n⚠️ 未提供会话ID，使用临时连接")
                 engine = create_engine(url, pool_pre_ping=True, pool_recycle=3600)
                 with engine.connect() as conn:
-                    logger.info("✅ 数据库连接成功 正在执行SQL...")
+                    logger.info("\n✅ 数据库连接成功 正在执行SQL...")
                     result = conn.execute(text(sql2), params2)
                     rows = result.fetchall()
                     keys = list(result.keys())
             
-            logger.info(f"✅ SQL执行成功，返回 {len(rows)} 行数据")
+            logger.info(f"\n✅ SQL执行成功，返回 {len(rows)} 行数据")
             
             out: list[dict[str, Any]] = []
             for r in rows:
                 out.append({k: r[i] for i, k in enumerate(keys)})
             
-            logger.info(f"返回数据示例（前3行）:")
+            logger.info(f"\n返回数据示例（前3行）:")
             for i, row in enumerate(out[:3]):
-                logger.info(f"  行{i+1}: {row}")
+                logger.info(f"\n  行{i+1}: {row}")
             
-            logger.info("=" * 20 +"\n【SQL执行流程结束】" + "=" * 20)
+            logger.info("\n" + "=" * 20 +"\n【SQL执行流程结束】" + "=" * 20)
             
             return out
                 
         except Exception as e:
             last_exception = e
-            logger.warning(f"⚠️ 第 {attempt} 次查询失败: {e}")
+            logger.warning(f"\n⚠️ 第 {attempt} 次查询失败: {e}")
             
             if session_id and _is_connection_error(e):
-                logger.warning("🔧 检测到连接异常，标记连接为无效，下次重试将重建连接")
+                logger.warning("\n🔧 检测到连接异常，标记连接为无效，下次重试将重建连接")
                 connection_recreated = True
                 conn_manager.mark_connection_invalid(session_id)
             
             if attempt < max_retries:
-                logger.info(f"💡 将在 {retry_delay} 秒后重试...")
+                logger.info(f"\n💡 将在 {retry_delay} 秒后重试...")
             else:
                 logger.error(f"❌ 已达到最大重试次数 {max_retries}，放弃重试")
     

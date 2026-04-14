@@ -727,9 +727,9 @@ query_patterns:
     requires_permission: admin_department_scope_v1
     sql: |
       SELECT
-        g.id as 部门ID,
-        g.GroupName as 部门名称,
-        g.ParentID as 上级部门ID
+        g.id AS "部门ID",
+        g.GroupName AS "部门名称",
+        g.ParentID AS "上级部门ID"
       FROM s_group g
       ORDER BY g.GroupType ,g.id
 
@@ -739,8 +739,8 @@ query_patterns:
     sql: |
       SELECT
         m.ID,
-        u.UserName AS UserName,
-        g.GroupName AS GroupName,
+        u.UserName AS "用户名",
+        g.GroupName AS "部门名称",
         m.Name_C,
         m.Ip_C,
         m.Mac_c
@@ -827,9 +827,8 @@ query_patterns:
     sql: |
       SELECT
         r.ID,
-        0 AS PicIndex,
-        u.UserName AS UserName,
-        g.GroupName AS GroupName,
+        u.UserName AS "用户名",
+        g.GroupName AS "部门名称",
         m.Name_C,
         m.Ip_C,
         m.Mac_c

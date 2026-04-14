@@ -56,7 +56,7 @@ def metadata_query(table_name: str | None = None) -> str:
     返回：
         str: 表结构信息的文本描述，包含表名、说明、字段列表等
     """
-    logger.info(f"[metadata_query] 查询元数据: table_name={table_name}")
+    logger.info(f"\n[metadata_query] 查询元数据: table_name={table_name}")
 
     try:
         runtime = get_schema_runtime()

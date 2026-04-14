@@ -68,7 +68,7 @@ class ConnectionManager:
                     self._stop_event: threading.Event = threading.Event()
                     self._initialized = True
                     self._start_cleanup_thread()
-                    logger.info("✅ ConnectionManager 初始化完成")
+                    logger.info("\n✅ ConnectionManager 初始化完成")
     
     def _start_cleanup_thread(self) -> None:
         """启动清理线程"""
@@ -76,14 +76,14 @@ class ConnectionManager:
             return
         
         def cleanup_loop():
-            logger.info("🧹 连接清理线程已启动")
+            logger.info("\n🧹 连接清理线程已启动")
             while not self._stop_event.is_set():
                 try:
                     self._cleanup_expired_connections()
                 except Exception as e:
                     logger.error(f"❌ 清理线程异常: {e}")
                 time.sleep(60)
-            logger.info("🧹 连接清理线程已停止")
+            logger.info("\n🧹 连接清理线程已停止")
         
         self._cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
         self._cleanup_thread.start()
@@ -116,7 +116,7 @@ class ConnectionManager:
             connection.execute(text("SELECT 1"))
             return True
         except Exception as e:
-            logger.warning(f"⚠️ 连接健康检查失败: {e}")
+            logger.warning(f"\n⚠️ 连接健康检查失败: {e}")
             return False
     
     def generate_session_id(self) -> str:
@@ -142,18 +142,18 @@ class ConnectionManager:
                 
                 if self._is_connection_valid(conn_info.connection):
                     conn_info.last_used_at = time.time()
-                    logger.info(f"🔄 复用数据库连接，会话: {session_id[:8]}...")
+                    logger.info(f"\n🔄 复用数据库连接，会话: {session_id[:8]}...")
                     return conn_info.connection
                 else:
-                    logger.warning(f"⚠️ 连接已失效，重新创建，会话: {session_id[:8]}...")
+                    logger.warning(f"\n⚠️ 连接已失效，重新创建，会话: {session_id[:8]}...")
                     try:
                         conn_info.connection.close()
                         conn_info.engine.dispose()
                     except Exception as e:
-                        logger.warning(f"⚠️ 关闭旧连接时出错: {e}")
+                        logger.warning(f"\n⚠️ 关闭旧连接时出错: {e}")
                     del self._connections[session_id]
             
-            logger.info(f"🆕 创建新数据库连接，会话: {session_id[:8]}...")
+            logger.info(f"\n🆕 创建新数据库连接，会话: {session_id[:8]}...")
             
             try:
                 engine = create_engine(database_url, pool_pre_ping=True, pool_recycle=3600)
@@ -169,7 +169,7 @@ class ConnectionManager:
                 )
                 
                 self._connections[session_id] = conn_info
-                logger.info(f"✅ 数据库连接创建成功，会话: {session_id[:8]}...")
+                logger.info(f"\n✅ 数据库连接创建成功，会话: {session_id[:8]}...")
                 return connection
                 
             except Exception as e:
@@ -185,14 +185,14 @@ class ConnectionManager:
         """
         with self._lock:
             if session_id in self._connections:
-                logger.warning(f"⚠️ 标记连接为无效，会话: {session_id[:8]}...")
+                logger.warning(f"\n⚠️ 标记连接为无效，会话: {session_id[:8]}...")
                 conn_info = self._connections[session_id]
                 conn_info.is_active = False
                 try:
                     conn_info.connection.close()
                     conn_info.engine.dispose()
                 except Exception as e:
-                    logger.warning(f"⚠️ 关闭连接时出错: {e}")
+                    logger.warning(f"\n⚠️ 关闭连接时出错: {e}")
                 del self._connections[session_id]
     
     def close_connection(self, session_id: str, reason: str = "主动关闭") -> None:
@@ -205,20 +205,20 @@ class ConnectionManager:
         """
         with self._lock:
             if session_id not in self._connections:
-                logger.warning(f"⚠️ 会话连接不存在: {session_id[:8]}...")
+                logger.warning(f"\n⚠️ 会话连接不存在: {session_id[:8]}...")
                 return
             
             conn_info = self._connections[session_id]
             
             if not conn_info.is_active:
-                logger.warning(f"⚠️ 连接已关闭: {session_id[:8]}...")
+                logger.warning(f"\n⚠️ 连接已关闭: {session_id[:8]}...")
                 return
             
             try:
                 conn_info.connection.close()
                 conn_info.engine.dispose()
                 conn_info.is_active = False
-                logger.info(f"🔌 数据库连接已关闭（{reason}），会话: {session_id[:8]}...")
+                logger.info(f"\n🔌 数据库连接已关闭（{reason}），会话: {session_id[:8]}...")
             except Exception as e:
                 logger.error(f"❌ 关闭连接失败: {e}")
             finally:
@@ -252,12 +252,12 @@ class ConnectionManager:
     
     def shutdown(self) -> None:
         """关闭管理器，清理所有资源"""
-        logger.info("🔻 ConnectionManager 正在关闭...")
+        logger.info("\n🔻 ConnectionManager 正在关闭...")
         self._stop_event.set()
         self.close_all_connections()
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             self._cleanup_thread.join(timeout=5)
-        logger.info("✅ ConnectionManager 已关闭")
+        logger.info("\n✅ ConnectionManager 已关闭")
 
 
 def get_connection_manager() -> ConnectionManager:

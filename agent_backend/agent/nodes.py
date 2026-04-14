@@ -75,6 +75,11 @@ def init_node(state: AgentState) -> dict:
         "sql_results": [],
         "rag_results": [],
         "metadata_results": [],
+        "time_results": [],
+        "calculator_results": [],
+        "chart_configs": [],
+        "export_results": [],
+        "web_search_results": [],
         "data_tables": [],
         "references": [],
     }
@@ -103,16 +108,16 @@ def agent_node(state: AgentState) -> dict:
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
     messages = state["messages"]
-    logger.info(f"[agent_node] 调用LLM, 消息数: {len(messages)}, 已调用工具: {state.get('tool_call_count', 0)}")
+    logger.info(f"\n[agent_node] 调用LLM, 消息数: {len(messages)}, 已调用工具: {state.get('tool_call_count', 0)}")
 
     response = llm_with_tools.invoke(messages)
 
     elapsed = time.time() - t0
     if hasattr(response, "tool_calls") and response.tool_calls:
         tool_names = [tc["name"] for tc in response.tool_calls]
-        logger.info(f"[agent_node] LLM决定调用工具: {tool_names}, 耗时: {elapsed:.2f}秒")
+        logger.info(f"\n[agent_node] LLM决定调用工具: {tool_names}, 耗时: {elapsed:.2f}秒")
     else:
-        logger.info(f"[agent_node] LLM直接回答, 耗时: {elapsed:.2f}秒")
+        logger.info(f"\n[agent_node] LLM直接回答, 耗时: {elapsed:.2f}秒")
 
     return {"messages": [response]}
 
@@ -151,6 +156,11 @@ def tool_result_node(state: AgentState) -> dict:
     new_sql_results = list(state.get("sql_results", []))
     new_rag_results = list(state.get("rag_results", []))
     new_metadata_results = list(state.get("metadata_results", []))
+    new_time_results = list(state.get("time_results", []))
+    new_calculator_results = list(state.get("calculator_results", []))
+    new_chart_configs = list(state.get("chart_configs", []))
+    new_export_results = list(state.get("export_results", []))
+    new_web_search_results = list(state.get("web_search_results", []))
 
     tool_map = {t.name: t for t in ALL_TOOLS}
 
@@ -159,7 +169,7 @@ def tool_result_node(state: AgentState) -> dict:
         tool_args = tool_call["args"]
         tool_id = tool_call["id"]
 
-        logger.info(f"[tool_result_node] 执行工具: {tool_name}, 参数: {tool_args}")
+        logger.info(f"\n[tool_result_node] 执行工具: {tool_name}, 参数: {tool_args}")
         t_tool = time.time()
 
         try:
@@ -170,7 +180,7 @@ def tool_result_node(state: AgentState) -> dict:
                 result = selected_tool.invoke(tool_args)
 
             tool_call_count += 1
-            logger.info(f"[tool_result_node] 工具 {tool_name} 执行完成, 耗时: {time.time() - t_tool:.2f}秒")
+            logger.info(f"\n[tool_result_node] 工具 {tool_name} 执行完成, 耗时: {time.time() - t_tool:.2f}秒")
 
             if tool_name == "sql_query":
                 try:
@@ -178,6 +188,8 @@ def tool_result_node(state: AgentState) -> dict:
                     if "data_table" in parsed and parsed["data_table"]:
                         new_data_tables.append(parsed["data_table"])
                     new_sql_results.append(parsed)
+                    result_for_llm = {k: v for k, v in parsed.items() if k != "sql"}
+                    result = json.dumps(result_for_llm, ensure_ascii=False)
                 except (json.JSONDecodeError, TypeError):
                     pass
 
@@ -193,6 +205,41 @@ def tool_result_node(state: AgentState) -> dict:
             elif tool_name == "metadata_query":
                 new_metadata_results.append({"result": result})
 
+            elif tool_name == "get_current_time":
+                try:
+                    parsed = json.loads(result)
+                    new_time_results.append(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    new_time_results.append({"result": result})
+
+            elif tool_name == "calculator":
+                try:
+                    parsed = json.loads(result)
+                    new_calculator_results.append(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    new_calculator_results.append({"result": result})
+
+            elif tool_name == "generate_chart":
+                try:
+                    parsed = json.loads(result)
+                    new_chart_configs.append(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    new_chart_configs.append({"result": result})
+
+            elif tool_name == "export_data":
+                try:
+                    parsed = json.loads(result)
+                    new_export_results.append(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    new_export_results.append({"result": result})
+
+            elif tool_name == "web_search":
+                try:
+                    parsed = json.loads(result)
+                    new_web_search_results.append(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    new_web_search_results.append({"result": result})
+
         except Exception as e:
             logger.error(f"[tool_result_node] 工具执行异常: {tool_name}: {e}")
             result = json.dumps({"error": f"工具执行失败: {type(e).__name__}: {e}"}, ensure_ascii=False)
@@ -201,7 +248,7 @@ def tool_result_node(state: AgentState) -> dict:
             ToolMessage(content=str(result), tool_call_id=tool_id, name=tool_name)
         )
 
-    logger.info(f"[tool_result_node] 所有工具执行完成, 总耗时: {time.time() - t0:.2f}秒")
+    logger.info(f"\n[tool_result_node] 所有工具执行完成, 总耗时: {time.time() - t0:.2f}秒")
 
     return {
         "messages": tool_messages,
@@ -211,6 +258,11 @@ def tool_result_node(state: AgentState) -> dict:
         "sql_results": new_sql_results,
         "rag_results": new_rag_results,
         "metadata_results": new_metadata_results,
+        "time_results": new_time_results,
+        "calculator_results": new_calculator_results,
+        "chart_configs": new_chart_configs,
+        "export_results": new_export_results,
+        "web_search_results": new_web_search_results,
     }
 
 
@@ -234,7 +286,7 @@ def should_continue(state: AgentState) -> str:
     max_tool_calls = state.get("max_tool_calls", 5)
 
     if tool_call_count >= max_tool_calls:
-        logger.info(f"[should_continue] 达到最大工具调用次数 {max_tool_calls}，进入respond")
+        logger.info(f"\n[should_continue] 达到最大工具调用次数 {max_tool_calls}，进入respond")
         return "respond"
 
     if isinstance(last_message, AIMessage) and last_message.tool_calls:

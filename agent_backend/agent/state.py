@@ -52,6 +52,11 @@ class AgentState(TypedDict, total=False):
     sql_results: list[dict]
     rag_results: list[dict]
     metadata_results: list[dict]
+    time_results: list[dict]
+    calculator_results: list[dict]
+    chart_configs: list[dict]
+    export_results: list[dict]
+    web_search_results: list[dict]
     tool_call_count: int
     max_tool_calls: int
     data_tables: list[str]
