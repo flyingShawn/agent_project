@@ -86,7 +86,7 @@ def get_llm(
         kwargs["extra_body"] = {"reasoning_effort": "none"}
 
     logger.info(
-        "LLM初始化: base_url=%s, model=%s, streaming=%s, extra_body=%s",
+        "\nLLM初始化: base_url=%s, model=%s, streaming=%s, extra_body=%s",
         base_url, model, streaming, kwargs.get("extra_body"),
     )
 

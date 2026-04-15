@@ -188,6 +188,7 @@ def tool_result_node(state: AgentState) -> dict:
                     if "data_table" in parsed and parsed["data_table"]:
                         new_data_tables.append(parsed["data_table"])
                     new_sql_results.append(parsed)
+                    # 过滤掉sql字段，修复：sql_query 工具返回的 JSON 包含 sql 字段，作为 ToolMessage 发送给 LLM 后，LLM 可能在回答中复述 SQL 语句
                     result_for_llm = {k: v for k, v in parsed.items() if k != "sql"}
                     result = json.dumps(result_for_llm, ensure_ascii=False)
                 except (json.JSONDecodeError, TypeError):

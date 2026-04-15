@@ -52,7 +52,7 @@ from agent_backend.core.config_helper import get_database_url, get_max_rows
 from agent_backend.core.config_loader import get_schema_runtime
 from agent_backend.core.errors import AppError
 from agent_backend.rag_engine.retrieval import search_sql_samples
-from agent_backend.sql_agent.executor import execute_sql
+from agent_backend.sql_agent.executor import execute_sql, SqlExecutionError
 from agent_backend.sql_agent.prompt_builder import build_sql_prompt
 from agent_backend.sql_agent.sql_safety import (
     enforce_deny_select_columns,
@@ -192,7 +192,16 @@ def sql_query(question: str) -> str:
         if not db_url:
             return json.dumps({"error": "数据库未配置", "hint": "请检查DATABASE_URL配置"}, ensure_ascii=False)
 
-        exec_result = execute_sql(sql=sql, params={}, database_url=db_url)
+        try:
+            exec_result = execute_sql(sql=sql, params={}, database_url=db_url)
+        except SqlExecutionError as e:
+            logger.warning(f"\n[sql_query] SQL执行错误，通知LLM自检: {e.db_error}")
+            return json.dumps({
+                "error": f"SQL执行失败，数据库返回错误: {e.db_error}",
+                "failed_sql": e.original_sql,
+                "hint": "你生成的SQL有语法错误或引用了不存在的字段/表，请根据数据库错误信息自检，修正SQL后重新生成。注意检查：1)表名和列名是否正确 2)SQL语法是否正确 3)JOIN条件是否完整",
+            }, ensure_ascii=False)
+
         logger.info(f"\n[sql_query] 执行结果: {len(exec_result) if exec_result else 0} 行")
 
         if not exec_result or len(exec_result) == 0:

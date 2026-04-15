@@ -1,0 +1,27 @@
+- [ ] requirements.txt 中新增 APScheduler>=3.10 依赖
+- [ ] agent_task 和 agent_task_result 两张数据库表已创建（DDL 脚本存在且可执行）
+- [ ] 应用启动时自动检测并创建不存在的表
+- [ ] SchedulerManager 类实现完整：start/shutdown/add_task/remove_task/pause_task/resume_task/get_tasks
+- [ ] TaskExecutor 实现模板任务执行（直接执行 sql_template）
+- [ ] TaskExecutor 实现动态任务执行（调用 LLM 生成 SQL → 安全校验 → 执行）
+- [ ] 任务执行结果正确写入 agent_task_result 表
+- [ ] 任务执行异常被捕获并记录，不影响其他任务
+- [ ] scheduled_tasks.yaml 配置文件包含至少3个默认任务定义
+- [ ] 配置文件加载逻辑正确：与数据库对比，仅新增不存在的任务
+- [ ] FastAPI main.py 启动事件中正确初始化 SchedulerManager
+- [ ] FastAPI main.py 关闭事件中正确关闭调度器
+- [ ] docker-compose.yml 新增 SCHEDULER_ENABLED 和 SCHEDULED_TASKS_CONFIG_PATH 环境变量
+- [ ] docker-compose.yml 配置目录挂载包含 scheduled_tasks.yaml
+- [ ] schedule_task Tool 定义完整，支持 create/list/pause/resume/delete 五种 action
+- [ ] schedule_task Tool 已注册到 ALL_TOOLS 列表
+- [ ] SYSTEM_PROMPT 已添加 schedule_task 工具说明和决策规则
+- [ ] AgentState 已新增 scheduler_results 字段
+- [ ] tool_result_node 已新增 schedule_task 结果处理逻辑
+- [ ] REST API 端点全部实现：GET/POST/PUT/DELETE /scheduler/tasks/*
+- [ ] scheduler_router 已注册到 routes.py
+- [ ] 应用启动时调度器正常初始化，默认任务从配置文件加载到数据库
+- [ ] 定时任务按配置间隔执行，结果写入 agent_task_result 表
+- [ ] 通过聊天对话可成功创建定时任务（LLM 调用 schedule_task Tool）
+- [ ] 任务管理 API 端点功能正常（列表/触发/暂停/恢复/删除）
+- [ ] 应用重启后任务从数据库自动恢复并继续调度
+- [ ] 任务执行异常不影响调度器运行和其他任务
