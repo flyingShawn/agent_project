@@ -28,7 +28,9 @@ SSE事件格式（与前端兼容）：
 
 专有技术说明：
     - 使用graph.astream_events(version="v2")捕获细粒度事件
-    - on_chat_model_stream事件提供逐token流式输出能力
+    - 仅处理langgraph_node="agent"的LLM流式事件，过滤工具内部LLM调用
+    - 缓冲agent节点的LLM输出，在on_chat_model_end时判断是否为tool_call：
+      tool_call内容丢弃（不输出到前端），普通文本才流式推送
     - on_tool_end事件中提取data_tables和references用于末尾追加
     - 异步生成器配合FastAPI的StreamingResponse实现真正的流式推送
 
@@ -97,22 +99,47 @@ async def stream_graph_response(
     chart_configs: list[dict] = []
     export_results: list[dict] = []
     first_token = True
+    pending_chunks: list[str] = []
+    pending_run_id: str | None = None
 
     try:
         async for event in graph.astream_events(initial_state, version="v2"):
             kind = event["event"]
             name = event.get("name", "")
+            run_id = event.get("run_id", "")
 
             if kind == "on_chat_model_stream":
                 chunk = event["data"].get("chunk")
                 if chunk and hasattr(chunk, "content") and chunk.content:
-                    if first_token:
-                        logger.info("\n[stream] 收到首个token，流式输出已生效")
-                        first_token = False
-                    yield _sse_event("delta", chunk.content)
+                    metadata = event.get("metadata", {})
+                    if metadata.get("langgraph_node") != "agent":
+                        continue
+                    if pending_run_id and pending_run_id != run_id:
+                        for c in pending_chunks:
+                            yield _sse_event("delta", c)
+                        pending_chunks = []
+                    pending_run_id = run_id
+                    pending_chunks.append(chunk.content)
 
             elif kind == "on_chat_model_end":
-                logger.info(f"\n[stream] LLM调用完成: {name}")
+                metadata = event.get("metadata", {})
+                if metadata.get("langgraph_node") != "agent":
+                    continue
+                output = event["data"].get("output")
+                has_tool_calls = hasattr(output, "tool_calls") and output.tool_calls
+                if has_tool_calls:
+                    pending_chunks = []
+                    pending_run_id = None
+                else:
+                    if pending_chunks:
+                        if first_token:
+                            logger.info("\n[stream] 收到首个token，流式输出已生效")
+                            first_token = False
+                        for c in pending_chunks:
+                            yield _sse_event("delta", c)
+                        pending_chunks = []
+                        pending_run_id = None
+                logger.info(f"\n[stream] LLM调用完成: {name}, has_tool_calls={has_tool_calls}")
 
             elif kind == "on_tool_start":
                 logger.info(f"\n[stream] 开始执行工具: {name}")

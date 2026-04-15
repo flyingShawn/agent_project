@@ -41,6 +41,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from langchain_core.tools import tool
@@ -62,6 +64,33 @@ from agent_backend.sql_agent.sql_safety import (
 logger = logging.getLogger(__name__)
 
 MAX_DISPLAY_ROWS = 50
+
+
+class _SqlJsonEncoder(json.JSONEncoder):
+    def default(self, o: Any) -> Any:
+        if isinstance(o, datetime):
+            return o.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(o, date):
+            return o.strftime("%Y-%m-%d")
+        if isinstance(o, Decimal):
+            return float(o)
+        return super().default(o)
+
+
+def _sanitize_rows(rows: list[dict]) -> list[dict]:
+    out = []
+    for row in rows:
+        clean = {}
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                v = v.strftime("%Y-%m-%d %H:%M:%S")
+            elif isinstance(v, date):
+                v = v.strftime("%Y-%m-%d")
+            elif isinstance(v, Decimal):
+                v = float(v)
+            clean[k] = v
+        out.append(clean)
+    return out
 
 
 class SqlQueryInput(BaseModel):
@@ -216,21 +245,26 @@ def sql_query(question: str) -> str:
 
         columns = list(exec_result[0].keys())
 
-        # 这里是保留了之前总结查询结果的逻辑，多行还会表格，如何llm够智能，这个应该交给llm来做最合适。
+        sanitized = _sanitize_rows(exec_result)
+
         if len(exec_result) == 1 and len(exec_result[0]) == 1:
             col_name = list(exec_result[0].keys())[0]
             col_value = list(exec_result[0].values())[0]
+            if isinstance(col_value, (datetime, date)):
+                col_value = col_value.strftime("%Y-%m-%d %H:%M:%S") if isinstance(col_value, datetime) else col_value.strftime("%Y-%m-%d")
+            elif isinstance(col_value, Decimal):
+                col_value = float(col_value)
             data_table = f"{col_name}: {col_value}"
-        else:
-            data_table = _build_markdown_table(exec_result)
-
+        else: 
+        #     data_table = _build_markdown_table(sanitized) 注掉，现在末尾暂时不显示图标，我会移到大模型回答中
+            data_table = ""
         return json.dumps({
             "sql": sql,
-            "rows": exec_result[:MAX_DISPLAY_ROWS],
+            "rows": sanitized[:MAX_DISPLAY_ROWS],
             "row_count": len(exec_result),
             "columns": columns,
             "data_table": data_table,
-        }, ensure_ascii=False)
+        }, ensure_ascii=False, cls=_SqlJsonEncoder)
 
     except AppError as e:
         logger.error(f"[sql_query] AppError: {e.message}")

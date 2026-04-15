@@ -6,7 +6,7 @@
 
 适用场景：当用户询问某IP地址对应的设备详细信息时使用，包括设备名称、IP、MAC、用户名、所属部门、操作系统、在线状态等。
 
-关键表：s_machine, s_group, s_user, onlineinfo, a_clientpara, a_machineruntime
+关键表：s\_machine, s\_group, s\_user, onlineinfo, a\_clientpara, a\_machineruntime
 
 ```sql
 SELECT
@@ -39,13 +39,13 @@ WHERE
 ORDER BY INET_ATON(a.IP_C)
 ```
 
----
+***
 
 #### 查询机器在线信息
 
-适用场景：当用户查询在线设备列表时，要查询在线机器信息，需展示这个语句中的几列，在线机器一定开机了 ，0.0小时为刚开机不久。
+适用场景：当用户查询在线设备列表时，要查询在线机器信息，查看客户端在线状态，需展示这个语句中的几列，在线机器一定开机了 ，0.0小时为刚开机不久。
 
-关键表：s_machine, s_group, s_user, onlineinfo, a_clientpara, a_machineruntime
+关键表：s\_machine, s\_group, s\_user, onlineinfo, a\_clientpara, a\_machineruntime
 
 ```sql
 SELECT
@@ -76,7 +76,7 @@ ORDER BY INET_ATON(a.IP_C)
 
 适用场景：当用户询问部门列表、部门名称、部门层级结构等信息时使用。GroupType
 
-关键表：s_group
+关键表：s\_group
 
 ```sql
 SELECT
@@ -91,13 +91,13 @@ FROM s_group g
 ORDER BY g.GroupType ASC, g.id ASC
 ```
 
----
+***
 
 #### 查询全部设备的硬件资产信息
 
 适用场景：当用户询问设备硬件资产、CPU、内存、硬盘、显卡、品牌型号等信息时使用。
 
-关键表：A_ClientHardInfo2, s_Machine, s_User, s_Group, a_clientpara
+关键表：A\_ClientHardInfo2, s\_Machine, s\_User, s\_Group, a\_clientpara
 
 ```sql
 SELECT
@@ -142,13 +142,11 @@ ORDER BY
     a.MtID ASC
 ```
 
-
-
 #### 查询最近设备远程记录
 
 适用场景：当用户询问客户端远程记录时使用。managerid是发起远程的管理机id，其他内容是被远程的客户端设备信息。
 
-关键表：a_remoteinfo
+关键表：a\_remoteinfo
 
 粗版本
 
@@ -178,7 +176,7 @@ FROM
 	a_remoteinfo
 ```
 
----
+***
 
 #### 查询指定的管理机信息
 
@@ -196,7 +194,7 @@ FROM
 	manageinfo
 ```
 
----
+***
 
 #### 查询最近管理员日志
 
@@ -215,13 +213,13 @@ FROM
 	adminlog
 ```
 
----
+***
 
 #### 查询设备开关机日志
 
 适用场景：需要查询某一段时间内所有客户端（机器、设备、电脑）开关机时间信息
 
-关键表：a_OpenCloseLog, s_Machine, s_Group
+关键表：a\_OpenCloseLog, s\_Machine, s\_Group
 
 ```sql
 SELECT
@@ -246,7 +244,7 @@ ORDER BY
 
 适用场景：需要查询某一段时间内所有客户端（机器、设备、电脑）usb使用和操作日志
 
-关键表：USBDB, s_Machine, s_Group
+关键表：USBDB, s\_Machine, s\_Group
 
 ```sql
 SELECT

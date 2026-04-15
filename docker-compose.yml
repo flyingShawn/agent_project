@@ -82,6 +82,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    environment:
+      - APP_NAME=${APP_NAME:-阳途智能助手}
+      - APP_SUBTITLE=${APP_SUBTITLE:-阳途智能助手为您服务}
+      - APP_WELCOME_TEXT=${APP_WELCOME_TEXT:-有什么我能帮您的呢？}
+      - APP_INPUT_PLACEHOLDER=${APP_INPUT_PLACEHOLDER:-给智能助手发消息}
+      - QUICK_OPTIONS=${QUICK_OPTIONS:-查看客户端在线状态,今日远程操作记录,近期开关机日志,老旧资产设备查询,部门设备数量统计,USB使用记录查询}
     depends_on:
       - backend
     networks:
@@ -96,7 +102,7 @@ services:
   # ==================== Qdrant向量数据库 ====================
   qdrant:
     # image: hub-mirror.c.163.com/qdrant/qdrant:latest
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.17.0
     container_name: agent-qdrant
     restart: unless-stopped
     ports:

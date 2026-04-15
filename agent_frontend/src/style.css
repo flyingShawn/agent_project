@@ -1,14 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --chat-bg: #f7f7f8;
+  --chat-bg: #f7f8fa;
   --user-bubble: #2563eb;
   --assistant-bubble: #ffffff;
-  --border-color: #e5e7eb;
-  --text-primary: #1f2937;
+  --border-color: #e8ecf2;
+  --text-primary: #1a1a2e;
   --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --surface-muted: #f7f8fa;
+  --surface-hover: #f0f2f5;
 }
 
 * {
@@ -18,15 +23,15 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background-color: var(--chat-bg);
   color: var(--text-primary);
   line-height: 1.6;
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -35,7 +40,7 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: #d1d5db;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -46,60 +51,60 @@ body {
   .message-content pre {
     @apply bg-gray-900 text-gray-100 rounded-lg p-4 my-2 overflow-x-auto;
   }
-  
+
   .message-content code {
     @apply bg-gray-100 text-pink-600 px-1.5 py-0.5 rounded text-sm;
   }
-  
+
   .message-content pre code {
     @apply bg-transparent text-gray-100 p-0;
   }
-  
+
   .message-content table {
     @apply border-collapse my-3 w-full;
     display: table;
   }
-  
+
   .message-content th,
   .message-content td {
     @apply border border-gray-300 px-3 py-2 text-left;
   }
-  
+
   .message-content th {
     @apply bg-gray-100 font-semibold;
   }
-  
+
   .message-content ul,
   .message-content ol {
     @apply pl-6 my-2;
   }
-  
+
   .message-content li {
     @apply my-1;
   }
-  
+
   .message-content blockquote {
     @apply border-l-4 border-gray-300 pl-4 my-2 text-gray-600 italic;
   }
-  
+
   .message-content p {
     @apply my-2;
   }
-  
+
   .message-content h1,
   .message-content h2,
   .message-content h3 {
     @apply font-bold my-3;
   }
-  
+
   .message-content h1 {
     @apply text-xl;
   }
-  
+
   .message-content h2 {
     @apply text-lg;
   }
-  
+
   .message-content h3 {
     @apply text-base;
   }
@@ -139,4 +144,18 @@ body {
 .slide-up-leave-to {
   transform: translateY(10px);
   opacity: 0;
+}
+
+.quick-option-card {
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.quick-option-card:hover {
+  background-color: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.quick-option-card:active {
+  background-color: #dbeafe;
 }
