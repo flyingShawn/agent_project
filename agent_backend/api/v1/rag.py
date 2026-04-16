@@ -3,16 +3,7 @@ RAG文档同步API接口模块
 
 文件功能：
     提供RAG文档知识库和SQL样本库的同步触发端点。
-    当前为占位实现，建议使用CLI命令执行同步操作。
-
-在系统架构中的定位：
-    位于API层，是RAG引擎同步功能的HTTP入口。
-    完整同步功能需通过CLI命令执行（依赖Docling解析等重量级操作）。
-
-主要使用场景：
-    - 前端触发文档知识库同步（当前返回提示使用CLI）
-    - 前端触发SQL样本库同步（当前返回提示使用CLI）
-    - 查询同步任务状态（当前返回not_implemented）
+    同步操作在后台线程中执行，避免阻塞API响应。
 
 核心端点：
     - POST /api/v1/rag/sync: 触发文档知识库同步
@@ -20,12 +11,15 @@ RAG文档同步API接口模块
     - GET /api/v1/rag/sync/{job_id}: 查询同步任务状态
 
 关联文件：
-    - agent_backend/rag_engine/cli.py: CLI同步命令的实际实现
-    - agent_backend/api/routes.py: 路由注册
+    - agent_backend/rag_engine/ingest.py: 导入主流程
+    - agent_backend/rag_engine/settings.py: 配置定义
+    - agent_backend/rag_engine/state.py: 增量状态管理
 """
 from __future__ import annotations
 
 import logging
+import threading
+import uuid
 from typing import Any
 
 from fastapi import APIRouter
@@ -35,72 +29,102 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["rag"])
 
+_jobs: dict[str, dict[str, Any]] = {}
+
 
 class SyncRequest(BaseModel):
-    """同步请求模型（当前无参数）"""
-    pass
+    mode: str = "incremental"
 
 
 class SyncResponse(BaseModel):
-    """同步响应模型"""
     job_id: str
     status: str
     message: str
 
 
+def _run_ingest(job_id: str, kb_type: str, mode: str) -> None:
+    job = _jobs[job_id]
+    try:
+        from agent_backend.rag_engine.ingest import ingest_directory
+        from agent_backend.rag_engine.settings import RagIngestSettings
+        from agent_backend.rag_engine.state import IngestStateStore
+
+        settings = RagIngestSettings()
+
+        if kb_type == "sql":
+            docs_dir = settings.resolve_path(settings.sql_dir)
+            state_path = settings.resolve_path(settings.sql_state_path)
+        else:
+            docs_dir = settings.resolve_path(settings.docs_dir)
+            state_path = settings.resolve_path(settings.docs_state_path)
+
+        state = IngestStateStore(state_path)
+        result = ingest_directory(
+            docs_dir=docs_dir,
+            settings=settings,
+            state_store=state,
+            mode=mode,
+            kb_type=kb_type,
+        )
+
+        job["status"] = "completed"
+        job["result"] = {
+            "files_scanned": result.files_scanned,
+            "files_skipped": result.files_skipped,
+            "files_processed": result.files_processed,
+            "chunks_upserted": result.chunks_upserted,
+            "errors": result.errors,
+        }
+        logger.info(
+            f"\n同步任务完成 [{job_id}]: "
+            f"扫描={result.files_scanned}, 跳过={result.files_skipped}, "
+            f"处理={result.files_processed}, 写入={result.chunks_upserted}"
+        )
+    except Exception as e:
+        job["status"] = "failed"
+        job["error"] = str(e)
+        logger.error(f"\n同步任务失败 [{job_id}]: {e}")
+
+
 @router.post("/rag/sync", response_model=SyncResponse)
 def sync_docs(req: SyncRequest) -> SyncResponse:
-    """
-    触发文档知识库同步。
+    mode = req.mode if req.mode in ("full", "incremental") else "incremental"
+    job_id = str(uuid.uuid4())[:8]
 
-    当前为占位实现，建议使用CLI命令执行：
-    python -m agent_backend.rag_engine.cli sync
+    _jobs[job_id] = {"status": "running", "kb_type": "docs", "mode": mode}
 
-    参数：
-        req: SyncRequest（当前无参数）
+    t = threading.Thread(target=_run_ingest, args=(job_id, "docs", mode), daemon=True)
+    t.start()
 
-    返回：
-        SyncResponse: 包含job_id/status/message的响应
-    """
-    logger.info("RAG文档同步请求")
+    logger.info(f"\n文档同步任务已启动 [{job_id}], 模式: {mode}")
     return SyncResponse(
-        job_id="manual",
-        status="not_implemented",
-        message="请使用CLI命令执行文档同步: python -m agent_backend.rag_engine.cli sync",
+        job_id=job_id,
+        status="running",
+        message=f"文档同步任务已启动, 模式: {mode}",
     )
 
 
 @router.post("/rag/sync-sql", response_model=SyncResponse)
 def sync_sql_samples(req: SyncRequest) -> SyncResponse:
-    """
-    触发SQL样本库同步。
+    mode = req.mode if req.mode in ("full", "incremental") else "incremental"
+    job_id = str(uuid.uuid4())[:8]
 
-    当前为占位实现，建议使用CLI命令执行：
-    python -m agent_backend.rag_engine.cli sync-sql
+    _jobs[job_id] = {"status": "running", "kb_type": "sql", "mode": mode}
 
-    参数：
-        req: SyncRequest（当前无参数）
+    t = threading.Thread(target=_run_ingest, args=(job_id, "sql", mode), daemon=True)
+    t.start()
 
-    返回：
-        SyncResponse: 包含job_id/status/message的响应
-    """
-    logger.info("SQL样本同步请求")
+    logger.info(f"\nSQL样本同步任务已启动 [{job_id}], 模式: {mode}")
     return SyncResponse(
-        job_id="manual",
-        status="not_implemented",
-        message="请使用CLI命令执行SQL样本同步: python -m agent_backend.rag_engine.cli sync-sql",
+        job_id=job_id,
+        status="running",
+        message=f"SQL样本同步任务已启动, 模式: {mode}",
     )
 
 
 @router.get("/rag/sync/{job_id}")
 def get_sync_status(job_id: str) -> dict:
-    """
-    查询同步任务状态。
-
-    参数：
-        job_id: 同步任务ID
-
-    返回：
-        dict: 包含job_id和status的状态信息
-    """
-    return {"job_id": job_id, "status": "not_implemented"}
+    job = _jobs.get(job_id)
+    if not job:
+        return {"job_id": job_id, "status": "not_found"}
+    return {"job_id": job_id, **job}

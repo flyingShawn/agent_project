@@ -29,24 +29,6 @@ body {
   line-height: 1.6;
 }
 
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-
 @layer components {
   .message-content pre {
     @apply bg-gray-900 text-gray-100 rounded-lg p-4 my-2 overflow-x-auto;

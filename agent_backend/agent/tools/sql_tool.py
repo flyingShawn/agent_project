@@ -152,7 +152,8 @@ def _build_markdown_table(rows: list[dict]) -> str:
 def sql_query(question: str) -> str:
     """
     查询桌面管理系统的数据库。
-    当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员等
+    当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员、
+    操作记录、远程操作记录、登录日志、任何"记录"或"日志"类查询等
     需要从数据库获取数据时使用此工具。
 
     参数：
@@ -186,6 +187,7 @@ def sql_query(question: str) -> str:
         prompt += "- WHERE条件构建方式\n"
         prompt += "- 聚合函数使用方式\n"
         prompt += "如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。\n"
+        prompt += "\n【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。\n"
 
         sql_llm = get_sql_llm()
         messages = [
@@ -255,9 +257,8 @@ def sql_query(question: str) -> str:
             elif isinstance(col_value, Decimal):
                 col_value = float(col_value)
             data_table = f"{col_name}: {col_value}"
-        else: 
-        #     data_table = _build_markdown_table(sanitized) 注掉，现在末尾暂时不显示图标，我会移到大模型回答中
-            data_table = ""
+        else:
+            data_table = _build_markdown_table(sanitized)
         result_dict = {
             "sql": sql,
             "rows": sanitized[:MAX_DISPLAY_ROWS],

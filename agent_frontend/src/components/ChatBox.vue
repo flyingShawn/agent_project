@@ -2,7 +2,7 @@
 import { ref, nextTick, onUnmounted, computed } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import ImageUploader from './ImageUploader.vue'
-import { sendChatMessage } from '../api/chat'
+import { sendChatMessage, abortCurrentRequest } from '../api/chat'
 import config from '../config'
 
 const props = defineProps({
@@ -106,11 +106,19 @@ const resetSession = async () => {
   messages.value = []
 }
 
+const stopGeneration = () => {
+  abortCurrentRequest()
+}
+
 const sendMessage = async (overrideText) => {
   const text = (overrideText || inputText.value).trim()
 
   if (!text && pendingImages.value.length === 0) return
-  if (isLoading.value) return
+
+  if (isLoading.value) {
+    stopGeneration()
+    return
+  }
 
   const userMessage = {
     id: Date.now(),
@@ -141,6 +149,7 @@ const sendMessage = async (overrideText) => {
     role: 'assistant',
     content: '',
     intent: null,
+    charts: [],
     timestamp: new Date().toISOString(),
     isStreaming: true,
   }
@@ -187,6 +196,11 @@ const sendMessage = async (overrideText) => {
             msg.content = msg.content + link
             scrollToBottom()
           }
+        } else if (event === 'chart') {
+          if (data && data.echarts_option) {
+            msg.charts = [...(msg.charts || []), data]
+            scrollToBottom()
+          }
         } else if (event === 'done') {
           msg.isStreaming = false
           msg.route = data.route
@@ -203,9 +217,17 @@ const sendMessage = async (overrideText) => {
   } catch (error) {
     const msgIndex = messages.value.findIndex(m => m.id === assistantMessageId)
     if (msgIndex !== -1) {
-      messages.value[msgIndex].isStreaming = false
-      messages.value[msgIndex].content = `请求失败: ${error.message}`
-      messages.value[msgIndex].isError = true
+      if (error.name === 'AbortError') {
+        messages.value[msgIndex].isStreaming = false
+        if (!messages.value[msgIndex].content) {
+          messages.value[msgIndex].content = '已停止生成'
+        }
+        messages.value[msgIndex].isStopped = true
+      } else {
+        messages.value[msgIndex].isStreaming = false
+        messages.value[msgIndex].content = `请求失败: ${error.message}`
+        messages.value[msgIndex].isError = true
+      }
     }
   } finally {
     isLoading.value = false
@@ -216,6 +238,7 @@ const sendMessage = async (overrideText) => {
 const handleKeydown = (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
+    if (isLoading.value) return
     sendMessage()
   }
 }
@@ -239,7 +262,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col relative">
+  <div class="h-full flex flex-col relative" @paste="handlePaste">
     <Transition name="fade">
       <div
         v-if="showSidebar"
@@ -295,7 +318,6 @@ onUnmounted(() => {
     <div
       ref="messagesContainer"
       class="flex-1 overflow-y-auto"
-      @paste="handlePaste"
     >
       <div v-if="!hasMessages" class="h-full flex flex-col items-center justify-center px-6 pb-24">
         <div class="text-center mb-8">
@@ -367,15 +389,25 @@ onUnmounted(() => {
           v-model="inputText"
           @keydown="handleKeydown"
           @input="autoResize"
-          :placeholder="config.inputPlaceholder"
+          :placeholder="isLoading ? '回复中，输入内容等待发送...' : config.inputPlaceholder"
           rows="1"
           class="flex-1 resize-none bg-transparent px-1 py-1 text-sm focus:outline-none placeholder:text-text-tertiary"
-          :disabled="isLoading"
         ></textarea>
 
         <button
+          v-if="isLoading"
+          @click="stopGeneration"
+          class="flex-shrink-0 w-8 h-8 bg-red-500 text-white rounded-full hover:bg-red-600 transition-all flex items-center justify-center cursor-pointer"
+          title="停止生成"
+        >
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="6" width="12" height="12" rx="1" />
+          </svg>
+        </button>
+        <button
+          v-else
           @click="sendMessage()"
-          :disabled="isLoading || (!inputText.trim() && pendingImages.length === 0)"
+          :disabled="!inputText.trim() && pendingImages.length === 0"
           class="flex-shrink-0 w-8 h-8 bg-primary-500 text-white rounded-full hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center justify-center cursor-pointer"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -389,7 +421,6 @@ onUnmounted(() => {
         <button
           v-if="currentSessionId"
           @click="resetSession"
-          :disabled="isLoading"
           class="hover:text-text-secondary transition-colors cursor-pointer"
         >
           新对话

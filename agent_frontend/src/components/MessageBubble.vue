@@ -3,6 +3,7 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js'
+import ChartBlock from './ChartBlock.vue'
 
 const props = defineProps({
   message: {
@@ -127,6 +128,19 @@ const getIntentLabel = (intent) => {
           ]"
           v-html="renderedHtml"
         ></div>
+
+        <div
+          v-if="!isUser && message.charts && message.charts.length > 0"
+          class="mt-3 space-y-3"
+        >
+          <div
+            v-for="(chart, index) in message.charts"
+            :key="index"
+            class="bg-[#fafbfc] rounded-lg border border-[#e8ecf2] p-3"
+          >
+            <ChartBlock :option="chart.echarts_option" />
+          </div>
+        </div>
       </div>
     </div>
   </div>

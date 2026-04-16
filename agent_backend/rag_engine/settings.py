@@ -22,7 +22,7 @@ class RagIngestSettings(BaseSettings):
 
     chunk_max_chars: int = 800
     chunk_overlap: int = 100
-    supported_extensions: list[str] = [".md", ".txt", ".docx", ".xlsx", ".pdf"]
+    supported_extensions: list[str] = [".md", ".txt", ".docx", ".xlsx", ".pdf", ".pptx"]
 
     model_config = {"env_prefix": "RAG_", "env_file": ".env", "extra": "ignore"}
 

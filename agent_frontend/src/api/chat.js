@@ -1,5 +1,14 @@
 const API_BASE = '/api/v1'
 
+let currentAbortController = null
+
+export function abortCurrentRequest() {
+  if (currentAbortController) {
+    currentAbortController.abort()
+    currentAbortController = null
+  }
+}
+
 export async function sendChatMessage({
   question,
   history = [],
@@ -9,6 +18,9 @@ export async function sendChatMessage({
   session_id = null,
   onEvent,
 }) {
+  const controller = new AbortController()
+  currentAbortController = controller
+
   try {
     const response = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
@@ -23,6 +35,7 @@ export async function sendChatMessage({
         mode,
         session_id,
       }),
+      signal: controller.signal,
     })
 
     if (!response.ok) {
@@ -33,19 +46,7 @@ export async function sendChatMessage({
     const decoder = new TextDecoder()
     let buffer = ''
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        break
-      }
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      let currentEvent = null
-      let currentData = null
-
+    const processLines = (lines, currentEvent, currentData) => {
       for (const line of lines) {
         if (line.startsWith('event: ')) {
           currentEvent = line.slice(7).trim()
@@ -67,9 +68,41 @@ export async function sendChatMessage({
           currentData = null
         }
       }
+      return { currentEvent, currentData }
+    }
+
+    let pendingEvent = null
+    let pendingData = null
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      const result = processLines(lines, pendingEvent, pendingData)
+      pendingEvent = result.currentEvent
+      pendingData = result.currentData
+    }
+
+    if (buffer.trim() || pendingEvent) {
+      const finalLines = buffer.split('\n')
+      processLines(finalLines, pendingEvent, pendingData)
     }
   } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('[Chat API] 请求已被用户中断')
+      throw new DOMException('请求已被用户中断', 'AbortError')
+    }
     console.error('[Chat API] Error:', error)
     throw error
+  } finally {
+    if (currentAbortController === controller) {
+      currentAbortController = null
+    }
   }
 }

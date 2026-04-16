@@ -42,7 +42,7 @@ def _parse_file(file_path: Path) -> str:
     if suffix in (".md", ".txt"):
         return file_path.read_text(encoding="utf-8", errors="replace")
 
-    if suffix in (".docx", ".xlsx", ".pdf"):
+    if suffix in (".docx", ".xlsx", ".pdf", ".pptx"):
         try:
             from docling.document_converter import DocumentConverter
 

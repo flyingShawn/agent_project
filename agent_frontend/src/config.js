@@ -15,12 +15,26 @@ const defaultConfig = {
 
 const runtimeConfig = window.__APP_CONFIG__ || {}
 
+const parseQuickOptions = (val) => {
+  if (Array.isArray(val)) return val
+  if (typeof val === 'string' && val.trim()) return val.split(',').map((s) => s.trim()).filter(Boolean)
+  return null
+}
+
+const envConfig = {
+  appName: import.meta.env.VITE_APP_NAME || null,
+  subtitle: import.meta.env.VITE_APP_SUBTITLE || null,
+  welcomeText: import.meta.env.VITE_APP_WELCOME_TEXT || null,
+  inputPlaceholder: import.meta.env.VITE_APP_INPUT_PLACEHOLDER || null,
+  quickOptions: parseQuickOptions(import.meta.env.VITE_QUICK_OPTIONS || ''),
+}
+
 const config = {
-  appName: runtimeConfig.appName || defaultConfig.appName,
-  subtitle: runtimeConfig.subtitle || defaultConfig.subtitle,
-  welcomeText: runtimeConfig.welcomeText || defaultConfig.welcomeText,
-  inputPlaceholder: runtimeConfig.inputPlaceholder || defaultConfig.inputPlaceholder,
-  quickOptions: runtimeConfig.quickOptions || defaultConfig.quickOptions,
+  appName: runtimeConfig.appName || envConfig.appName || defaultConfig.appName,
+  subtitle: runtimeConfig.subtitle || envConfig.subtitle || defaultConfig.subtitle,
+  welcomeText: runtimeConfig.welcomeText || envConfig.welcomeText || defaultConfig.welcomeText,
+  inputPlaceholder: runtimeConfig.inputPlaceholder || envConfig.inputPlaceholder || defaultConfig.inputPlaceholder,
+  quickOptions: runtimeConfig.quickOptions || envConfig.quickOptions || defaultConfig.quickOptions,
 }
 
 export default config

@@ -42,6 +42,7 @@ SSE事件格式（与前端兼容）：
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator
@@ -49,6 +50,8 @@ from typing import Any, AsyncIterator
 from agent_backend.agent.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+AGENT_TIMEOUT_SECONDS = 300
 
 _TOOL_STATUS_MESSAGES = {
     "sql_query": "🔍 正在查询数据...",
@@ -80,11 +83,21 @@ def _sse_event(event: str, data: str | dict) -> str:
     return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
 
 
+async def _aiter_with_timeout(aiter: AsyncIterator, timeout: float) -> AsyncIterator:
+    """为异步迭代器添加总超时限制，超时后抛出asyncio.TimeoutError"""
+    deadline = asyncio.get_event_loop().time() + timeout
+    async for item in aiter:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            raise asyncio.TimeoutError()
+        yield item
+
+
 async def stream_graph_response(
     graph: Any,
     initial_state: dict,
 ) -> AsyncIterator[str]:
-    logger.info("\n[stream] 开始流式输出 (astream_events v2)")
+    logger.info("\n[stream] 开始流式输出 (astream_events v2), 超时: {0}秒".format(AGENT_TIMEOUT_SECONDS))
 
     data_tables: list[str] = []
     references: list[str] = []
@@ -93,8 +106,13 @@ async def stream_graph_response(
     first_token = True
     has_status_shown = False
 
+    timed_stream = _aiter_with_timeout(
+        graph.astream_events(initial_state, version="v2"),
+        AGENT_TIMEOUT_SECONDS,
+    )
+
     try:
-        async for event in graph.astream_events(initial_state, version="v2"):
+        async for event in timed_stream:
             kind = event["event"]
             name = event.get("name", "")
             run_id = event.get("run_id", "")
@@ -185,6 +203,10 @@ async def stream_graph_response(
                     except (json.JSONDecodeError, TypeError):
                         pass
 
+    except asyncio.TimeoutError:
+        logger.warning(f"\n[stream] Agent执行超时({AGENT_TIMEOUT_SECONDS}秒)，强制结束")
+        yield _sse_event("error", {"error": "抱歉，处理时间有点长，我已经尽力了但还是没能完成。请尝试简化您的问题，或者稍后再试试吧~"})
+        return
     except Exception as e:
         logger.error(f"[stream] 流式输出异常: {type(e).__name__}: {e}")
         import traceback

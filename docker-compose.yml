@@ -35,6 +35,9 @@ services:
       - RAG_HYBRID_ALPHA=${RAG_HYBRID_ALPHA:-0.7}
       - RAG_TOP_K=${RAG_TOP_K:-5}
 
+      - RAG_VECTOR_MIN_SCORE=${RAG_VECTOR_MIN_SCORE:-0.5}
+      - RAG_CANDIDATE_K=${RAG_CANDIDATE_K:-30}
+
       # SQL样本库配置
       - RAG_SQL_DIR=/data/sql
       - RAG_SQL_QDRANT_COLLECTION=${RAG_SQL_QDRANT_COLLECTION:-desk_agent_sql}
@@ -51,6 +54,10 @@ services:
       - DB_USER=${DB_USER:-}
       - DB_PASSWORD=${DB_PASSWORD:-}
       - SQL_MAX_ROWS=${SQL_MAX_ROWS:-500}
+
+      # 网络搜索配置
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-5}
     volumes:
       # 挂载文档知识库目录（宿主机docs目录 → 容器/data/docs）
       # 注意：挂载源使用独立的宿主机变量，不使用容器内的RAG_DOCS_DIR
