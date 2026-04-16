@@ -35,6 +35,9 @@ services:
       - RAG_HYBRID_ALPHA=${RAG_HYBRID_ALPHA:-0.7}
       - RAG_TOP_K=${RAG_TOP_K:-5}
 
+      - RAG_VECTOR_MIN_SCORE=${RAG_VECTOR_MIN_SCORE:-0.5}
+      - RAG_CANDIDATE_K=${RAG_CANDIDATE_K:-30}
+
       # SQL样本库配置
       - RAG_SQL_DIR=/data/sql
       - RAG_SQL_QDRANT_COLLECTION=${RAG_SQL_QDRANT_COLLECTION:-desk_agent_sql}
@@ -51,6 +54,10 @@ services:
       - DB_USER=${DB_USER:-}
       - DB_PASSWORD=${DB_PASSWORD:-}
       - SQL_MAX_ROWS=${SQL_MAX_ROWS:-500}
+
+      # 网络搜索配置
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-5}
     volumes:
       # 挂载文档知识库目录（宿主机docs目录 → 容器/data/docs）
       # 注意：挂载源使用独立的宿主机变量，不使用容器内的RAG_DOCS_DIR
@@ -82,6 +89,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    environment:
+      - APP_NAME=${APP_NAME:-阳途智能助手}
+      - APP_SUBTITLE=${APP_SUBTITLE:-阳途智能助手为您服务}
+      - APP_WELCOME_TEXT=${APP_WELCOME_TEXT:-有什么我能帮您的呢？}
+      - APP_INPUT_PLACEHOLDER=${APP_INPUT_PLACEHOLDER:-给智能助手发消息}
+      - QUICK_OPTIONS=${QUICK_OPTIONS:-查看客户端在线状态,今日远程操作记录,近期开关机日志,老旧资产设备查询,部门设备数量统计,USB使用记录查询}
     depends_on:
       - backend
     networks:
@@ -96,7 +109,7 @@ services:
   # ==================== Qdrant向量数据库 ====================
   qdrant:
     # image: hub-mirror.c.163.com/qdrant/qdrant:latest
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.17.0
     container_name: agent-qdrant
     restart: unless-stopped
     ports:

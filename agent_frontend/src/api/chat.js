@@ -1,5 +1,14 @@
 const API_BASE = '/api/v1'
 
+let currentAbortController = null
+
+export function abortCurrentRequest() {
+  if (currentAbortController) {
+    currentAbortController.abort()
+    currentAbortController = null
+  }
+}
+
 export async function sendChatMessage({
   question,
   history = [],
@@ -9,11 +18,10 @@ export async function sendChatMessage({
   session_id = null,
   onEvent,
 }) {
-  console.log('[前端 API] 开始发送聊天请求')
-  console.log('[前端 API] 请求参数:', { question, history, lognum, mode, session_id })
-  
+  const controller = new AbortController()
+  currentAbortController = controller
+
   try {
-    console.log('[前端 API] 发送请求到:', `${API_BASE}/chat`)
     const response = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: {
@@ -27,12 +35,10 @@ export async function sendChatMessage({
         mode,
         session_id,
       }),
+      signal: controller.signal,
     })
 
-    console.log('[前端 API] 收到响应，状态码:', response.status)
-
     if (!response.ok) {
-      console.error('[前端 API] HTTP错误! 状态:', response.status)
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
@@ -40,26 +46,10 @@ export async function sendChatMessage({
     const decoder = new TextDecoder()
     let buffer = ''
 
-    console.log('[前端 API] 开始读取SSE流')
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        console.log('[前端 API] SSE流读取完成')
-        break
-      }
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      let currentEvent = null
-      let currentData = null
-
+    const processLines = (lines, currentEvent, currentData) => {
       for (const line of lines) {
         if (line.startsWith('event: ')) {
           currentEvent = line.slice(7).trim()
-          console.log('[前端 API] 收到event:', currentEvent)
         } else if (line.startsWith('data: ')) {
           const dataContent = line.slice(6)
           if (currentData === null) {
@@ -70,21 +60,49 @@ export async function sendChatMessage({
         } else if (line === '' && currentEvent && currentData !== null) {
           try {
             const parsedData = JSON.parse(currentData)
-            console.log('[前端 API] 解析data成功:', { event: currentEvent, data: parsedData })
             onEvent(currentEvent, parsedData)
           } catch (e) {
-            console.log('[前端 API] 解析data失败，直接传递:', { event: currentEvent, data: currentData })
             onEvent(currentEvent, currentData)
           }
           currentEvent = null
           currentData = null
         }
       }
+      return { currentEvent, currentData }
+    }
+
+    let pendingEvent = null
+    let pendingData = null
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      const result = processLines(lines, pendingEvent, pendingData)
+      pendingEvent = result.currentEvent
+      pendingData = result.currentData
+    }
+
+    if (buffer.trim() || pendingEvent) {
+      const finalLines = buffer.split('\n')
+      processLines(finalLines, pendingEvent, pendingData)
     }
   } catch (error) {
-    console.error('[前端 API] 发生错误:', error)
+    if (error.name === 'AbortError') {
+      console.log('[Chat API] 请求已被用户中断')
+      throw new DOMException('请求已被用户中断', 'AbortError')
+    }
+    console.error('[Chat API] Error:', error)
     throw error
+  } finally {
+    if (currentAbortController === controller) {
+      currentAbortController = null
+    }
   }
 }
-
-

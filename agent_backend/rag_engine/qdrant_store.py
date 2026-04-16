@@ -26,7 +26,7 @@ Qdrant向量数据库封装模块
     - 使用COSINE距离度量，与bge系列模型的归一化向量兼容
 
 性能注意事项：
-    - 搜索方法兼容search_points和search两种API，适配不同qdrant-client版本
+    - 搜索方法使用query_points API（qdrant-client>=1.12）
     - 连接客户端全局复用，避免重复创建
 
 关联文件：
@@ -171,7 +171,7 @@ class QdrantVectorStore:
         执行向量相似度搜索。
 
         使用COSINE距离度量，返回与查询向量最相似的top-k结果。
-        兼容qdrant-client的search_points和search两种API。
+        基于qdrant-client>=1.12的query_points API实现。
 
         参数：
             query_vector: 查询向量（维度须与集合维度一致）
@@ -187,15 +187,17 @@ class QdrantVectorStore:
             client = self._get_client()
             kwargs: dict[str, Any] = {
                 "collection_name": self.collection,
-                "query_vector": query_vector,
+                "query": query_vector,
                 "limit": limit,
                 "with_payload": with_payload,
             }
             if score_threshold is not None:
                 kwargs["score_threshold"] = score_threshold
-            results = client.search_points(**kwargs) if hasattr(client, "search_points") else client.search(**kwargs)
+
+            resp = client.query_points(**kwargs)
+
             out = []
-            for r in results:
+            for r in resp.points:
                 out.append(
                     SearchResult(
                         id=r.id,

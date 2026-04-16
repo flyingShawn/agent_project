@@ -72,6 +72,7 @@ class SqlExecutionError(Exception):
 def _ensure_limit(sql: str, params: dict[str, Any], max_rows: int) -> tuple[str, dict[str, Any]]:
     if re.search(r"\blimit\b", sql, flags=re.I):
         return sql, params
+    sql = re.sub(r";\s*$", "", sql.rstrip())
     p = dict(params)
     p["__max_rows"] = max_rows
     return f"{sql}\nLIMIT :__max_rows", p

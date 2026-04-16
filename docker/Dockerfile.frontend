@@ -33,6 +33,10 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 # 从构建阶段复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# 复制前端启动脚本
+COPY docker/entrypoint.frontend.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # 暴露端口（HTTP默认端口）
 EXPOSE 80
 
@@ -40,5 +44,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
 
-# 启动Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# 使用entrypoint脚本生成运行时配置并启动Nginx
+ENTRYPOINT ["/entrypoint.sh"]

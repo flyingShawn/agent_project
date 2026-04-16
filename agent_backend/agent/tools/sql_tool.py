@@ -41,6 +41,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from langchain_core.tools import tool
@@ -62,6 +64,33 @@ from agent_backend.sql_agent.sql_safety import (
 logger = logging.getLogger(__name__)
 
 MAX_DISPLAY_ROWS = 50
+
+
+class _SqlJsonEncoder(json.JSONEncoder):
+    def default(self, o: Any) -> Any:
+        if isinstance(o, datetime):
+            return o.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(o, date):
+            return o.strftime("%Y-%m-%d")
+        if isinstance(o, Decimal):
+            return float(o)
+        return super().default(o)
+
+
+def _sanitize_rows(rows: list[dict]) -> list[dict]:
+    out = []
+    for row in rows:
+        clean = {}
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                v = v.strftime("%Y-%m-%d %H:%M:%S")
+            elif isinstance(v, date):
+                v = v.strftime("%Y-%m-%d")
+            elif isinstance(v, Decimal):
+                v = float(v)
+            clean[k] = v
+        out.append(clean)
+    return out
 
 
 class SqlQueryInput(BaseModel):
@@ -123,7 +152,8 @@ def _build_markdown_table(rows: list[dict]) -> str:
 def sql_query(question: str) -> str:
     """
     查询桌面管理系统的数据库。
-    当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员等
+    当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员、
+    操作记录、远程操作记录、登录日志、任何"记录"或"日志"类查询等
     需要从数据库获取数据时使用此工具。
 
     参数：
@@ -157,6 +187,7 @@ def sql_query(question: str) -> str:
         prompt += "- WHERE条件构建方式\n"
         prompt += "- 聚合函数使用方式\n"
         prompt += "如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。\n"
+        prompt += "\n【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。\n"
 
         sql_llm = get_sql_llm()
         messages = [
@@ -216,21 +247,44 @@ def sql_query(question: str) -> str:
 
         columns = list(exec_result[0].keys())
 
-        # 这里是保留了之前总结查询结果的逻辑，多行还会表格，如何llm够智能，这个应该交给llm来做最合适。
+        sanitized = _sanitize_rows(exec_result)
+
         if len(exec_result) == 1 and len(exec_result[0]) == 1:
             col_name = list(exec_result[0].keys())[0]
             col_value = list(exec_result[0].values())[0]
+            if isinstance(col_value, (datetime, date)):
+                col_value = col_value.strftime("%Y-%m-%d %H:%M:%S") if isinstance(col_value, datetime) else col_value.strftime("%Y-%m-%d")
+            elif isinstance(col_value, Decimal):
+                col_value = float(col_value)
             data_table = f"{col_name}: {col_value}"
         else:
-            data_table = _build_markdown_table(exec_result)
-
-        return json.dumps({
+            data_table = _build_markdown_table(sanitized)
+        result_dict = {
             "sql": sql,
-            "rows": exec_result[:MAX_DISPLAY_ROWS],
+            "rows": sanitized[:MAX_DISPLAY_ROWS],
             "row_count": len(exec_result),
             "columns": columns,
             "data_table": data_table,
-        }, ensure_ascii=False)
+        }
+
+        if len(exec_result) > 1 and columns:
+            try:
+                from agent_backend.agent.tools.export_tool import export_data
+                export_json = json.dumps({"columns": columns, "rows": sanitized[:MAX_DISPLAY_ROWS]}, ensure_ascii=False, cls=_SqlJsonEncoder)
+                export_result_str = export_data.invoke({
+                    "data": export_json,
+                    "filename": "query_result",
+                    "format": "xlsx",
+                })
+                export_parsed = json.loads(export_result_str)
+                if "download_url" in export_parsed:
+                    result_dict["download_url"] = export_parsed["download_url"]
+                    result_dict["download_filename"] = export_parsed.get("filename", "")
+                    logger.info(f"\n[sql_query] 自动导出成功: {export_parsed.get('filename')}")
+            except Exception as export_err:
+                logger.warning(f"\n[sql_query] 自动导出失败: {export_err}")
+
+        return json.dumps(result_dict, ensure_ascii=False, cls=_SqlJsonEncoder)
 
     except AppError as e:
         logger.error(f"[sql_query] AppError: {e.message}")
