@@ -43,7 +43,7 @@ ORDER BY INET_ATON(a.IP_C)
 
 #### 查询机器在线信息
 
-适用场景：当用户查询在线设备列表时，要查询在线机器信息，查看客户端在线状态，需展示这个语句中的几列，在线机器一定开机了 ，0.0小时为刚开机不久。
+适用场景：当用户查询在线设备列表，在线机器信息，客户端在线状态，需展示这个语句中的几列，在线机器一定开机了 ，0.0小时为刚开机不久。
 
 关键表：s\_machine, s\_group, s\_user, onlineinfo, a\_clientpara, a\_machineruntime
 
@@ -142,27 +142,14 @@ ORDER BY
     a.MtID ASC
 ```
 
+***
+
+
 #### 查询最近设备远程记录
 
 适用场景：当用户询问客户端远程记录时使用。managerid是发起远程的管理机id，其他内容是被远程的客户端设备信息。
 
 关键表：a\_remoteinfo
-
-粗版本
-
-```sql
-SELECT
-	ip,
-	machinename,
-	department,
-	lasttime,
-	mtid,
-	managerid 
-FROM
-	a_remoteinfo
-```
-
-调整后
 
 ```sql
 SELECT
@@ -242,7 +229,7 @@ ORDER BY
 
 #### 查询设备usb使用日志
 
-适用场景：需要查询某一段时间内所有客户端（机器、设备、电脑）usb使用和操作日志
+适用场景：需要查询某一段时间内所有客户端（机器、设备、电脑）usb使用和操作日志，查询有接入U盘的电脑相关
 
 关键表：USBDB, s\_Machine, s\_Group
 
@@ -274,3 +261,7 @@ ORDER BY
 	a.USBPlugTime DESC
 ```
 
+#### 老旧资产设备查询
+
+#### 终端空闲情况
+在线设备数量，分布的部门
