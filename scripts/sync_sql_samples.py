@@ -25,14 +25,15 @@ def main() -> int:
     args = parser.parse_args()
 
     settings = RagIngestSettings()
-    sql_dir = args.sql_dir or settings.sql_dir
+    sql_dir = args.sql_dir or settings.resolve_path(settings.sql_dir)
 
     print(f"SQL样本目录: {sql_dir}")
     print(f"向量集合: {settings.qdrant_sql_collection}")
     print(f"同步模式: {args.mode}")
     print()
 
-    state = IngestStateStore(settings.sql_state_path)
+    state_path = settings.resolve_path(settings.sql_state_path)
+    state = IngestStateStore(state_path)
     result = ingest_directory(
         docs_dir=sql_dir,
         settings=settings,

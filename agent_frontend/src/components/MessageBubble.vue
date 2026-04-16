@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js'
@@ -26,10 +26,47 @@ marked.setOptions({
   gfm: true,
 })
 
-const renderedContent = computed(() => {
-  if (!props.message.content) return ''
-  const rawHtml = marked.parse(props.message.content)
-  return DOMPurify.sanitize(rawHtml)
+const renderedHtml = ref('')
+let renderRafId = null
+
+const rawContent = computed(() => props.message.content || '')
+const isStreaming = computed(() => props.message.isStreaming)
+
+const renderMarkdown = (content) => {
+  if (!content) {
+    renderedHtml.value = ''
+    return
+  }
+  const rawHtml = marked.parse(content)
+  renderedHtml.value = DOMPurify.sanitize(rawHtml)
+}
+
+watch(
+  [rawContent, isStreaming],
+  ([content, streaming]) => {
+    if (renderRafId) {
+      cancelAnimationFrame(renderRafId)
+      renderRafId = null
+    }
+
+    if (!streaming) {
+      renderMarkdown(content)
+      return
+    }
+
+    renderRafId = requestAnimationFrame(() => {
+      renderRafId = null
+      renderMarkdown(rawContent.value)
+    })
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  if (renderRafId) {
+    cancelAnimationFrame(renderRafId)
+    renderRafId = null
+  }
 })
 
 const isUser = computed(() => props.message.role === 'user')
@@ -88,7 +125,7 @@ const getIntentLabel = (intent) => {
             isUser ? 'prose-invert text-white' : 'text-text-primary',
             message.isStreaming ? 'typing-cursor' : '',
           ]"
-          v-html="renderedContent"
+          v-html="renderedHtml"
         ></div>
       </div>
     </div>
@@ -127,5 +164,15 @@ const getIntentLabel = (intent) => {
 
 .message-content p:last-child {
   margin-bottom: 0;
+}
+
+.message-content a {
+  color: #3b82f6;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.message-content a:hover {
+  color: #2563eb;
 }
 </style>

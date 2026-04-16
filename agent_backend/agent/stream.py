@@ -19,18 +19,19 @@ SSE流式输出适配模块
     - _sse_event: SSE事件格式化工具函数
 
 SSE事件格式（与前端兼容）：
-    - event: delta    → data: "文本片段"（逐token流式）
+    - event: delta    → data: "文本片段"（逐token流式追加）
+    - event: status   → data: "状态文字"（替换消息内容，如"正在查询..."）
+    - event: replace  → data: ""（清空消息内容，准备接收新的流式文本）
     - event: start    → data: {"intent":"agent","session_id":"..."}
     - event: done     → data: {"route":"agent","session_id":"...","meta":{}}
     - event: error    → data: {"error":"..."}
-    - event: tool_start → data: {"tool":"sql_query"}（可选，前端可忽略）
-    - event: tool_end   → data: {"tool":"sql_query"}（可选，前端可忽略）
 
 专有技术说明：
     - 使用graph.astream_events(version="v2")捕获细粒度事件
     - 仅处理langgraph_node="agent"的LLM流式事件，过滤工具内部LLM调用
-    - 缓冲agent节点的LLM输出，在on_chat_model_end时判断是否为tool_call：
-      tool_call内容丢弃（不输出到前端），普通文本才流式推送
+    - agent LLM的chunk立即流式推送（delta事件），实现逐token打字机效果
+    - on_chat_model_end检测到tool_call时，发送replace事件清空已推送的SQL内容，
+      再发送status事件显示"正在查询..."
     - on_tool_end事件中提取data_tables和references用于末尾追加
     - 异步生成器配合FastAPI的StreamingResponse实现真正的流式推送
 
@@ -49,21 +50,30 @@ from agent_backend.agent.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+_TOOL_STATUS_MESSAGES = {
+    "sql_query": "🔍 正在查询数据...",
+    "rag_search": "🔍 正在检索知识库...",
+    "generate_chart": "📊 正在生成图表...",
+    "export_data": "📥 正在导出数据...",
+    "metadata_query": "📋 正在查询表结构...",
+    "get_current_time": "🕐 正在获取时间...",
+    "calculator": "🧮 正在计算...",
+    "web_search": "🌐 正在搜索...",
+}
+
+_TOOL_COMPLETE_MESSAGES = {
+    "sql_query": "✅ 数据查询完成，正在整理结果...",
+    "rag_search": "✅ 知识检索完成，正在整理结果...",
+    "generate_chart": "✅ 图表生成完成...",
+    "export_data": "✅ 数据导出完成...",
+    "metadata_query": "✅ 表结构查询完成...",
+    "get_current_time": "✅ 时间获取完成...",
+    "calculator": "✅ 计算完成...",
+    "web_search": "✅ 搜索完成...",
+}
+
 
 def _sse_event(event: str, data: str | dict) -> str:
-    """
-    格式化SSE事件字符串。
-
-    将事件名和数据格式化为标准SSE协议格式：
-    event: <event_name>\ndata: <data_line>\n\n
-
-    参数：
-        event: SSE事件名称（如delta/done/error）
-        data: 事件数据，字符串或字典（字典自动转JSON）
-
-    返回：
-        str: 格式化后的SSE事件字符串
-    """
     if isinstance(data, dict):
         data = json.dumps(data, ensure_ascii=False)
     lines = data.split("\n")
@@ -74,24 +84,6 @@ async def stream_graph_response(
     graph: Any,
     initial_state: dict,
 ) -> AsyncIterator[str]:
-    """
-    将LangGraph事件流转换为SSE事件流。
-
-    通过graph.astream_events捕获LLM token流和工具执行事件，
-    逐事件转换为SSE格式yield给前端。同时在工具执行完成时
-    收集data_tables和references，在流式输出末尾追加。
-
-    参数：
-        graph: 编译后的LangGraph StateGraph实例
-        initial_state: 初始AgentState字典
-
-    返回：
-        AsyncIterator[str]: SSE事件字符串的异步迭代器
-
-    性能注意事项：
-        - 首个token到达时间取决于LLM推理速度和Tool执行耗时
-        - on_chat_model_stream事件实现真正的逐token流式推送
-    """
     logger.info("\n[stream] 开始流式输出 (astream_events v2)")
 
     data_tables: list[str] = []
@@ -99,8 +91,7 @@ async def stream_graph_response(
     chart_configs: list[dict] = []
     export_results: list[dict] = []
     first_token = True
-    pending_chunks: list[str] = []
-    pending_run_id: str | None = None
+    has_status_shown = False
 
     try:
         async for event in graph.astream_events(initial_state, version="v2"):
@@ -114,12 +105,13 @@ async def stream_graph_response(
                     metadata = event.get("metadata", {})
                     if metadata.get("langgraph_node") != "agent":
                         continue
-                    if pending_run_id and pending_run_id != run_id:
-                        for c in pending_chunks:
-                            yield _sse_event("delta", c)
-                        pending_chunks = []
-                    pending_run_id = run_id
-                    pending_chunks.append(chunk.content)
+                    if first_token:
+                        if has_status_shown:
+                            yield _sse_event("replace", "")
+                            has_status_shown = False
+                        logger.info("\n[stream] 收到首个token，流式输出已生效")
+                        first_token = False
+                    yield _sse_event("delta", chunk.content)
 
             elif kind == "on_chat_model_end":
                 metadata = event.get("metadata", {})
@@ -128,24 +120,30 @@ async def stream_graph_response(
                 output = event["data"].get("output")
                 has_tool_calls = hasattr(output, "tool_calls") and output.tool_calls
                 if has_tool_calls:
-                    pending_chunks = []
-                    pending_run_id = None
+                    yield _sse_event("replace", "")
+                    tool_names = [tc.get("name", "") for tc in output.tool_calls]
+                    status_msg = _TOOL_STATUS_MESSAGES.get(
+                        tool_names[0] if tool_names else "",
+                        "⏳ 正在处理...",
+                    )
+                    yield _sse_event("status", status_msg)
+                    has_status_shown = True
+                    first_token = True
+                    logger.info(f"\n[stream] LLM调用完成(工具调用): {name}, tools={tool_names}")
                 else:
-                    if pending_chunks:
-                        if first_token:
-                            logger.info("\n[stream] 收到首个token，流式输出已生效")
-                            first_token = False
-                        for c in pending_chunks:
-                            yield _sse_event("delta", c)
-                        pending_chunks = []
-                        pending_run_id = None
-                logger.info(f"\n[stream] LLM调用完成: {name}, has_tool_calls={has_tool_calls}")
+                    logger.info(f"\n[stream] LLM调用完成(直接回答): {name}")
 
             elif kind == "on_tool_start":
                 logger.info(f"\n[stream] 开始执行工具: {name}")
+                if has_status_shown:
+                    tool_status = _TOOL_STATUS_MESSAGES.get(name, "⏳ 正在处理...")
+                    yield _sse_event("status", tool_status)
 
             elif kind == "on_tool_end":
                 logger.info(f"\n[stream] 工具执行完成: {name}")
+                if has_status_shown:
+                    complete_msg = _TOOL_COMPLETE_MESSAGES.get(name, "✅ 处理完成...")
+                    yield _sse_event("status", complete_msg)
                 output = event["data"].get("output")
                 output_str = ""
                 if isinstance(output, str):
@@ -158,6 +156,11 @@ async def stream_graph_response(
                         parsed = json.loads(output_str)
                         if parsed.get("data_table"):
                             data_tables.append(parsed["data_table"])
+                        if "download_url" in parsed:
+                            export_results.append({
+                                "download_url": parsed["download_url"],
+                                "filename": parsed.get("download_filename", ""),
+                            })
                     except (json.JSONDecodeError, TypeError):
                         pass
                 elif name == "rag_search" and output_str:
@@ -200,7 +203,14 @@ async def stream_graph_response(
     for chart in chart_configs:
         yield _sse_event("chart", chart)
 
+    seen_urls = set()
     for export_item in export_results:
+        url = export_item.get("download_url", "")
+        if url and url in seen_urls:
+            logger.info(f"\n[stream] 跳过重复导出链接: {url}")
+            continue
+        if url:
+            seen_urls.add(url)
         yield _sse_event("export", export_item)
 
     logger.info("\n[stream] 流式输出完成")

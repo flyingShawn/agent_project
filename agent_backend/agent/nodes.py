@@ -46,6 +46,7 @@ from agent_backend.agent.llm import get_llm
 from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.state import AgentState
 from agent_backend.agent.tools import ALL_TOOLS
+from agent_backend.agent.tools.sql_tool import _SqlJsonEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -188,9 +189,13 @@ def tool_result_node(state: AgentState) -> dict:
                     if "data_table" in parsed and parsed["data_table"]:
                         new_data_tables.append(parsed["data_table"])
                     new_sql_results.append(parsed)
-                    # 过滤掉sql字段，修复：sql_query 工具返回的 JSON 包含 sql 字段，作为 ToolMessage 发送给 LLM 后，LLM 可能在回答中复述 SQL 语句
                     result_for_llm = {k: v for k, v in parsed.items() if k != "sql"}
-                    result = json.dumps(result_for_llm, ensure_ascii=False)
+                    if "download_url" in parsed:
+                        new_export_results.append({
+                            "download_url": parsed["download_url"],
+                            "filename": parsed.get("download_filename", ""),
+                        })
+                    result = json.dumps(result_for_llm, ensure_ascii=False, cls=_SqlJsonEncoder)
                 except (json.JSONDecodeError, TypeError):
                     pass
 

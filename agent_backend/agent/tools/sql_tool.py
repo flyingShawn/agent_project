@@ -258,13 +258,32 @@ def sql_query(question: str) -> str:
         else: 
         #     data_table = _build_markdown_table(sanitized) 注掉，现在末尾暂时不显示图标，我会移到大模型回答中
             data_table = ""
-        return json.dumps({
+        result_dict = {
             "sql": sql,
             "rows": sanitized[:MAX_DISPLAY_ROWS],
             "row_count": len(exec_result),
             "columns": columns,
             "data_table": data_table,
-        }, ensure_ascii=False, cls=_SqlJsonEncoder)
+        }
+
+        if len(exec_result) > 1 and columns:
+            try:
+                from agent_backend.agent.tools.export_tool import export_data
+                export_json = json.dumps({"columns": columns, "rows": sanitized[:MAX_DISPLAY_ROWS]}, ensure_ascii=False, cls=_SqlJsonEncoder)
+                export_result_str = export_data.invoke({
+                    "data": export_json,
+                    "filename": "query_result",
+                    "format": "xlsx",
+                })
+                export_parsed = json.loads(export_result_str)
+                if "download_url" in export_parsed:
+                    result_dict["download_url"] = export_parsed["download_url"]
+                    result_dict["download_filename"] = export_parsed.get("filename", "")
+                    logger.info(f"\n[sql_query] 自动导出成功: {export_parsed.get('filename')}")
+            except Exception as export_err:
+                logger.warning(f"\n[sql_query] 自动导出失败: {export_err}")
+
+        return json.dumps(result_dict, ensure_ascii=False, cls=_SqlJsonEncoder)
 
     except AppError as e:
         logger.error(f"[sql_query] AppError: {e.message}")

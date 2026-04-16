@@ -166,24 +166,37 @@ const sendMessage = async (overrideText) => {
         const msgIndex = messages.value.findIndex(m => m.id === assistantMessageId)
         if (msgIndex === -1) return
 
+        const msg = messages.value[msgIndex]
+
         if (event === 'start') {
-          messages.value[msgIndex].intent = data.intent
+          msg.intent = data.intent
           if (data.session_id) {
             currentSessionId.value = data.session_id
           }
-        } else if (event === 'delta') {
-          messages.value[msgIndex].content += data
+        } else if (event === 'status') {
+          msg.content = data
           scrollToBottom()
+        } else if (event === 'replace') {
+          msg.content = ''
+        } else if (event === 'delta') {
+          msg.content = msg.content + data
+          scrollToBottom()
+        } else if (event === 'export') {
+          if (data.download_url && data.filename) {
+            const link = `\n\n以下是表格数据，可进行下载：[${data.filename}](${data.download_url})`
+            msg.content = msg.content + link
+            scrollToBottom()
+          }
         } else if (event === 'done') {
-          messages.value[msgIndex].isStreaming = false
-          messages.value[msgIndex].route = data.route
+          msg.isStreaming = false
+          msg.route = data.route
           if (data.session_id) {
             currentSessionId.value = data.session_id
           }
         } else if (event === 'error') {
-          messages.value[msgIndex].isStreaming = false
-          messages.value[msgIndex].content = `错误: ${data.error}`
-          messages.value[msgIndex].isError = true
+          msg.isStreaming = false
+          msg.content = `错误: ${data.error}`
+          msg.isError = true
         }
       },
     })
