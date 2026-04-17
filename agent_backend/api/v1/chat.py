@@ -33,18 +33,23 @@ SSE事件流顺序：
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 import time
+import uuid
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel, Field
 
 from agent_backend.agent.graph import get_agent_graph
 from agent_backend.agent.stream import stream_graph_response
+from agent_backend.db.database import async_session
+from agent_backend.db.models import Conversation, Message
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)
@@ -60,6 +65,7 @@ class ChatRequest(BaseModel):
     lognum: str = Field(default="admin")
     token: str | None = None
     session_id: str | None = None
+    conversation_id: str | None = None
 
 
 class EndChatRequest(BaseModel):
@@ -75,29 +81,16 @@ class EndChatResponse(BaseModel):
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest) -> StreamingResponse:
-    """
-    聊天API端点，接收用户问题并以SSE流式返回Agent回答。
-
-    处理流程：
-    1. 构建初始AgentState（含系统Prompt、历史消息、用户问题）
-    2. 调用LangGraph Graph执行Agent循环
-    3. 通过astream_events捕获LLM token流和工具执行事件
-    4. 以SSE格式逐事件推送到前端
-
-    参数：
-        req: ChatRequest，包含question/history/images_base64/lognum等
-
-    返回：
-        StreamingResponse: SSE流式响应，事件格式为start/delta/done/error
-    """
+async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     t_start = time.time()
     conn_manager = get_connection_manager()
     session_id = req.session_id or conn_manager.generate_session_id()
+    conversation_id = req.conversation_id
 
     logger.info(
         f"{'=' * 20}【聊天API入口】收到请求{'=' * 20}\n"
-        f"  会话ID: {session_id[:8]}... | 问题: {req.question} | 用户: {req.lognum} | "
+        f"  会话ID: {session_id[:8]}... | 会话记录ID: {conversation_id[:8] if conversation_id else 'None'} | "
+        f"问题: {req.question} | 用户: {req.lognum} | "
         f"历史: {len(req.history)} | 图片: {len(req.images_base64) if req.images_base64 else 0}"
     )
 
@@ -116,12 +109,19 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         "references": [],
     }
 
-    for msg in req.history:
-        if msg.get("role") == "user":
-            initial_state["messages"].append(HumanMessage(content=msg["content"]))
-        elif msg.get("role") == "assistant":
-            from langchain_core.messages import AIMessage
-            initial_state["messages"].append(AIMessage(content=msg["content"]))
+    if conversation_id:
+        db_history = await _load_conversation_messages(conversation_id)
+        for msg in db_history:
+            if msg["role"] == "user":
+                initial_state["messages"].append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                initial_state["messages"].append(AIMessage(content=msg["content"]))
+    else:
+        for msg in req.history:
+            if msg.get("role") == "user":
+                initial_state["messages"].append(HumanMessage(content=msg["content"]))
+            elif msg.get("role") == "assistant":
+                initial_state["messages"].append(AIMessage(content=msg["content"]))
 
     if req.images_base64:
         content = [{"type": "text", "text": req.question}]
@@ -136,34 +136,108 @@ async def chat(req: ChatRequest) -> StreamingResponse:
     else:
         initial_state["messages"].append(HumanMessage(content=req.question))
 
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
+        now = time.time()
+        async with async_session() as db:
+            conv = Conversation(
+                id=conversation_id,
+                title=_generate_title(req.question),
+                user_id=req.lognum,
+                created_at=now,
+                updated_at=now,
+                is_deleted=0,
+            )
+            db.add(conv)
+            await db.commit()
+        logger.info(f"\n[Chat] 自动创建会话记录: {conversation_id[:8]}... 标题: {_generate_title(req.question)}")
+
+    await _save_message(conversation_id, "user", req.question)
+
     async def generate():
-        """SSE事件生成器，将Graph事件流转为SSE格式推送到前端"""
-        logger.info(f"\n【SSE流】开始生成，会话: {session_id[:8]}...")
-        yield _sse_event("start", {"intent": "agent", "session_id": session_id})
+        logger.info(f"\n[SSE] start generate, session: {session_id[:8]}..., conv: {conversation_id[:8]}...")
+        yield _sse_event("start", {"intent": "agent", "session_id": session_id, "conversation_id": conversation_id})
+
+        assistant_content = ""
+        content_before_replace = ""
+        charts_list = []
+        message_saved = False
 
         try:
             graph = get_agent_graph()
             async for sse_event in stream_graph_response(graph, initial_state):
+                event_type, event_data = _parse_sse_event(sse_event)
+                if event_type == "delta" and isinstance(event_data, str):
+                    assistant_content += event_data
+                elif event_type == "replace":
+                    if assistant_content:
+                        content_before_replace = assistant_content
+                    assistant_content = ""
+                elif event_type == "chart" and isinstance(event_data, dict):
+                    charts_list.append(event_data)
                 yield sse_event
+
+            if assistant_content:
+                charts_json = json.dumps(charts_list, ensure_ascii=False) if charts_list else None
+                await _save_message(conversation_id, "assistant", assistant_content, charts=charts_json)
+                message_saved = True
+                logger.info(f"\n[Chat] saved assistant msg before done: {len(assistant_content)}chars")
 
             yield _sse_event(
                 "done",
                 {
                     "route": "agent",
                     "session_id": session_id,
+                    "conversation_id": conversation_id,
                     "meta": {},
                 },
             )
-            logger.info(f"\n【聊天API】请求处理完成，会话: {session_id[:8]}...，总耗时: {time.time() - t_start:.2f}秒")
+            logger.info(f"\n[Chat] request done, session: {session_id[:8]}..., elapsed: {time.time() - t_start:.2f}s")
+
+        except asyncio.CancelledError:
+            logger.warning(f"\n[Chat] SSE cancelled (client disconnect), conv: {conversation_id[:8]}...")
+            if not message_saved:
+                save_content = assistant_content or content_before_replace
+                if save_content:
+                    try:
+                        await asyncio.shield(_save_message(conversation_id, "assistant", save_content))
+                        message_saved = True
+                        logger.info(f"\n[Chat] cancelled-saved assistant msg: {len(save_content)}chars")
+                    except Exception as e:
+                        logger.error(f"\n[Chat] cancelled-save failed: {e}")
+                        _background_save(conversation_id, save_content)
+                        message_saved = True
+            try:
+                await asyncio.shield(_update_conversation_timestamp(conversation_id))
+            except Exception:
+                _background_update_timestamp(conversation_id)
+            raise
 
         except Exception as e:
-            logger.error(f"【错误】处理异常: {type(e).__name__}: {e}")
+            logger.error(f"\n[Chat] error: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            yield _sse_event(
-                "error",
-                {"error": "非常抱歉，查询失败，请稍后再试"},
-            )
+            yield _sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
+
+        finally:
+            if not message_saved:
+                save_content = assistant_content or content_before_replace
+                if save_content:
+                    try:
+                        await asyncio.shield(_save_message(conversation_id, "assistant", save_content))
+                        logger.info(f"\n[Chat] finally saved assistant msg: {len(save_content)}chars")
+                    except asyncio.CancelledError:
+                        _background_save(conversation_id, save_content)
+                        logger.info(f"\n[Chat] finally save delegated to background (cancelled)")
+                    except Exception as e:
+                        logger.error(f"\n[Chat] finally save failed: {e}")
+                        _background_save(conversation_id, save_content)
+            try:
+                await asyncio.shield(_update_conversation_timestamp(conversation_id))
+            except asyncio.CancelledError:
+                _background_update_timestamp(conversation_id)
+            except Exception:
+                pass
 
     return StreamingResponse(
         generate(),
@@ -208,17 +282,109 @@ async def end_chat(req: EndChatRequest) -> EndChatResponse:
 
 
 def _sse_event(event: str, data: str | dict) -> str:
-    """
-    格式化SSE事件字符串。
-
-    参数：
-        event: SSE事件名称（start/delta/done/error）
-        data: 事件数据，字符串或字典（字典自动转JSON）
-
-    返回：
-        str: 格式化后的SSE事件字符串
-    """
     if isinstance(data, dict):
         data = json.dumps(data, ensure_ascii=False)
     lines = data.split("\n")
     return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
+
+
+def _generate_title(question: str) -> str:
+    cleaned = re.sub(r"^(资讯[：:]|查询[：:]|搜索[：:]|问[：:])", "", question).strip()
+    if len(cleaned) > 30:
+        return cleaned[:30] + "..."
+    return cleaned or "新对话"
+
+
+def _parse_sse_event(sse_str: str) -> tuple[str, Any]:
+    event_type = ""
+    data_parts = []
+    for line in sse_str.strip().split("\n"):
+        if line.startswith("event: "):
+            event_type = line[7:].strip()
+        elif line.startswith("data: "):
+            data_parts.append(line[6:])
+    data_str = "\n".join(data_parts)
+    if data_str:
+        try:
+            return event_type, json.loads(data_str)
+        except (json.JSONDecodeError, TypeError):
+            return event_type, data_str
+    return event_type, None
+
+
+def _background_save(conversation_id: str, content: str):
+    async def _do_save():
+        try:
+            await _save_message(conversation_id, "assistant", content)
+            logger.info(f"\n[Chat] background saved assistant msg: {len(content)}chars")
+        except Exception as e:
+            logger.error(f"\n[Chat] background save failed: {e}")
+    asyncio.create_task(_do_save())
+
+
+def _background_update_timestamp(conversation_id: str):
+    async def _do_update():
+        try:
+            await _update_conversation_timestamp(conversation_id)
+        except Exception as e:
+            logger.error(f"\n[Chat] background update timestamp failed: {e}")
+    asyncio.create_task(_do_update())
+
+
+async def _save_message(conversation_id: str, role: str, content: str, intent: str | None = None, charts: str | None = None):
+    try:
+        async with async_session() as db:
+            if role == "assistant":
+                from sqlalchemy import select, func
+                dup_stmt = select(func.count()).select_from(Message).where(
+                    Message.conversation_id == conversation_id,
+                    Message.role == "assistant",
+                    Message.content == content,
+                )
+                dup_count = (await db.execute(dup_stmt)).scalar() or 0
+                if dup_count > 0:
+                    logger.info(f"\n[Chat] skip duplicate assistant msg: conv={conversation_id[:8]}..., {len(content)}chars")
+                    return
+            msg = Message(
+                conversation_id=conversation_id,
+                role=role,
+                content=content,
+                intent=intent,
+                charts=charts,
+                created_at=time.time(),
+            )
+            db.add(msg)
+            await db.commit()
+    except Exception as e:
+        logger.error(f"\n保存消息失败: {e}")
+
+
+async def _update_conversation_timestamp(conversation_id: str):
+    try:
+        async with async_session() as db:
+            from sqlalchemy import select, update
+            stmt = select(Conversation).where(Conversation.id == conversation_id)
+            result = await db.execute(stmt)
+            conv = result.scalar_one_or_none()
+            if conv:
+                conv.updated_at = time.time()
+                await db.commit()
+    except Exception as e:
+        logger.error(f"\n更新会话时间戳失败: {e}")
+
+
+async def _load_conversation_messages(conversation_id: str) -> list[dict[str, str]]:
+    try:
+        async with async_session() as db:
+            from sqlalchemy import select
+            stmt = (
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.asc(), Message.id.asc())
+            )
+            result = await db.execute(stmt)
+            messages = result.scalars().all()
+            return [{"role": m.role, "content": m.content} for m in messages]
+    except Exception as e:
+        logger.error(f"\n加载历史消息失败: {e}")
+        return []
