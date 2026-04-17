@@ -35,6 +35,8 @@ FastAPI 应用入口文件
 """
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -44,6 +46,7 @@ from agent_backend.api.routes import router as api_router
 from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
+from agent_backend.db.database import init_db
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 env_path = Path(__file__).parent.parent / ".env"
@@ -72,7 +75,16 @@ def create_app() -> FastAPI:
     """
     configure_logging()
 
-    app = FastAPI(title="desk-agent-backend")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await init_db()
+        yield
+        logging.getLogger(__name__).info("\n[Shutdown] 应用正在关闭，清理数据库连接...")
+        conn_manager = get_connection_manager()
+        conn_manager.shutdown()
+        logging.getLogger(__name__).info("\n[Shutdown] 应用关闭完成")
+
+    app = FastAPI(title="desk-agent-backend", lifespan=lifespan)
     
     app.add_middleware(
         CORSMiddleware,
@@ -85,14 +97,6 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router)
-    
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        logger = __import__('logging').getLogger(__name__)
-        logger.info("\n🔻 应用正在关闭，清理数据库连接...")
-        conn_manager = get_connection_manager()
-        conn_manager.shutdown()
-        logger.info("\n✅ 应用关闭完成")
     
     return app
 

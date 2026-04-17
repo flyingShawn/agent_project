@@ -58,6 +58,8 @@ services:
       # 网络搜索配置
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-5}
+      # 聊天历史数据库路径
+      - CHAT_DB_PATH=${CHAT_DB_PATH:-/app/data/chat_history.db}
     volumes:
       # 挂载文档知识库目录（宿主机docs目录 → 容器/data/docs）
       # 注意：挂载源使用独立的宿主机变量，不使用容器内的RAG_DOCS_DIR
@@ -68,6 +70,8 @@ services:
       - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
       # 持久化向量数据库
       - qdrant_data:/app/.qdrant_local
+      # 持久化聊天历史数据库
+      - chat_data:/app/data
     depends_on:
       - qdrant
     networks:
@@ -135,4 +139,6 @@ networks:
 # ==================== 数据卷配置 ====================
 volumes:
   qdrant_data:
+    driver: local
+  chat_data:
     driver: local

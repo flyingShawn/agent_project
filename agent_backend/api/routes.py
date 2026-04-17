@@ -29,6 +29,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from agent_backend.api.v1.chat import router as chat_router
+from agent_backend.api.v1.conversations import router as conversations_router
 from agent_backend.api.v1.health import router as health_router
 from agent_backend.api.v1.metadata import router as metadata_router
 from agent_backend.api.v1.rag import router as rag_router
@@ -42,4 +43,5 @@ router.include_router(rag_router, prefix="/api/v1")
 router.include_router(sql_agent_router, prefix="/api/v1")
 router.include_router(export_router, prefix="/api/v1")
 router.include_router(chat_router, prefix="/api/v1")
+router.include_router(conversations_router, prefix="/api/v1")
 

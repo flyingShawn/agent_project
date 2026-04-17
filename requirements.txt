@@ -3,6 +3,7 @@ uvicorn[standard]>=0.27
 pydantic>=2.6
 PyYAML>=6.0.1
 SQLAlchemy>=2.0
+aiosqlite>=0.20
 pymysql>=1.1
 pydantic-settings>=2.2
 python-multipart>=0.0.9

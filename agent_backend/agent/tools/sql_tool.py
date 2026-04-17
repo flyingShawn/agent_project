@@ -258,7 +258,7 @@ def sql_query(question: str) -> str:
                 col_value = float(col_value)
             data_table = f"{col_name}: {col_value}"
         else:
-            data_table = _build_markdown_table(sanitized)
+            data_table = ""
         result_dict = {
             "sql": sql,
             "rows": sanitized[:MAX_DISPLAY_ROWS],

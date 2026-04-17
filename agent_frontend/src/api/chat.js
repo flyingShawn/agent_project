@@ -16,6 +16,7 @@ export async function sendChatMessage({
   lognum = 'admin',
   mode = 'auto',
   session_id = null,
+  conversation_id = null,
   onEvent,
 }) {
   const controller = new AbortController()
@@ -34,6 +35,7 @@ export async function sendChatMessage({
         lognum,
         mode,
         session_id,
+        conversation_id,
       }),
       signal: controller.signal,
     })
