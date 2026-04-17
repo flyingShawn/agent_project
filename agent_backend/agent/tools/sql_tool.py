@@ -49,9 +49,8 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-from agent_backend.agent.llm import get_sql_llm
-from agent_backend.core.config_helper import get_database_url, get_max_rows
-from agent_backend.core.config_loader import get_schema_runtime
+from agent_backend.llm.factory import get_sql_llm
+from agent_backend.core.config import get_database_url, get_max_rows, get_schema_runtime
 from agent_backend.core.errors import AppError
 from agent_backend.rag_engine.retrieval import search_sql_samples
 from agent_backend.sql_agent.executor import execute_sql, SqlExecutionError

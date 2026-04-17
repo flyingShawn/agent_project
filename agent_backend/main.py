@@ -46,7 +46,7 @@ from agent_backend.api.routes import router as api_router
 from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
-from agent_backend.db.database import init_db
+from agent_backend.db.chat_history import init_db
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 env_path = Path(__file__).parent.parent / ".env"

@@ -44,7 +44,7 @@ import re
 import time
 from typing import Any
 
-from agent_backend.core.config_helper import get_database_url, get_max_rows
+from agent_backend.core.config import get_database_url, get_max_rows
 from agent_backend.core.errors import AppError
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 

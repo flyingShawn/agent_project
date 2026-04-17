@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, Float, Text, ForeignKey
 from sqlalchemy.orm import relationship
 
-from .database import Base
+from .chat_history import Base
 
 
 class Conversation(Base):

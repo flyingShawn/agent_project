@@ -42,7 +42,7 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
-from agent_backend.agent.llm import get_llm
+from agent_backend.llm.factory import get_llm
 from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.state import AgentState
 from agent_backend.agent.tools import ALL_TOOLS

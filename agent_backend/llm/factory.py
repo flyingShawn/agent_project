@@ -6,7 +6,7 @@ LLM客户端配置模块
     替代旧架构中的自研OpenAICompatibleClient，提供原生Tool Calling支持。
 
 在系统架构中的定位：
-    位于Agent基础设施层，为agent_node和sql_query Tool提供LLM调用能力。
+    位于LLM基础设施层，为agent_node和sql_query Tool提供LLM调用能力。
     通过环境变量（LLM_BASE_URL/LLM_API_KEY/CHAT_MODEL）动态配置后端。
 
 主要使用场景：
@@ -27,7 +27,7 @@ LLM客户端配置模块
 关联文件：
     - agent_backend/agent/nodes.py: agent_node调用get_llm
     - agent_backend/agent/tools/sql_tool.py: sql_query调用get_sql_llm
-    - agent_backend/core/config_helper.py: load_env_file加载环境变量
+    - agent_backend/core/config.py: load_env_file加载环境变量
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ import os
 import httpx
 from langchain_openai import ChatOpenAI
 
-from agent_backend.core.config_helper import load_env_file
+from agent_backend.core.config import load_env_file
 
 logger = logging.getLogger(__name__)
 

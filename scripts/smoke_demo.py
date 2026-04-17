@@ -29,7 +29,7 @@
 
 相关文件：
     - agent_backend/main.py: 应用入口
-    - agent_backend/core/config_loader.py: 配置加载
+    - agent_backend/core/config.py: 配置加载
 """
 from __future__ import annotations
 
@@ -38,11 +38,11 @@ import sys
 from pathlib import Path
 
 try:
-    from agent_backend.core.config_loader import get_schema_runtime
+    from agent_backend.core.config import get_schema_runtime
     from agent_backend.main import create_app
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from agent_backend.core.config_loader import get_schema_runtime
+    from agent_backend.core.config import get_schema_runtime
     from agent_backend.main import create_app
 
 from fastapi.testclient import TestClient

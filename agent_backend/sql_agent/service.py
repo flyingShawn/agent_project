@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Any
 
-from agent_backend.core.config_loader import get_schema_runtime
+from agent_backend.core.config import get_schema_runtime
 from agent_backend.llm.clients import OpenAICompatibleClient
 from agent_backend.rag_engine.retrieval import RetrievedChunk, search_sql_samples
 from agent_backend.sql_agent.patterns import select_query_pattern

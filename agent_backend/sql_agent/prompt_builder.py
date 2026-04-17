@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from agent_backend.core.config_loader import SchemaRuntime
+from agent_backend.core.config import SchemaRuntime
 from agent_backend.rag_engine.retrieval import RetrievedChunk
 
 

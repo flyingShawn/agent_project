@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent_backend.db.database import get_session
+from agent_backend.db.chat_history import get_session
 from agent_backend.db.models import Conversation, Message
 
 logger = logging.getLogger(__name__)

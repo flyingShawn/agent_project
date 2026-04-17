@@ -25,7 +25,7 @@ import logging
 
 from fastapi import APIRouter
 
-from agent_backend.core.config_loader import get_schema_runtime
+from agent_backend.core.config import get_schema_runtime
 
 logger = logging.getLogger(__name__)
 
