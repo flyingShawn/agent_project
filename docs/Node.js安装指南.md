@@ -218,7 +218,7 @@ npm run dev
 # 按 Win + R，输入 cmd，回车
 
 # 进入前端目录
-cd D:\work_space\agent_project\agent_frontend
+cd agent_frontend
 
 # 运行 npm 命令
 npm run dev
