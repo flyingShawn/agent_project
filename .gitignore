@@ -60,6 +60,8 @@ temp/
 # User data (keep directory structure but ignore contents)
 data/docs/*
 !data/docs/.gitkeep
+data/desk-agent/docs/*
+!data/desk-agent/docs/.gitkeep
 
 # OS specific
 .DS_Store
