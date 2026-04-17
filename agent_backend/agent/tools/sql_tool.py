@@ -118,36 +118,6 @@ def _clean_sql_markdown(sql: str) -> str:
     return sql.strip()
 
 
-def _build_markdown_table(rows: list[dict]) -> str:
-    """
-    将查询结果行构建为Markdown表格。
-
-    参数：
-        rows: 查询结果行列表，每行为dict（key为列名）
-
-    返回：
-        str: Markdown格式表格字符串，超过MAX_DISPLAY_ROWS时截断并提示
-    """
-    if not rows:
-        return ""
-    columns = list(rows[0].keys())
-    header = "| " + " | ".join(columns) + " |"
-    separator = "| " + " | ".join("---" for _ in columns) + " |"
-    lines = [header, separator]
-    for row in rows[:MAX_DISPLAY_ROWS]:
-        cells = []
-        for col in columns:
-            val = row.get(col, "")
-            if val is None:
-                val = ""
-            val = str(val).replace("|", "\\|").replace("\n", " ").replace("\r", "")
-            cells.append(val)
-        lines.append("| " + " | ".join(cells) + " |")
-    if len(rows) > MAX_DISPLAY_ROWS:
-        lines.append(f"| ... | 共 {len(rows)} 条，仅显示前 {MAX_DISPLAY_ROWS} 条 |")
-    return "\n".join(lines)
-
-
 @tool(args_schema=SqlQueryInput)
 def sql_query(question: str) -> str:
     """
@@ -249,16 +219,7 @@ def sql_query(question: str) -> str:
 
         sanitized = _sanitize_rows(exec_result)
 
-        if len(exec_result) == 1 and len(exec_result[0]) == 1:
-            col_name = list(exec_result[0].keys())[0]
-            col_value = list(exec_result[0].values())[0]
-            if isinstance(col_value, (datetime, date)):
-                col_value = col_value.strftime("%Y-%m-%d %H:%M:%S") if isinstance(col_value, datetime) else col_value.strftime("%Y-%m-%d")
-            elif isinstance(col_value, Decimal):
-                col_value = float(col_value)
-            data_table = f"{col_name}: {col_value}"
-        else:
-            data_table = ""
+        data_table = ""
         result_dict = {
             "sql": sql,
             "rows": sanitized[:MAX_DISPLAY_ROWS],

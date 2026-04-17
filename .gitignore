@@ -56,7 +56,7 @@ test-results/
 # Temp directories
 temp_npx/
 temp/
-
+data/chat_history
 # User data (keep directory structure but ignore contents)
 data/docs/*
 !data/docs/.gitkeep

@@ -303,9 +303,30 @@ def should_continue(state: AgentState) -> str:
 
 def respond_node(state: AgentState) -> dict:
     """
-    最终回答节点，当前为空操作。
+    最终回答节点。
 
-    LLM的最终回答已通过astream_events的on_chat_model_stream事件
-    逐token流式输出到前端，此节点仅作为Graph的终止标记。
+    正常情况下LLM的最终回答已通过astream_events流式输出，此节点仅作为终止标记。
+    但当达到max_tool_calls被强制截断时，LLM最后一条消息可能包含tool_calls而非文本回答，
+    此时需要再调用一次LLM（不绑定工具）让其基于已收集的工具结果生成最终总结。
     """
+    last_message = state["messages"][-1]
+    tool_call_count = state.get("tool_call_count", 0)
+    max_tool_calls = state.get("max_tool_calls", 5)
+
+    if tool_call_count >= max_tool_calls and isinstance(last_message, AIMessage) and last_message.tool_calls:
+        logger.info(f"\n[respond_node] 达到max_tool_calls且LLM仍在请求工具调用，强制生成最终回答")
+        llm = get_llm()
+        summary_prompt = SystemMessage(
+            content="你已达到最大工具调用次数限制，无法再调用任何工具。请基于已收集到的工具执行结果，"
+                    "为用户生成一个完整、有用的最终回答。如果已有查询结果数据，请务必在回答中包含具体的数据内容。"
+        )
+        messages = state["messages"] + [summary_prompt]
+        try:
+            response = llm.invoke(messages)
+            logger.info(f"\n[respond_node] 强制总结回答生成完成")
+            return {"messages": [response]}
+        except Exception as e:
+            logger.error(f"\n[respond_node] 强制总结回答生成失败: {e}")
+            return {}
+
     return {}

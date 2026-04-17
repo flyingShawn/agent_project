@@ -34,6 +34,7 @@ from __future__ import annotations
 import logging
 import os
 
+import httpx
 from langchain_openai import ChatOpenAI
 
 from agent_backend.core.config_helper import load_env_file
@@ -69,6 +70,9 @@ def get_llm(
     api_key = os.getenv("LLM_API_KEY") or "ollama"
     model = os.getenv("CHAT_MODEL", "qwen2.5:7b")
 
+    http_client = httpx.Client(proxy=None, timeout=httpx.Timeout(300.0, connect=10.0))
+    http_async_client = httpx.AsyncClient(proxy=None, timeout=httpx.Timeout(300.0, connect=10.0))
+
     kwargs: dict = {
         "base_url": base_url,
         "api_key": api_key,
@@ -76,6 +80,8 @@ def get_llm(
         "streaming": streaming,
         "temperature": temperature,
         "max_tokens": 4096,
+        "http_client": http_client,
+        "http_async_client": http_async_client,
     }
 
     if "dashscope" in base_url or "aliyuncs" in base_url:

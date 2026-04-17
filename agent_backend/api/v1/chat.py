@@ -167,8 +167,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             graph = get_agent_graph()
             async for sse_event in stream_graph_response(graph, initial_state):
                 event_type, event_data = _parse_sse_event(sse_event)
-                if event_type == "delta" and isinstance(event_data, str):
-                    assistant_content += event_data
+                if event_type == "delta":
+                    assistant_content += str(event_data) if not isinstance(event_data, str) else event_data
                 elif event_type == "replace":
                     if assistant_content:
                         content_before_replace = assistant_content
