@@ -16,23 +16,32 @@ const {
 const editingId = ref(null)
 const editingTitle = ref('')
 const editInputRef = ref(null)
+const deletingId = ref(null)
 
 async function handleNewConversation() {
   emit('new-conversation')
 }
 
 async function handleSwitchConversation(id) {
-  if (editingId.value) return
+  if (editingId.value || deletingId.value) return
   emit('switch-conversation', id)
 }
 
-async function handleDeleteConversation(id, event) {
+function requestDelete(id, event) {
   event.stopPropagation()
-  if (!confirm('确定要删除这个会话吗？')) return
+  deletingId.value = id
+}
+
+function cancelDelete() {
+  deletingId.value = null
+}
+
+async function confirmDelete(id) {
   const result = await removeConversation(id)
   if (result.success) {
     emit('delete-conversation', id)
   }
+  deletingId.value = null
 }
 
 function startEditing(conv, event) {
@@ -40,9 +49,11 @@ function startEditing(conv, event) {
   editingId.value = conv.id
   editingTitle.value = conv.title
   nextTick(() => {
-    if (editInputRef.value) {
-      editInputRef.value.focus()
-      editInputRef.value.select()
+    const inputs = document.querySelectorAll('.edit-input-' + conv.id)
+    const input = inputs.length > 0 ? inputs[0] : null
+    if (input) {
+      input.focus()
+      input.select()
     }
   })
 }
@@ -122,7 +133,7 @@ defineExpose({ loadConversations })
           </svg>
           <div v-if="editingId === conv.id" class="flex-1 min-w-0" @click.stop>
             <input
-              ref="editInputRef"
+              :class="'edit-input-' + conv.id"
               v-model="editingTitle"
               @keydown="handleEditKeydown($event, conv)"
               @blur="finishEditing(conv)"
@@ -130,8 +141,23 @@ defineExpose({ loadConversations })
               maxlength="50"
             />
           </div>
+          <span v-else-if="deletingId === conv.id" class="flex-1 text-sm text-red-500 truncate">确认删除？</span>
           <span v-else class="flex-1 text-sm truncate">{{ conv.title }}</span>
-          <div class="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+          <div v-if="deletingId === conv.id" class="flex-shrink-0 flex items-center gap-0.5" @click.stop>
+            <button
+              @click="confirmDelete(conv.id)"
+              class="px-1.5 py-0.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded transition-colors cursor-pointer"
+            >
+              删除
+            </button>
+            <button
+              @click="cancelDelete"
+              class="px-1.5 py-0.5 text-xs text-text-tertiary hover:text-text-primary bg-gray-100 hover:bg-gray-200 rounded transition-colors cursor-pointer"
+            >
+              取消
+            </button>
+          </div>
+          <div v-else class="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
             <button
               @click="startEditing(conv, $event)"
               class="p-1 text-text-tertiary hover:text-text-primary rounded transition-colors cursor-pointer"
@@ -142,7 +168,7 @@ defineExpose({ loadConversations })
               </svg>
             </button>
             <button
-              @click="handleDeleteConversation(conv.id, $event)"
+              @click="requestDelete(conv.id, $event)"
               class="p-1 text-text-tertiary hover:text-red-500 rounded transition-colors cursor-pointer"
               title="删除"
             >
