@@ -17,7 +17,7 @@
 核心函数：
     - schedule_task(): @tool 装饰的定时任务创建工具
     - ScheduleTaskInput: Pydantic 输入模型
-    - _clean_sql_markdown(): 清理LLM返回SQL中的Markdown标记
+    - clean_sql_markdown(): 清理LLM返回SQL中的Markdown标记（来自sql_agent.utils）
     - _run_async(): 在同步工具函数中运行异步协程的桥接器
 
 专有技术说明：
@@ -52,6 +52,7 @@ from agent_backend.sql_agent.sql_safety import (
     enforce_deny_select_columns,
     validate_sql_basic,
 )
+from agent_backend.sql_agent.utils import clean_sql_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -72,29 +73,6 @@ class ScheduleTaskInput(BaseModel):
     interval_seconds: int | None = Field(default=None, description="间隔秒数，如1800表示30分钟")
     cron_expr: str | None = Field(default=None, description="cron表达式，如'0 */2 * * *'表示每2小时")
     sql_template: str | None = Field(default=None, description="可选的SQL模板，不提供则由LLM生成")
-
-
-def _clean_sql_markdown(sql: str) -> str:
-    """
-    清理LLM返回SQL中的Markdown代码块标记。
-
-    参数：
-        sql: 可能包含 ```sql ... ``` 标记的SQL字符串
-
-    返回：
-        str: 清理后的纯SQL字符串
-
-    处理规则：
-        - 移除开头的 ```sql 或 ```
-        - 移除结尾的 ```
-        - 移除反引号包裹的标识符（`table` → table）
-    """
-    sql = sql.strip()
-    sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"^```\s*", "", sql)
-    sql = re.sub(r"\s*```$", "", sql)
-    sql = re.sub(r"`([^`]+)`", r"\1", sql)
-    return sql.strip()
 
 
 def _run_async(coro):
@@ -186,7 +164,7 @@ def schedule_task(
                 HumanMessage(content=prompt),
             ]
             response = sql_llm.invoke(messages)
-            sql_template = _clean_sql_markdown(response.content.strip())
+            sql_template = clean_sql_markdown(response.content.strip())
             logger.info(f"\n[schedule_task] LLM生成SQL: {sql_template}")
         except Exception as e:
             logger.error(f"\n[schedule_task] LLM生成SQL失败: {e}")

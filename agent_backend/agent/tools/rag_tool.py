@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 
 from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore
-from agent_backend.rag_engine.retrieval import get_rag_settings, hybrid_search
+from agent_backend.rag_engine.retrieval import get_rag_settings, hybrid_search, get_or_create_embedding, get_or_create_store
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +66,16 @@ def rag_search(question: str) -> str:
     try:
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score = get_rag_settings()
 
-        embedding_model = EmbeddingModel(model_name=embedding_model_name)
+        embedding_model = get_or_create_embedding(embedding_model_name)
 
         dim = embedding_model.dimension
-        store = QdrantVectorStore(
+        store = get_or_create_store(
             url=qdrant_url,
             path=qdrant_path,
             api_key=qdrant_api_key,
             collection=collection,
             dim=dim,
         )
-        store.ensure_collection()
 
         chunks = hybrid_search(
             query_text=question,

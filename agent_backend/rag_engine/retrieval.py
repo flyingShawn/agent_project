@@ -40,15 +40,13 @@ from __future__ import annotations
 import math
 import os
 import re
-from pathlib import Path
-from dotenv import load_dotenv
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-env_path = Path(__file__).parent.parent.parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
+from agent_backend.core.config import load_env_file
+
+load_env_file()
 
 from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore, SearchResult
@@ -57,6 +55,32 @@ from agent_backend.rag_engine.qdrant_store import QdrantVectorStore, SearchResul
 import logging
 
 logger = logging.getLogger(__name__)
+
+_embedding_model_cache: dict[str, EmbeddingModel] = {}
+_store_cache: dict[str, QdrantVectorStore] = {}
+
+
+def get_or_create_embedding(model_name: str) -> EmbeddingModel:
+    if model_name not in _embedding_model_cache:
+        _embedding_model_cache[model_name] = EmbeddingModel(model_name=model_name)
+    return _embedding_model_cache[model_name]
+
+
+def get_or_create_store(
+    url: str | None,
+    path: str | None,
+    api_key: str | None,
+    collection: str,
+    dim: int,
+) -> QdrantVectorStore:
+    key = f"{collection}:{path or url}"
+    if key not in _store_cache:
+        store = QdrantVectorStore(
+            url=url, path=path, api_key=api_key, collection=collection, dim=dim,
+        )
+        store.ensure_collection()
+        _store_cache[key] = store
+    return _store_cache[key]
 
 
 @dataclass
@@ -388,18 +412,17 @@ def search_sql_samples(
         )
 
         if embedding_model is None:
-            embedding_model = EmbeddingModel(model_name=embedding_model_name)
+            embedding_model = get_or_create_embedding(embedding_model_name)
 
         if store is None:
             dim = embedding_model.dimension
-            store = QdrantVectorStore(
+            store = get_or_create_store(
                 url=qdrant_url,
                 path=qdrant_path,
                 api_key=qdrant_api_key,
                 collection=collection,
                 dim=dim,
             )
-            store.ensure_collection()
     else:
         top_k = int(os.getenv("RAG_SQL_TOP_K", "3"))
         candidate_k = int(os.getenv("RAG_SQL_CANDIDATE_K", "15"))

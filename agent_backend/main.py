@@ -36,13 +36,13 @@ FastAPI 应用入口文件
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
-from pathlib import Path
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_backend.api.routes import router as api_router
+from agent_backend.core.config import load_env_file
 from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
@@ -50,9 +50,7 @@ from agent_backend.db.chat_history import init_db
 from agent_backend.scheduler import get_scheduler_manager
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
-env_path = Path(__file__).parent.parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
+load_env_file()
 
 
 def create_app() -> FastAPI:
@@ -90,11 +88,11 @@ def create_app() -> FastAPI:
         logging.getLogger(__name__).info("\n[Shutdown] 应用关闭完成")
 
     app = FastAPI(title="desk-agent-backend", lifespan=lifespan)
-    
+
+    cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=cors_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )
