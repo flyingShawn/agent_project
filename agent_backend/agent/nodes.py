@@ -42,7 +42,7 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
-from agent_backend.agent.llm import get_llm
+from agent_backend.llm.factory import get_llm
 from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.state import AgentState
 from agent_backend.agent.tools import ALL_TOOLS
@@ -81,6 +81,7 @@ def init_node(state: AgentState) -> dict:
         "chart_configs": [],
         "export_results": [],
         "web_search_results": [],
+        "scheduler_results": [],
         "data_tables": [],
         "references": [],
     }
@@ -162,6 +163,7 @@ def tool_result_node(state: AgentState) -> dict:
     new_chart_configs = list(state.get("chart_configs", []))
     new_export_results = list(state.get("export_results", []))
     new_web_search_results = list(state.get("web_search_results", []))
+    new_scheduler_results = list(state.get("scheduler_results", []))
 
     tool_map = {t.name: t for t in ALL_TOOLS}
 
@@ -246,6 +248,13 @@ def tool_result_node(state: AgentState) -> dict:
                 except (json.JSONDecodeError, TypeError):
                     new_web_search_results.append({"result": result})
 
+            elif tool_name in ("schedule_task", "manage_scheduled_task"):
+                try:
+                    parsed = json.loads(result)
+                    new_scheduler_results.append(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    new_scheduler_results.append({"result": result})
+
         except Exception as e:
             logger.error(f"[tool_result_node] 工具执行异常: {tool_name}: {e}")
             result = json.dumps({"error": f"工具执行失败: {type(e).__name__}: {e}"}, ensure_ascii=False)
@@ -269,6 +278,7 @@ def tool_result_node(state: AgentState) -> dict:
         "chart_configs": new_chart_configs,
         "export_results": new_export_results,
         "web_search_results": new_web_search_results,
+        "scheduler_results": new_scheduler_results,
     }
 
 
@@ -303,9 +313,30 @@ def should_continue(state: AgentState) -> str:
 
 def respond_node(state: AgentState) -> dict:
     """
-    最终回答节点，当前为空操作。
+    最终回答节点。
 
-    LLM的最终回答已通过astream_events的on_chat_model_stream事件
-    逐token流式输出到前端，此节点仅作为Graph的终止标记。
+    正常情况下LLM的最终回答已通过astream_events流式输出，此节点仅作为终止标记。
+    但当达到max_tool_calls被强制截断时，LLM最后一条消息可能包含tool_calls而非文本回答，
+    此时需要再调用一次LLM（不绑定工具）让其基于已收集的工具结果生成最终总结。
     """
+    last_message = state["messages"][-1]
+    tool_call_count = state.get("tool_call_count", 0)
+    max_tool_calls = state.get("max_tool_calls", 5)
+
+    if tool_call_count >= max_tool_calls and isinstance(last_message, AIMessage) and last_message.tool_calls:
+        logger.info(f"\n[respond_node] 达到max_tool_calls且LLM仍在请求工具调用，强制生成最终回答")
+        llm = get_llm()
+        summary_prompt = SystemMessage(
+            content="你已达到最大工具调用次数限制，无法再调用任何工具。请基于已收集到的工具执行结果，"
+                    "为用户生成一个完整、有用的最终回答。如果已有查询结果数据，请务必在回答中包含具体的数据内容。"
+        )
+        messages = state["messages"] + [summary_prompt]
+        try:
+            response = llm.invoke(messages)
+            logger.info(f"\n[respond_node] 强制总结回答生成完成")
+            return {"messages": [response]}
+        except Exception as e:
+            logger.error(f"\n[respond_node] 强制总结回答生成失败: {e}")
+            return {}
+
     return {}

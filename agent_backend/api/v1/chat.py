@@ -48,7 +48,7 @@ from pydantic import BaseModel, Field
 
 from agent_backend.agent.graph import get_agent_graph
 from agent_backend.agent.stream import stream_graph_response
-from agent_backend.db.database import async_session
+from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import Conversation, Message
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
@@ -107,6 +107,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         "max_tool_calls": 5,
         "data_tables": [],
         "references": [],
+        "scheduler_results": [],
     }
 
     if conversation_id:
@@ -167,8 +168,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             graph = get_agent_graph()
             async for sse_event in stream_graph_response(graph, initial_state):
                 event_type, event_data = _parse_sse_event(sse_event)
-                if event_type == "delta" and isinstance(event_data, str):
-                    assistant_content += event_data
+                if event_type == "delta":
+                    assistant_content += str(event_data) if not isinstance(event_data, str) else event_data
                 elif event_type == "replace":
                     if assistant_content:
                         content_before_replace = assistant_content

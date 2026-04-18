@@ -32,7 +32,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from agent_backend.core.config_loader import SchemaRuntime
+from agent_backend.core.config import SchemaRuntime
 
 
 _IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")

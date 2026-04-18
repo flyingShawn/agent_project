@@ -87,7 +87,7 @@ def test_database_connection():
     print("\n正在测试数据库连接...")
     
     try:
-        from agent_backend.core.config_helper import get_database_url
+        from agent_backend.core.config import get_database_url
         db_url = get_database_url()
         
         if not db_url:

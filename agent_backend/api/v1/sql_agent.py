@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from agent_backend.core.config_helper import get_max_rows
+from agent_backend.core.config import get_max_rows
 from agent_backend.sql_agent.executor import execute_sql
 from agent_backend.sql_agent.service import generate_secure_sql
 from agent_backend.sql_agent.types import SqlGenRequest

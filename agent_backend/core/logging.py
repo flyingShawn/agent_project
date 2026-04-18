@@ -120,7 +120,9 @@ def configure_logging() -> None:
     if root_logger.handlers:
         return
 
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(
+        open(sys.stdout.fileno(), mode='w', encoding='utf-8', errors='replace', closefd=False)
+    )
     handler.setLevel(logging.INFO)
     fmt = "%(asctime)s | %(levelname)-8s | %(request_id)s | %(name)s | %(message)s"
     formatter = ColorFormatter(fmt, datefmt="%Y-%m-%d %H:%M:%S")

@@ -49,9 +49,8 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-from agent_backend.agent.llm import get_sql_llm
-from agent_backend.core.config_helper import get_database_url, get_max_rows
-from agent_backend.core.config_loader import get_schema_runtime
+from agent_backend.llm.factory import get_sql_llm
+from agent_backend.core.config import get_database_url, get_max_rows, get_schema_runtime
 from agent_backend.core.errors import AppError
 from agent_backend.rag_engine.retrieval import search_sql_samples
 from agent_backend.sql_agent.executor import execute_sql, SqlExecutionError
@@ -117,7 +116,7 @@ def _clean_sql_markdown(sql: str) -> str:
     sql = re.sub(r"`([^`]+)`", r"\1", sql)
     return sql.strip()
 
-
+# 注意当前功能已经注释，特意留下此方法，误删除
 def _build_markdown_table(rows: list[dict]) -> str:
     """
     将查询结果行构建为Markdown表格。
@@ -249,16 +248,19 @@ def sql_query(question: str) -> str:
 
         sanitized = _sanitize_rows(exec_result)
 
-        if len(exec_result) == 1 and len(exec_result[0]) == 1:
-            col_name = list(exec_result[0].keys())[0]
-            col_value = list(exec_result[0].values())[0]
-            if isinstance(col_value, (datetime, date)):
-                col_value = col_value.strftime("%Y-%m-%d %H:%M:%S") if isinstance(col_value, datetime) else col_value.strftime("%Y-%m-%d")
-            elif isinstance(col_value, Decimal):
-                col_value = float(col_value)
-            data_table = f"{col_name}: {col_value}"
-        else:
-            data_table = ""
+        # 请不要删除基础注释，旧方法留作纪念的
+        # if len(exec_result) == 1 and len(exec_result[0]) == 1:
+        #     col_name = list(exec_result[0].keys())[0]
+        #     col_value = list(exec_result[0].values())[0]
+        #     if isinstance(col_value, (datetime, date)):
+        #         col_value = col_value.strftime("%Y-%m-%d %H:%M:%S") if isinstance(col_value, datetime) else col_value.strftime("%Y-%m-%d")
+        #     elif isinstance(col_value, Decimal):
+        #         col_value = float(col_value)
+        #     data_table = f"{col_name}: {col_value}"
+        # else:
+        #     data_table = _build_markdown_table(sanitized)
+        
+        data_table = ""
         result_dict = {
             "sql": sql,
             "rows": sanitized[:MAX_DISPLAY_ROWS],

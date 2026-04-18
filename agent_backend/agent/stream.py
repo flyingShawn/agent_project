@@ -62,6 +62,8 @@ _TOOL_STATUS_MESSAGES = {
     "get_current_time": "🕐 正在获取时间...",
     "calculator": "🧮 正在计算...",
     "web_search": "🌐 正在搜索...",
+    "schedule_task": "⏰ 正在创建定时任务...",
+    "manage_scheduled_task": "⏰ 正在管理定时任务...",
 }
 
 _TOOL_COMPLETE_MESSAGES = {
@@ -73,6 +75,8 @@ _TOOL_COMPLETE_MESSAGES = {
     "get_current_time": "✅ 时间获取完成...",
     "calculator": "✅ 计算完成...",
     "web_search": "✅ 搜索完成...",
+    "schedule_task": "✅ 定时任务创建完成...",
+    "manage_scheduled_task": "✅ 定时任务管理完成...",
 }
 
 
@@ -99,7 +103,6 @@ async def stream_graph_response(
 ) -> AsyncIterator[str]:
     logger.info("\n[stream] 开始流式输出 (astream_events v2), 超时: {0}秒".format(AGENT_TIMEOUT_SECONDS))
 
-    data_tables: list[str] = []
     references: list[str] = []
     chart_configs: list[dict] = []
     export_results: list[dict] = []
@@ -121,7 +124,8 @@ async def stream_graph_response(
                 chunk = event["data"].get("chunk")
                 if chunk and hasattr(chunk, "content") and chunk.content:
                     metadata = event.get("metadata", {})
-                    if metadata.get("langgraph_node") != "agent":
+                    node = metadata.get("langgraph_node", "")
+                    if node not in ("agent", "respond"):
                         continue
                     if first_token:
                         if has_status_shown:
@@ -133,7 +137,8 @@ async def stream_graph_response(
 
             elif kind == "on_chat_model_end":
                 metadata = event.get("metadata", {})
-                if metadata.get("langgraph_node") != "agent":
+                node = metadata.get("langgraph_node", "")
+                if node not in ("agent", "respond"):
                     continue
                 output = event["data"].get("output")
                 has_tool_calls = hasattr(output, "tool_calls") and output.tool_calls
@@ -172,8 +177,6 @@ async def stream_graph_response(
                 if name == "sql_query" and output_str:
                     try:
                         parsed = json.loads(output_str)
-                        if parsed.get("data_table"):
-                            data_tables.append(parsed["data_table"])
                         if "download_url" in parsed:
                             export_results.append({
                                 "download_url": parsed["download_url"],
@@ -213,10 +216,6 @@ async def stream_graph_response(
         logger.error(traceback.format_exc())
         yield _sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
         return
-
-    if data_tables:
-        for table in data_tables:
-            yield _sse_event("delta", f"\n\n{table}")
 
     if references:
         yield _sse_event("delta", "\n\n---\n\n**📚 参考来源：**\n")

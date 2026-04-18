@@ -6,7 +6,7 @@ LLM客户端配置模块
     替代旧架构中的自研OpenAICompatibleClient，提供原生Tool Calling支持。
 
 在系统架构中的定位：
-    位于Agent基础设施层，为agent_node和sql_query Tool提供LLM调用能力。
+    位于LLM基础设施层，为agent_node和sql_query Tool提供LLM调用能力。
     通过环境变量（LLM_BASE_URL/LLM_API_KEY/CHAT_MODEL）动态配置后端。
 
 主要使用场景：
@@ -27,16 +27,17 @@ LLM客户端配置模块
 关联文件：
     - agent_backend/agent/nodes.py: agent_node调用get_llm
     - agent_backend/agent/tools/sql_tool.py: sql_query调用get_sql_llm
-    - agent_backend/core/config_helper.py: load_env_file加载环境变量
+    - agent_backend/core/config.py: load_env_file加载环境变量
 """
 from __future__ import annotations
 
 import logging
 import os
 
+import httpx
 from langchain_openai import ChatOpenAI
 
-from agent_backend.core.config_helper import load_env_file
+from agent_backend.core.config import load_env_file
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,9 @@ def get_llm(
     api_key = os.getenv("LLM_API_KEY") or "ollama"
     model = os.getenv("CHAT_MODEL", "qwen2.5:7b")
 
+    http_client = httpx.Client(proxy=None, timeout=httpx.Timeout(300.0, connect=10.0))
+    http_async_client = httpx.AsyncClient(proxy=None, timeout=httpx.Timeout(300.0, connect=10.0))
+
     kwargs: dict = {
         "base_url": base_url,
         "api_key": api_key,
@@ -76,6 +80,8 @@ def get_llm(
         "streaming": streaming,
         "temperature": temperature,
         "max_tokens": 4096,
+        "http_client": http_client,
+        "http_async_client": http_async_client,
     }
 
     if "dashscope" in base_url or "aliyuncs" in base_url:

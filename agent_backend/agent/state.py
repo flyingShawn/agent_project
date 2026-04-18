@@ -57,6 +57,7 @@ class AgentState(TypedDict, total=False):
     chart_configs: list[dict]
     export_results: list[dict]
     web_search_results: list[dict]
+    scheduler_results: list[dict]
     tool_call_count: int
     max_tool_calls: int
     data_tables: list[str]
