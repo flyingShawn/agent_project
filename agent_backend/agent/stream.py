@@ -62,6 +62,8 @@ _TOOL_STATUS_MESSAGES = {
     "get_current_time": "🕐 正在获取时间...",
     "calculator": "🧮 正在计算...",
     "web_search": "🌐 正在搜索...",
+    "schedule_task": "⏰ 正在创建定时任务...",
+    "manage_scheduled_task": "⏰ 正在管理定时任务...",
 }
 
 _TOOL_COMPLETE_MESSAGES = {
@@ -73,6 +75,8 @@ _TOOL_COMPLETE_MESSAGES = {
     "get_current_time": "✅ 时间获取完成...",
     "calculator": "✅ 计算完成...",
     "web_search": "✅ 搜索完成...",
+    "schedule_task": "✅ 定时任务创建完成...",
+    "manage_scheduled_task": "✅ 定时任务管理完成...",
 }
 
 

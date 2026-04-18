@@ -4,6 +4,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,9 @@ class Base(DeclarativeBase):
 
 async def init_db():
     async with engine.begin() as conn:
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
         await conn.run_sync(Base.metadata.create_all)
-    logger.info(f"\n[DB] SQLite 数据库初始化完成: {db_path}")
+    logger.info(f"\n[DB] SQLite 数据库初始化完成（WAL模式已启用）: {db_path}")
 
 
 async def get_session() -> AsyncSession:

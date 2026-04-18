@@ -1,0 +1,30 @@
+tasks:
+  - task_id: online_client_count
+    task_name: 统计在线客户端数量
+    task_type: interval
+    interval_seconds: 1800
+    sql_template: |
+      SELECT COUNT(*) AS online_count
+      FROM s_machine
+      WHERE IsOnline = 1
+    description: 每隔30分钟统计在线客户端数量
+
+  - task_id: asset_change_detection
+    task_name: 统计新增资产变更的设备
+    task_type: interval
+    interval_seconds: 1800
+    sql_template: |
+      SELECT m.MachineName, m.IP, m.GroupID, m.LastUpdateTime
+      FROM s_machine m
+      WHERE m.LastUpdateTime >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+    description: 每隔30分钟统计新增资产变更的设备
+
+  - task_id: usb_log_stats
+    task_name: 统计USB日志情况
+    task_type: interval
+    interval_seconds: 7200
+    sql_template: |
+      SELECT COUNT(*) AS usb_event_count
+      FROM a_usblog
+      WHERE LogTime >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
+    description: 每隔2小时统计USB日志情况

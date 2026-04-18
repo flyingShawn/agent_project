@@ -81,6 +81,7 @@ def init_node(state: AgentState) -> dict:
         "chart_configs": [],
         "export_results": [],
         "web_search_results": [],
+        "scheduler_results": [],
         "data_tables": [],
         "references": [],
     }
@@ -162,6 +163,7 @@ def tool_result_node(state: AgentState) -> dict:
     new_chart_configs = list(state.get("chart_configs", []))
     new_export_results = list(state.get("export_results", []))
     new_web_search_results = list(state.get("web_search_results", []))
+    new_scheduler_results = list(state.get("scheduler_results", []))
 
     tool_map = {t.name: t for t in ALL_TOOLS}
 
@@ -246,6 +248,13 @@ def tool_result_node(state: AgentState) -> dict:
                 except (json.JSONDecodeError, TypeError):
                     new_web_search_results.append({"result": result})
 
+            elif tool_name in ("schedule_task", "manage_scheduled_task"):
+                try:
+                    parsed = json.loads(result)
+                    new_scheduler_results.append(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    new_scheduler_results.append({"result": result})
+
         except Exception as e:
             logger.error(f"[tool_result_node] 工具执行异常: {tool_name}: {e}")
             result = json.dumps({"error": f"工具执行失败: {type(e).__name__}: {e}"}, ensure_ascii=False)
@@ -269,6 +278,7 @@ def tool_result_node(state: AgentState) -> dict:
         "chart_configs": new_chart_configs,
         "export_results": new_export_results,
         "web_search_results": new_web_search_results,
+        "scheduler_results": new_scheduler_results,
     }
 
 

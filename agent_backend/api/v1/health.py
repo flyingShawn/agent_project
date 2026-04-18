@@ -22,18 +22,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from agent_backend.scheduler import get_scheduler_manager
+
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
 def health_check() -> dict:
-    """
-    健康检查端点，返回服务运行状态。
-
-    参数：
-        无
-
-    返回：
-        dict: {"status": "ok"} 表示服务正常运行
-    """
-    return {"status": "ok"}
+    scheduler = get_scheduler_manager()
+    scheduler_info = scheduler.get_scheduler_info()
+    return {"status": "ok", "scheduler": scheduler_info}

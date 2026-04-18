@@ -47,6 +47,7 @@ from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
 from agent_backend.db.chat_history import init_db
+from agent_backend.scheduler import get_scheduler_manager
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 env_path = Path(__file__).parent.parent / ".env"
@@ -78,8 +79,12 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await init_db()
+        scheduler = get_scheduler_manager()
+        await scheduler.start()
+        logging.getLogger(__name__).info("\n[Startup] 应用启动完成，调度器已启动")
         yield
-        logging.getLogger(__name__).info("\n[Shutdown] 应用正在关闭，清理数据库连接...")
+        logging.getLogger(__name__).info("\n[Shutdown] 应用正在关闭，清理资源...")
+        await scheduler.shutdown()
         conn_manager = get_connection_manager()
         conn_manager.shutdown()
         logging.getLogger(__name__).info("\n[Shutdown] 应用关闭完成")
