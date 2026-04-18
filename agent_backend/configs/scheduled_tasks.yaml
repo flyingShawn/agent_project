@@ -4,9 +4,8 @@ tasks:
     task_type: interval
     interval_seconds: 1800
     sql_template: |
-      SELECT COUNT(*) AS online_count
-      FROM s_machine
-      WHERE IsOnline = 1
+      SELECT COUNT(*) AS "在线客户端数量" 
+      FROM onlineinfo;
     description: 每隔30分钟统计在线客户端数量
 
   - task_id: asset_change_detection
@@ -14,9 +13,46 @@ tasks:
     task_type: interval
     interval_seconds: 1800
     sql_template: |
-      SELECT m.MachineName, m.IP, m.GroupID, m.LastUpdateTime
-      FROM s_machine m
-      WHERE m.LastUpdateTime >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+      SELECT
+        a.MtID AS "设备id",
+        b.Name_c AS "计算机名",
+        d.DepPath AS "所属部门",
+        b.ZCNum AS "资产编号",
+        c.UserName AS "用户名",
+        b.IP_c AS "IP地址",
+        b.Mac_C AS "MAC地址",
+        a3.paravalue AS "操作系统",
+        CASE
+            WHEN b.systemactive = 1 THEN '已激活'
+            WHEN b.systemactive = 2 THEN '未激活'
+            ELSE ''
+        END AS "系统激活",
+        a1.ParaValue AS "品牌",
+        a2.ParaValue AS "型号",
+        a.serialnum AS "序列号",
+        Board AS "主板",
+        CUP AS "CPU",
+        ViewCard AS "显卡",
+        Memory AS "内存",
+        DiskInfo AS "硬盘信息",
+        DiskSize AS "硬盘大小",
+        CASE WHEN netcardnum IS NULL THEN 1 ELSE netcardnum END AS "网卡数量",
+        a7.ParaValue AS "屏幕分辨率"
+      FROM
+        A_ClientHardInfo2 a
+        LEFT OUTER JOIN s_Machine b ON a.MtID = b.ID
+        LEFT OUTER JOIN s_User c ON c.ID = b.ClientID
+        LEFT OUTER JOIN s_Group d ON d.ID = b.Groupid
+        LEFT OUTER JOIN a_clientpara a1 ON a1.mtid = a.mtid AND a1.ParaName = 'systemmanufacturer'
+        LEFT OUTER JOIN a_clientpara a2 ON a2.mtid = a.mtid AND a2.ParaName = 'systemproductname'
+        LEFT OUTER JOIN a_clientpara a3 ON a3.mtid = a.mtid AND a3.Paraname = 'p_windowsversion'
+        LEFT OUTER JOIN a_clientpara a7 ON a7.mtid = a.mtid AND a7.ParaName = 'p_screensize'
+      WHERE
+        (IsNew = 1)
+        AND 
+        (IsCHANGE = 1)
+        AND
+        a.ChangeTime >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
     description: 每隔30分钟统计新增资产变更的设备
 
   - task_id: usb_log_stats
@@ -24,7 +60,9 @@ tasks:
     task_type: interval
     interval_seconds: 7200
     sql_template: |
-      SELECT COUNT(*) AS usb_event_count
-      FROM a_usblog
-      WHERE LogTime >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
+      SELECT
+        COUNT(*) AS "日志数" 
+      FROM
+        usbdb
+      WHERE usbPlugTime >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
     description: 每隔2小时统计USB日志情况

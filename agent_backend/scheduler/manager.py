@@ -362,7 +362,30 @@ class SchedulerManager:
                 existing = await session.execute(
                     select(AgentTask).where(AgentTask.task_id == task_id)
                 )
-                if existing.scalar_one_or_none():
+                existing_task = existing.scalar_one_or_none()
+                if existing_task and existing_task.status == "active":
+                    new_sql = task_def.get("sql_template", "")
+                    if new_sql and existing_task.sql_template != new_sql:
+                        existing_task.sql_template = new_sql
+                        existing_task.task_name = task_def.get("task_name", task_id)
+                        existing_task.description = task_def.get("description")
+                        existing_task.updated_at = time.time()
+                        await session.commit()
+                        logger.info(f"\n[Scheduler] 更新活跃任务的SQL模板: {task_id}")
+                    continue
+
+                if existing_task and existing_task.status != "active":
+                    existing_task.status = "active"
+                    existing_task.sql_template = task_def.get("sql_template", "")
+                    existing_task.task_name = task_def.get("task_name", task_id)
+                    existing_task.description = task_def.get("description")
+                    existing_task.updated_at = time.time()
+                    task_type = existing_task.task_type
+                    task_config = json.loads(existing_task.task_config) if existing_task.task_config else {}
+                    await session.commit()
+                    self._register_task_to_scheduler(task_id, task_type, task_config)
+                    loaded_count += 1
+                    logger.info(f"\n[Scheduler] 重新激活已完成任务: {task_id}")
                     continue
 
                 task_type = task_def.get("task_type", "interval")
