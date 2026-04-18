@@ -1,3 +1,36 @@
+"""
+SQL 生成提示词构建模块
+
+文件功能：
+    根据数据库 Schema 运行时配置和 RAG 检索的 SQL 样本，
+    构建发送给 LLM 的 SQL 生成提示词。通过精简 Schema 信息、
+    注入同义词映射和参考样本，引导 LLM 生成准确合规的 SQL。
+
+在系统架构中的定位：
+    位于 SQL Agent 的提示词层，被 sql_agent/executor.py 和
+    agent/tools/scheduler_tool.py 调用，为 LLM 生成 SQL 提供上下文。
+
+主要使用场景：
+    - 用户提问时，构建 SQL 生成提示词
+    - 定时任务创建时，为自动生成的 SQL 构建提示词
+
+核心函数：
+    - build_sql_prompt(): 构建完整的 SQL 生成提示词
+    - _extract_tables_from_samples(): 从 RAG 样本中提取涉及的表名
+
+专有技术说明：
+    - Schema 精简策略：当有 RAG 样本时，只包含样本涉及的表和列，
+      减少提示词长度，提高 LLM 生成精度
+    - 同义词过滤：只展示与当前查询相关的同义词映射
+    - 别名规则注入：强制 LLM 遵守表别名和列别名规则
+    - 敏感列过滤：在提示词中声明禁止返回的敏感列
+
+关联文件：
+    - agent_backend/core/config.py: SchemaRuntime 运行时配置
+    - agent_backend/rag_engine/retrieval.py: RetrievedChunk RAG 检索结果
+    - agent_backend/sql_agent/executor.py: SQL 执行器（调用方）
+    - agent_backend/agent/tools/scheduler_tool.py: 定时任务工具（调用方）
+"""
 from __future__ import annotations
 
 import re
@@ -7,6 +40,19 @@ from agent_backend.rag_engine.retrieval import RetrievedChunk
 
 
 def _extract_tables_from_samples(samples: list[RetrievedChunk]) -> set[str]:
+    """
+    从 RAG 检索的 SQL 样本中提取涉及的数据库表名。
+
+    参数：
+        samples: RAG 检索返回的 SQL 样本列表
+
+    返回：
+        set[str]: 表名集合（小写）
+
+    提取策略：
+        1. 从"关键表："标记行中解析逗号分隔的表名
+        2. 从 SQL 语法中正则匹配 FROM/JOIN 后的表名
+    """
     tables = set()
     for sample in samples:
         text = sample.text
@@ -31,6 +77,24 @@ def build_sql_prompt(
     *,
     sql_samples: list[RetrievedChunk] | None = None,
 ) -> str:
+    """
+    构建 SQL 生成提示词。
+
+    参数：
+        runtime: SchemaRuntime 运行时配置，包含表结构、同义词、安全规则等
+        question: 用户的自然语言问题
+        sql_samples: RAG 检索的参考 SQL 样本（可选）
+
+    返回：
+        str: 完整的提示词字符串，包含指令、Schema、同义词、样本和问题
+
+    构建策略：
+        1. 若有 sql_samples，只包含样本涉及的表（精简策略），否则包含所有表
+        2. 若精简后无表可展示，回退到包含所有表
+        3. 同义词按样本涉及的表过滤，无样本时展示前50条
+        4. 注入别名规则、敏感列禁止、字段使用约束等指令
+        5. 若有样本，追加"参考SQL样本"段落，要求严格模仿
+    """
     naming = runtime.raw.naming
     security = runtime.raw.security
 

@@ -1,3 +1,39 @@
+"""
+定时任务创建工具模块
+
+文件功能：
+    定义 LangChain @tool 装饰的 schedule_task 工具，供 Agent 在对话中
+    根据用户需求创建定时任务。支持自动生成SQL模板或使用用户提供的SQL。
+
+在系统架构中的定位：
+    位于 Agent 工具层，是 LLM Tool Calling 机制中的一环。
+    - 对上：被 agent_node 通过 bind_tools 绑定到 LLM，LLM 自主决策调用
+    - 对下：调用 SchedulerManager.add_task() 创建任务，调用 sql_agent 生成/校验SQL
+
+主要使用场景：
+    - 用户在对话中说"每隔30分钟统计在线客户端数量"等周期性需求
+    - LLM 识别意图后调用此工具创建定时任务
+
+核心函数：
+    - schedule_task(): @tool 装饰的定时任务创建工具
+    - ScheduleTaskInput: Pydantic 输入模型
+    - _clean_sql_markdown(): 清理LLM返回SQL中的Markdown标记
+    - _run_async(): 在同步工具函数中运行异步协程的桥接器
+
+专有技术说明：
+    - 同步/异步桥接：LangChain @tool 函数是同步的，但 SchedulerManager 是异步的，
+      通过 _run_async() 使用 ThreadPoolExecutor 桥接
+    - SQL自动生成：当用户未提供 sql_template 时，调用 LLM + RAG样本自动生成SQL
+    - SQL安全校验：生成/提供的SQL必须通过 validate_sql_basic() 和敏感列校验
+    - SQL试执行：校验通过后在数据库上试执行SQL（max_rows=1），验证SQL可执行性
+
+关联文件：
+    - agent_backend/scheduler/manager.py: SchedulerManager.add_task() 创建任务
+    - agent_backend/sql_agent/sql_safety.py: SQL安全校验
+    - agent_backend/sql_agent/executor.py: execute_sql() SQL试执行
+    - agent_backend/sql_agent/prompt_builder.py: build_sql_prompt() SQL生成提示词
+    - agent_backend/llm/factory.py: get_sql_llm() SQL生成LLM实例
+"""
 import asyncio
 import json
 import logging
@@ -21,6 +57,16 @@ logger = logging.getLogger(__name__)
 
 
 class ScheduleTaskInput(BaseModel):
+    """
+    schedule_task 工具的输入参数模型。
+
+    字段说明：
+        task_name: 任务名称，如"统计在线客户端数量"
+        description: 任务的自然语言描述，如"每隔30分钟统计在线客户端数量"
+        interval_seconds: 间隔秒数，如1800表示30分钟（与cron_expr二选一）
+        cron_expr: cron表达式，如"0 */2 * * *"表示每2小时（与interval_seconds二选一）
+        sql_template: 可选的SQL模板，不提供则由LLM自动生成
+    """
     task_name: str = Field(description="任务名称，如'统计在线客户端数量'")
     description: str = Field(description="任务的自然语言描述，如'每隔30分钟统计在线客户端数量'")
     interval_seconds: int | None = Field(default=None, description="间隔秒数，如1800表示30分钟")
@@ -29,6 +75,20 @@ class ScheduleTaskInput(BaseModel):
 
 
 def _clean_sql_markdown(sql: str) -> str:
+    """
+    清理LLM返回SQL中的Markdown代码块标记。
+
+    参数：
+        sql: 可能包含 ```sql ... ``` 标记的SQL字符串
+
+    返回：
+        str: 清理后的纯SQL字符串
+
+    处理规则：
+        - 移除开头的 ```sql 或 ```
+        - 移除结尾的 ```
+        - 移除反引号包裹的标识符（`table` → table）
+    """
     sql = sql.strip()
     sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
     sql = re.sub(r"^```\s*", "", sql)
@@ -38,6 +98,21 @@ def _clean_sql_markdown(sql: str) -> str:
 
 
 def _run_async(coro):
+    """
+    在同步上下文中运行异步协程的桥接器。
+
+    LangChain @tool 函数是同步的，但 SchedulerManager 的方法都是异步的。
+    此函数根据当前事件循环状态选择合适的执行策略：
+        - 事件循环未运行：直接 loop.run_until_complete()
+        - 事件循环正在运行（如 FastAPI 中）：在新线程中启动新事件循环
+        - 无事件循环：asyncio.run()
+
+    参数：
+        coro: 异步协程对象
+
+    返回：
+        协程的执行结果
+    """
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -68,6 +143,17 @@ def schedule_task(
         interval_seconds: 间隔秒数（与cron_expr二选一）
         cron_expr: cron表达式（与interval_seconds二选一）
         sql_template: 可选SQL模板，不提供则自动生成
+
+    返回：
+        str: JSON格式的创建结果，包含 task_id, task_name, status, sql_template
+             失败时包含 error 字段
+
+    执行流程：
+        1. 校验必须提供 interval_seconds 或 cron_expr 之一
+        2. 若未提供 sql_template，调用 LLM + RAG样本自动生成SQL
+        3. SQL安全校验（validate_sql_basic + 敏感列校验）
+        4. SQL试执行验证（max_rows=1，确保SQL可执行）
+        5. 调用 SchedulerManager.add_task() 创建任务
     """
     logger.info(f"\n[schedule_task] 创建任务: {task_name}, 描述: {description}")
 

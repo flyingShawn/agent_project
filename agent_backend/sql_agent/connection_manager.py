@@ -1,19 +1,44 @@
 """
-数据库连接管理模块
+业务数据库连接管理模块
 
-文件目的：
-    - 管理数据库连接的生命周期
-    - 实现连接持久化和复用
-    - 支持会话级别的连接管理
-    - 自动过期机制
-    - 连接健康检查和自动重连
+文件功能：
+    管理业务数据库（MySQL/PostgreSQL等）连接的生命周期，实现连接持久化
+    和复用。按会话ID管理连接，支持自动过期清理和健康检查自动重连。
 
-核心功能：
-    1. 会话级连接管理
-    2. 连接复用机制
-    3. 60分钟自动过期
-    4. 主动关闭连接
-    5. 连接健康检查和自动重连
+在系统架构中的定位：
+    位于 SQL Agent 的基础设施层，被 sql_agent/executor.py 调用。
+    - 对上：executor 通过 get_or_create_connection() 获取数据库连接
+    - 对下：封装 SQLAlchemy 同步引擎的连接管理
+
+主要使用场景：
+    - 用户提问时，executor 获取对应会话的数据库连接执行SQL
+    - 定时任务执行时，使用 __scheduler__ 会话ID的连接
+    - 对话结束时，通过 close_connection() 释放连接
+
+核心类与函数：
+    - ConnectionManager: 单例连接管理器
+      - get_or_create_connection(): 获取或创建指定会话的数据库连接
+      - close_connection(): 关闭指定会话的连接
+      - close_all_connections(): 关闭所有连接
+      - mark_connection_invalid(): 标记连接为无效
+      - get_connection_manager(): 获取单例实例的工厂函数
+    - SessionConnection: 会话连接信息数据类
+
+专有技术说明：
+    - 单例模式：通过 __new__ + 双重检查锁实现线程安全单例
+    - 连接复用：同一会话ID复用同一连接，避免频繁创建/销毁
+    - 自动过期：60分钟未使用的连接自动清理（后台守护线程每60秒检查）
+    - 健康检查：复用连接前执行 SELECT 1 验证连接有效性
+    - 自动重连：健康检查失败时自动关闭旧连接并创建新连接
+
+性能与安全注意事项：
+    - pool_pre_ping=True: SQLAlchemy 内置连接健康检查
+    - pool_recycle=3600: 连接最大存活1小时，避免数据库端超时
+    - 后台清理线程为 daemon 线程，主进程退出时自动终止
+
+关联文件：
+    - agent_backend/sql_agent/executor.py: execute_sql() 调用连接管理器
+    - agent_backend/api/v1/chat.py: 对话结束时调用 close_connection()
 """
 from __future__ import annotations
 

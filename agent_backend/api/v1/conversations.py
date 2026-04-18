@@ -1,3 +1,35 @@
+"""
+聊天对话管理 REST API 路由模块
+
+文件功能：
+    定义聊天对话管理的 REST API 端点，提供对话的创建、查询、
+    标题更新和软删除等 HTTP 接口。
+
+在系统架构中的定位：
+    位于 API 路由层，是前端与对话数据之间的桥梁。
+    - 对上：前端通过 HTTP 请求调用这些接口管理对话
+    - 对下：通过 SQLAlchemy AsyncSession 操作 Conversation / Message 模型
+
+主要使用场景：
+    - 前端对话列表页加载和分页
+    - 新建对话、查看对话详情
+    - 修改对话标题、删除对话
+
+核心端点：
+    - GET /conversations: 获取用户对话列表（分页）
+    - GET /conversations/{id}: 获取对话详情及消息
+    - POST /conversations: 创建新对话
+    - PUT /conversations/{id}/title: 更新对话标题
+    - DELETE /conversations/{id}: 软删除对话
+
+路由前缀：
+    /api/v1（由 routes.py 挂载）
+
+关联文件：
+    - agent_backend/db/chat_history.py: get_session 异步会话依赖
+    - agent_backend/db/models.py: Conversation / Message ORM 模型
+    - agent_backend/api/routes.py: 路由注册入口
+"""
 import logging
 import time
 import uuid
