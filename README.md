@@ -1,8 +1,8 @@
 # 阳途智能助手 (Desk Agent)
 
-为桌面管理系统打造的 AI 智能助手，支持自然语言查询数据库、知识文档问答、图表生成与数据导出。
+为桌面管理系统打造的 AI 智能助手，支持自然语言查询数据库、知识文档问答、图表生成、数据导出与定时任务调度。
 
-基于 LangGraph Agent 编排，LLM 自主决策调用 8 种工具（SQL 查询、RAG 检索、元数据查询、时间、计算器、图表、导出、网络搜索），无需硬编码意图路由。
+基于 LangGraph Agent 编排，LLM 自主决策调用 10 种工具（SQL 查询、RAG 检索、元数据查询、时间、计算器、图表、导出、网络搜索、定时任务创建、定时任务管理），无需硬编码意图路由。
 
 ---
 
@@ -114,10 +114,9 @@ agent_project/
 │   │   ├── graph.py            #   StateGraph 构建
 │   │   ├── nodes.py            #   节点函数 + 条件路由
 │   │   ├── state.py            #   AgentState 定义
-│   │   ├── llm.py              #   LLM 客户端
 │   │   ├── prompts.py          #   系统 Prompt
 │   │   ├── stream.py           #   astream_events → SSE 流式适配
-│   │   └── tools/              #   8 个工具实现
+│   │   └── tools/              #   10 个工具实现
 │   │       ├── sql_tool.py     #     自然语言→SQL
 │   │       ├── rag_tool.py     #     知识库检索
 │   │       ├── metadata_tool.py#     表结构查询
@@ -125,20 +124,50 @@ agent_project/
 │   │       ├── calculator_tool.py#   数学计算
 │   │       ├── chart_tool.py   #     ECharts 图表
 │   │       ├── export_tool.py  #     Excel/CSV 导出
-│   │       └── web_search_tool.py#   Tavily 网络搜索
+│   │       ├── web_search_tool.py#   Tavily 网络搜索
+│   │       ├── scheduler_tool.py#    定时任务创建
+│   │       └── scheduler_manage_tool.py # 定时任务管理
 │   ├── api/v1/                 # API 路由
+│   │   ├── chat.py             #   聊天 API（SSE 流式）
+│   │   ├── conversations.py    #   会话管理 API
+│   │   ├── scheduler.py        #   定时任务 API
+│   │   ├── rag.py              #   RAG 同步接口
+│   │   ├── sql_agent.py        #   SQL 代理接口
+│   │   ├── metadata.py         #   元数据摘要
+│   │   ├── export.py           #   文件下载
+│   │   └── health.py           #   健康检查
 │   ├── core/                   # 核心基础层（配置/日志/异常/请求ID）
-│   ├── llm/clients.py          # LLM 客户端（OpenAI 兼容协议）
+│   │   ├── config.py           #   统一配置加载 + Schema 索引
+│   │   ├── schema_models.py    #   14 个 Pydantic Schema 模型
+│   │   ├── errors.py           #   AppError + 全局异常处理器
+│   │   ├── logging.py          #   彩色日志 + RequestIdFilter
+│   │   └── request_id.py       #   ContextVar 请求 ID 中间件
+│   ├── llm/                    # LLM 调用层
+│   │   ├── clients.py          #   底层 HTTP 客户端（OpenAI 兼容 + Ollama 原生）
+│   │   └── factory.py          #   LLM 工厂（get_llm / get_sql_llm）
+│   ├── db/                     # 聊天历史持久化（SQLite）
+│   │   ├── chat_history.py     #   异步引擎 + 会话工厂
+│   │   └── models.py           #   ORM 模型（Conversation/Message/AgentTask/AgentTaskResult）
 │   ├── rag_engine/             # RAG 引擎（文档解析/分块/向量化/检索）
 │   ├── sql_agent/              # SQL 代理（NL→SQL/安全校验/模板匹配）
+│   ├── scheduler/              # 定时任务调度器
+│   │   ├── manager.py          #   SchedulerManager（APScheduler 封装）
+│   │   └── executor.py         #   TaskExecutor（SQL 执行 + 结果持久化）
 │   ├── configs/
-│   │   └── schema_metadata.yaml#   数据库 Schema 元数据配置
+│   │   ├── schema_metadata.yaml#   数据库 Schema 元数据配置
+│   │   └── scheduled_tasks.yaml#   默认定时任务配置
 │   └── main.py                 # 应用入口
 ├── agent_frontend/             # 前端服务 (Vue 3 + Vite + Tailwind)
 │   ├── src/
-│   │   ├── components/         #   ChatBox / MessageBubble / ImageUploader
-│   │   ├── api/chat.js         #   SSE 流式通信
-│   │   └── config.js           #   运行时配置
+│   │   ├── components/         #   ChatBox / MessageBubble / Sidebar / ChartBlock / ImageUploader
+│   │   ├── api/
+│   │   │   ├── chat.js         #   SSE 流式通信
+│   │   │   └── conversations.js#   会话 CRUD API
+│   │   ├── composables/
+│   │   │   └── useConversations.js # 会话状态管理
+│   │   ├── config.js           #   运行时配置（三层覆盖）
+│   │   ├── App.vue             #   根组件（Sidebar + ChatBox 布局）
+│   │   └── main.js             #   入口文件
 │   └── public/config.js        #   Docker 环境注入配置
 ├── data/desk-agent/            # 知识库数据
 │   ├── docs/                   #   文档知识库
@@ -150,6 +179,7 @@ agent_project/
 │   ├── deploy.bat / deploy.sh
 │   └── entrypoint.frontend.sh
 ├── scripts/                    # 工具脚本
+├── docs/                       # 项目文档
 ├── .env.example                # 环境变量模板
 ├── requirements.txt            # Python 依赖
 └── docker-compose.yml          # 容器编排
@@ -161,7 +191,7 @@ agent_project/
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
-| 前端 | Vue 3 + Vite + Tailwind CSS | Composition API, SSE 流式渲染 |
+| 前端 | Vue 3 + Vite + Tailwind CSS | Composition API, SSE 流式渲染, ECharts 图表 |
 | 后端 | FastAPI + Uvicorn | 异步 Python Web |
 | Agent | LangGraph | StateGraph 状态机编排, Tool Calling |
 | LLM | langchain-openai | OpenAI 兼容协议, 支持 Ollama/DashScope/DeepSeek |
@@ -169,6 +199,8 @@ agent_project/
 | 文本嵌入 | FastEmbed (BAAI/bge-small-zh-v1.5) | 中文向量模型 |
 | 文档解析 | Docling | 支持 docx/xlsx/pdf/txt/md 等 |
 | 数据库 | SQLAlchemy 2.0 | 支持 MySQL / PostgreSQL 只读查询 |
+| 聊天历史 | SQLite + aiosqlite | 会话/消息持久化, WAL 模式 |
+| 定时任务 | APScheduler | AsyncIOScheduler, 支持 interval/cron 两种调度 |
 | 部署 | Docker Compose + Nginx | 前后端 + Qdrant 三容器编排 |
 
 ---
@@ -244,11 +276,17 @@ agent_project/
 | `RAG_SQL_HYBRID_ALPHA` | `0.8` | SQL 检索更偏重语义匹配 |
 | `SQL_MAX_ROWS` | `500` | SQL 查询最大行数限制 |
 
+### 聊天历史与调度配置
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `CHAT_DB_PATH` | `data/chat_history.db` | 聊天历史 SQLite 数据库路径 |
+| `AGENT_NAME` | `desk-agent` | 智能体名称，影响知识库路径 |
+
 ### 其他配置
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `AGENT_NAME` | `desk-agent` | 智能体名称，影响知识库路径 |
 | `CHAT_API_TOKEN` | 空 | API 访问 Token（可选鉴权） |
 | `TAVILY_API_KEY` | 空 | Tavily 搜索 API Key（留空禁用网络搜索） |
 | `WEB_SEARCH_MAX_RESULTS` | `5` | 网络搜索返回数量 |
@@ -283,6 +321,12 @@ agent_project/
 | `query_patterns` | 预定义 SQL 模板（命中则绕过 LLM 直接返回） |
 | `display_fields` | 不同查询场景的展示字段规范 |
 
+### scheduled_tasks.yaml
+
+路径：`agent_backend/configs/scheduled_tasks.yaml`
+
+定义应用启动时自动加载的默认定时任务。支持 interval（固定间隔）和 cron（Cron 表达式）两种调度类型。应用启动时会自动与数据库中已有任务对比，实现配置热更新。
+
 ---
 
 ## API 路由
@@ -291,6 +335,11 @@ agent_project/
 |------|------|------|
 | `/api/v1/chat` | POST | 统一聊天入口（SSE 流式） |
 | `/api/v1/chat/end` | POST | 结束对话，关闭数据库连接 |
+| `/api/v1/conversations` | GET | 获取对话列表（分页） |
+| `/api/v1/conversations` | POST | 创建新对话 |
+| `/api/v1/conversations/{id}` | GET | 获取对话详情及消息 |
+| `/api/v1/conversations/{id}/title` | PUT | 更新对话标题 |
+| `/api/v1/conversations/{id}` | DELETE | 删除对话 |
 | `/api/v1/rag` | POST | RAG 文档问答（独立入口） |
 | `/api/v1/rag/sync` | POST | 触发文档知识库同步 |
 | `/api/v1/rag/sync-sql` | POST | 触发 SQL 样本库同步 |
@@ -298,20 +347,62 @@ agent_project/
 | `/api/v1/sql-agent` | POST | SQL 查询代理（独立入口） |
 | `/api/v1/sql/generate` | POST | SQL 生成（可选执行） |
 | `/api/v1/metadata/summary` | GET | 数据库元数据摘要 |
+| `/api/v1/scheduler/tasks` | GET | 获取定时任务列表 |
+| `/api/v1/scheduler/tasks/{task_id}/results` | GET | 获取任务执行结果 |
+| `/api/v1/scheduler/tasks/{task_id}/run` | POST | 手动触发任务执行 |
+| `/api/v1/scheduler/tasks/{task_id}/pause` | PUT | 暂停任务 |
+| `/api/v1/scheduler/tasks/{task_id}/resume` | PUT | 恢复任务 |
+| `/api/v1/scheduler/tasks/{task_id}` | DELETE | 删除任务 |
 | `/api/v1/export/download/{filename}` | GET | 导出文件下载 |
 | `/api/v1/health` | GET | 健康检查 |
 
 ---
 
-## RAG 文档问答
+## 核心功能
 
-### 支持的文档格式
+### Agent 工具体系
+
+LLM 通过 Tool Calling 自主决策调用以下 10 种工具：
+
+| 工具 | 功能 | 入参 |
+|------|------|------|
+| `sql_query` | 自然语言→SQL 生成并执行查询 | `question: str` |
+| `rag_search` | 混合检索知识库文档片段 | `question: str` |
+| `metadata_query` | 查询数据库表结构信息 | `table_name: str \| None` |
+| `get_current_time` | 获取当前日期时间和常用日期范围 | 无 |
+| `calculator` | 安全执行数学表达式计算 | `expression: str` |
+| `generate_chart` | 生成 ECharts 图表配置 | `chart_type, title, data, x_field, y_field` |
+| `export_data` | 导出数据为 Excel/CSV 文件 | `data, filename, format` |
+| `web_search` | 通过 Tavily API 搜索互联网 | `query: str` |
+| `schedule_task` | 创建定时任务（自动生成 SQL） | `task_name, interval_seconds/cron_expr, sql_template` |
+| `manage_scheduled_task` | 管理定时任务（查看/暂停/恢复/删除/更新） | `action, task_id` |
+
+### 定时任务调度
+
+基于 APScheduler 的定时任务系统，支持通过自然语言创建和管理定时任务：
+
+- **任务创建**：用户通过对话描述需求，LLM 自动生成 SQL 并创建定时任务
+- **任务类型**：支持 interval（固定间隔）和 cron（Cron 表达式）两种调度
+- **任务管理**：支持暂停、恢复、删除、更新 SQL 模板
+- **结果查看**：每次执行结果自动持久化，支持查询历史结果
+- **自动清理**：每天凌晨 3:00 自动清理超过 7 天的旧结果
+- **配置热更新**：`scheduled_tasks.yaml` 中的默认任务启动时自动与数据库对比更新
+
+### 会话管理
+
+- **多会话支持**：侧边栏展示历史会话列表，支持新建、切换、重命名、删除
+- **消息持久化**：所有对话消息自动保存到 SQLite 数据库
+- **上下文恢复**：切换会话时自动加载历史消息
+
+### RAG 文档问答
+
+#### 支持的文档格式
 
 - Office 文档：PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx)
 - 文本文件：Markdown (.md), 纯文本 (.txt)
 - 图片：PNG, JPG, JPEG, WebP（OCR 识别）
 
-### 文档导入
+#### 文档导入
 
 将文档放入 `data/desk-agent/docs/` 目录，然后调用同步接口：
 
@@ -323,7 +414,7 @@ curl -X POST http://localhost:8000/api/v1/rag/sync \
 
 `mode` 可选：`incremental`（增量，基于 SHA-256 指纹跳过未变更文件）或 `full`（全量重建）。
 
-### 检索流程
+#### 检索流程
 
 1. **文档解析**：Docling 将多种格式转为 Markdown
 2. **文档分块**：按标题结构分块，支持重叠（1800 字符，200 字符重叠）
@@ -366,6 +457,7 @@ Docker 网络
 | `/data/sql` | `./data/desk-agent/sql` | SQL 样本库（只读挂载） |
 | `/app/configs` | `./agent_backend/configs` | 配置文件（只读挂载） |
 | `/app/.qdrant_local` | Docker volume `qdrant_data` | 向量数据持久化 |
+| `/app/data` | Docker volume `chat_data` | 聊天历史持久化 |
 
 ### Docker 环境变量注意
 
@@ -405,6 +497,11 @@ taskkill /PID <进程ID> /F      # 结束进程
 - 调用 `/api/v1/rag/sync` 触发文档同步
 - 检查 Qdrant 控制台 http://localhost:6333/dashboard 是否有向量数据
 
+**定时任务不执行**
+- 检查健康检查接口 `/api/v1/health` 返回的调度器状态
+- 确认数据库连接正常（定时任务依赖 SQL 执行）
+- 查看后端日志中是否有调度器启动信息
+
 ---
 
 ## 工具脚本
@@ -416,4 +513,5 @@ taskkill /PID <进程ID> /F      # 结束进程
 | `scripts/测试数据库连接.py` | 数据库连接测试 |
 | `scripts/诊断工具.py` | 诊断工具 |
 | `scripts/sync_sql_samples.py` | SQL 样本同步 |
+| `scripts/sync_docs.py` | 文档同步 |
 | `scripts/stop_backend.bat` | 停止后端服务 |

@@ -15,7 +15,7 @@ SQL查询工具模块
 
 核心函数：
     - sql_query: LangGraph Tool，接收自然语言问题，返回JSON格式查询结果
-    - _clean_sql_markdown: 清理LLM生成的SQL中的Markdown格式标记
+    - clean_sql_markdown: 清理LLM生成的SQL中的Markdown格式标记（来自sql_agent.utils）
     - _build_markdown_table: 将查询结果构建为Markdown表格
 
 专有技术说明：
@@ -59,6 +59,7 @@ from agent_backend.sql_agent.sql_safety import (
     enforce_deny_select_columns,
     validate_sql_basic,
 )
+from agent_backend.sql_agent.utils import clean_sql_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -97,26 +98,6 @@ class SqlQueryInput(BaseModel):
     question: str = Field(description="用户的自然语言问题，用于生成SQL查询")
 
 
-def _clean_sql_markdown(sql: str) -> str:
-    """
-    清理LLM生成SQL中的Markdown格式标记。
-
-    LLM有时会将SQL包裹在```sql...```代码块中，此函数去除这些标记。
-
-    参数：
-        sql: 原始SQL字符串
-
-    返回：
-        str: 清理后的纯SQL字符串
-    """
-    sql = sql.strip()
-    sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"^```\s*", "", sql)
-    sql = re.sub(r"\s*```$", "", sql)
-    sql = re.sub(r"`([^`]+)`", r"\1", sql)
-    return sql.strip()
-
-# 注意当前功能已经注释，特意留下此方法，误删除
 def _build_markdown_table(rows: list[dict]) -> str:
     """
     将查询结果行构建为Markdown表格。
@@ -203,7 +184,7 @@ def sql_query(question: str) -> str:
         sql = response.content.strip()
         logger.info(f"\n[sql_query] LLM生成SQL: {sql}")
 
-        sql = _clean_sql_markdown(sql)
+        sql = clean_sql_markdown(sql)
 
         try:
             sql = validate_sql_basic(sql)

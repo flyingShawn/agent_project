@@ -60,6 +60,8 @@ services:
       - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-5}
       # 聊天历史数据库路径
       - CHAT_DB_PATH=${CHAT_DB_PATH:-/app/data/chat_history.db}
+      # CORS允许的前端来源
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost}
     volumes:
       # 挂载文档知识库目录（宿主机docs目录 → 容器/data/docs）
       # 注意：挂载源使用独立的宿主机变量，不使用容器内的RAG_DOCS_DIR
@@ -125,7 +127,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:6333/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

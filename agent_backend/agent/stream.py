@@ -16,7 +16,7 @@ SSE流式输出适配模块
 
 核心函数：
     - stream_graph_response: 异步生成器，将Graph事件流转为SSE事件流
-    - _sse_event: SSE事件格式化工具函数
+    - sse_event: SSE事件格式化工具函数（来自core.sse）
 
 SSE事件格式（与前端兼容）：
     - event: delta    → data: "文本片段"（逐token流式追加）
@@ -48,6 +48,7 @@ import logging
 from typing import Any, AsyncIterator
 
 from agent_backend.agent.state import AgentState
+from agent_backend.core.sse import sse_event
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +79,6 @@ _TOOL_COMPLETE_MESSAGES = {
     "schedule_task": "✅ 定时任务创建完成...",
     "manage_scheduled_task": "✅ 定时任务管理完成...",
 }
-
-
-def _sse_event(event: str, data: str | dict) -> str:
-    if isinstance(data, dict):
-        data = json.dumps(data, ensure_ascii=False)
-    lines = data.split("\n")
-    return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
 
 
 async def _aiter_with_timeout(aiter: AsyncIterator, timeout: float) -> AsyncIterator:
@@ -129,11 +123,11 @@ async def stream_graph_response(
                         continue
                     if first_token:
                         if has_status_shown:
-                            yield _sse_event("replace", "")
+                            yield sse_event("replace", "")
                             has_status_shown = False
                         logger.info("\n[stream] 收到首个token，流式输出已生效")
                         first_token = False
-                    yield _sse_event("delta", chunk.content)
+                    yield sse_event("delta", chunk.content)
 
             elif kind == "on_chat_model_end":
                 metadata = event.get("metadata", {})
@@ -143,13 +137,13 @@ async def stream_graph_response(
                 output = event["data"].get("output")
                 has_tool_calls = hasattr(output, "tool_calls") and output.tool_calls
                 if has_tool_calls:
-                    yield _sse_event("replace", "")
+                    yield sse_event("replace", "")
                     tool_names = [tc.get("name", "") for tc in output.tool_calls]
                     status_msg = _TOOL_STATUS_MESSAGES.get(
                         tool_names[0] if tool_names else "",
                         "⏳ 正在处理...",
                     )
-                    yield _sse_event("status", status_msg)
+                    yield sse_event("status", status_msg)
                     has_status_shown = True
                     first_token = True
                     logger.info(f"\n[stream] LLM调用完成(工具调用): {name}, tools={tool_names}")
@@ -160,13 +154,13 @@ async def stream_graph_response(
                 logger.info(f"\n[stream] 开始执行工具: {name}")
                 if has_status_shown:
                     tool_status = _TOOL_STATUS_MESSAGES.get(name, "⏳ 正在处理...")
-                    yield _sse_event("status", tool_status)
+                    yield sse_event("status", tool_status)
 
             elif kind == "on_tool_end":
                 logger.info(f"\n[stream] 工具执行完成: {name}")
                 if has_status_shown:
                     complete_msg = _TOOL_COMPLETE_MESSAGES.get(name, "✅ 处理完成...")
-                    yield _sse_event("status", complete_msg)
+                    yield sse_event("status", complete_msg)
                 output = event["data"].get("output")
                 output_str = ""
                 if isinstance(output, str):
@@ -208,21 +202,21 @@ async def stream_graph_response(
 
     except asyncio.TimeoutError:
         logger.warning(f"\n[stream] Agent执行超时({AGENT_TIMEOUT_SECONDS}秒)，强制结束")
-        yield _sse_event("error", {"error": "抱歉，处理时间有点长，我已经尽力了但还是没能完成。请尝试简化您的问题，或者稍后再试试吧~"})
+        yield sse_event("error", {"error": "抱歉，处理时间有点长，我已经尽力了但还是没能完成。请尝试简化您的问题，或者稍后再试试吧~"})
         return
     except Exception as e:
         logger.error(f"[stream] 流式输出异常: {type(e).__name__}: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        yield _sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
+        yield sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
         return
 
     if references:
-        yield _sse_event("delta", "\n\n---\n\n**📚 参考来源：**\n")
-        yield _sse_event("delta", "\n".join(references))
+        yield sse_event("delta", "\n\n---\n\n**📚 参考来源：**\n")
+        yield sse_event("delta", "\n".join(references))
 
     for chart in chart_configs:
-        yield _sse_event("chart", chart)
+        yield sse_event("chart", chart)
 
     seen_urls = set()
     for export_item in export_results:
@@ -232,6 +226,6 @@ async def stream_graph_response(
             continue
         if url:
             seen_urls.add(url)
-        yield _sse_event("export", export_item)
+        yield sse_event("export", export_item)
 
     logger.info("\n[stream] 流式输出完成")

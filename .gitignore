@@ -48,6 +48,10 @@ yarn-error.log*
 
 .state/
 .qdrant_local_demo/
+.qdrant_local/
+.rag_state/
+
+agent_frontend/.vite/
 
 # Playwright test results
 playwright-report/
@@ -58,6 +62,8 @@ temp_npx/
 temp/
 data/chat_history
 data/chat_history.db
+data/chat_history.db-shm
+data/chat_history.db-wal
 data/desk-agent/docs/
 # User data (keep directory structure but ignore contents)
 data/docs/*

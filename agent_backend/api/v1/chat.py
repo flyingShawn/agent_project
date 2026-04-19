@@ -48,6 +48,7 @@ from pydantic import BaseModel, Field
 
 from agent_backend.agent.graph import get_agent_graph
 from agent_backend.agent.stream import stream_graph_response
+from agent_backend.core.sse import sse_event
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import Conversation, Message
 from agent_backend.sql_agent.connection_manager import get_connection_manager
@@ -157,7 +158,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 
     async def generate():
         logger.info(f"\n[SSE] start generate, session: {session_id[:8]}..., conv: {conversation_id[:8]}...")
-        yield _sse_event("start", {"intent": "agent", "session_id": session_id, "conversation_id": conversation_id})
+        yield sse_event("start", {"intent": "agent", "session_id": session_id, "conversation_id": conversation_id})
 
         assistant_content = ""
         content_before_replace = ""
@@ -166,8 +167,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 
         try:
             graph = get_agent_graph()
-            async for sse_event in stream_graph_response(graph, initial_state):
-                event_type, event_data = _parse_sse_event(sse_event)
+            async for sse_chunk in stream_graph_response(graph, initial_state):
+                event_type, event_data = _parse_sse_event(sse_chunk)
                 if event_type == "delta":
                     assistant_content += str(event_data) if not isinstance(event_data, str) else event_data
                 elif event_type == "replace":
@@ -176,7 +177,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     assistant_content = ""
                 elif event_type == "chart" and isinstance(event_data, dict):
                     charts_list.append(event_data)
-                yield sse_event
+                yield sse_chunk
 
             if assistant_content:
                 charts_json = json.dumps(charts_list, ensure_ascii=False) if charts_list else None
@@ -184,7 +185,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 message_saved = True
                 logger.info(f"\n[Chat] saved assistant msg before done: {len(assistant_content)}chars")
 
-            yield _sse_event(
+            yield sse_event(
                 "done",
                 {
                     "route": "agent",
@@ -218,7 +219,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             logger.error(f"\n[Chat] error: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            yield _sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
+            yield sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
 
         finally:
             if not message_saved:
@@ -280,13 +281,6 @@ async def end_chat(req: EndChatRequest) -> EndChatResponse:
             message=f"结束对话失败: {str(e)}",
             session_id=req.session_id,
         )
-
-
-def _sse_event(event: str, data: str | dict) -> str:
-    if isinstance(data, dict):
-        data = json.dumps(data, ensure_ascii=False)
-    lines = data.split("\n")
-    return f"event: {event}\n" + "".join(f"data: {line}\n" for line in lines) + "\n"
 
 
 def _generate_title(question: str) -> str:

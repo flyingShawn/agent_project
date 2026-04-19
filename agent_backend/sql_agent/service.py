@@ -14,17 +14,9 @@ from agent_backend.sql_agent.sql_safety import (
     validate_sql_basic,
 )
 from agent_backend.sql_agent.types import SqlGenRequest, SqlGenResult
+from agent_backend.sql_agent.utils import clean_sql_markdown
 
 logger = logging.getLogger(__name__)
-
-
-def _clean_sql_markdown(sql: str) -> str:
-    sql = sql.strip()
-    sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"^```\s*", "", sql)
-    sql = re.sub(r"\s*```$", "", sql)
-    sql = re.sub(r"`([^`]+)`", r"\1", sql)
-    return sql.strip()
 
 
 def generate_secure_sql(
@@ -76,7 +68,7 @@ def generate_secure_sql(
         sql = llm.chat_complete(messages)
         logger.info(f"\nLLM返回SQL: {sql}")
 
-    sql = _clean_sql_markdown(sql)
+    sql = clean_sql_markdown(sql)
     sql = validate_sql_basic(sql)
     logger.info(f"\n【步骤3】安全校验后的SQL:\n{sql}")
 
