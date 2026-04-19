@@ -38,7 +38,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+
+from agent_backend.core.config import get_settings
 from typing import Any
 
 from langchain_core.tools import tool
@@ -139,14 +140,14 @@ def web_search(query: str) -> str:
     logger.info(f"\n[web_search] 搜索: {query}")
 
     try:
-        api_key = os.environ.get("TAVILY_API_KEY", "")
+        api_key = get_settings().misc.tavily_api_key
         if not api_key:
             return json.dumps({
                 "error": "网络搜索未配置",
                 "hint": "请设置环境变量 TAVILY_API_KEY 以启用网络搜索功能",
             }, ensure_ascii=False)
 
-        max_results = int(os.environ.get("WEB_SEARCH_MAX_RESULTS", "5"))
+        max_results = get_settings().misc.web_search_max_results
 
         try:
             results = _search_with_tavily(query, api_key, max_results)

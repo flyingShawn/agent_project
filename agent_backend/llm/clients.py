@@ -47,6 +47,7 @@ import os
 import urllib.request
 from typing import Iterator
 
+from agent_backend.core.config import get_settings
 from agent_backend.core.errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -83,11 +84,10 @@ class OllamaChatClient:
         说明：
             - 三个参数均可通过环境变量配置，优先使用显式传入值
         """
-        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434").rstrip(
-            "/"
-        )
-        self.model = model or os.getenv("CHAT_MODEL") or "qwen2.5:7b"
-        self.vision_model = vision_model or os.getenv("VISION_MODEL") or "qwen2.5-vl:7b"
+        settings = get_settings()
+        self.base_url = (base_url or settings.llm.ollama_base_url).rstrip("/")
+        self.model = model or settings.llm.chat_model
+        self.vision_model = vision_model or settings.llm.vision_model
         logger.info(f"\n【LLM客户端】初始化完成")
         logger.info(f"\n - Base URL: {self.base_url}")
         logger.info(f"\n - 文本模型: {self.model}")
@@ -290,12 +290,11 @@ class OpenAICompatibleClient:
         model: str | None = None,
         vision_model: str | None = None,
     ) -> None:
-        self.base_url = (base_url or os.getenv("LLM_BASE_URL") or "http://localhost:11434/v1").rstrip(
-            "/"
-        )
-        self.api_key = api_key or os.getenv("LLM_API_KEY") or ""
-        self.model = model or os.getenv("CHAT_MODEL") or "qwen2.5:7b"
-        self.vision_model = vision_model or os.getenv("VISION_MODEL") or "qwen2.5-vl:7b"
+        settings = get_settings()
+        self.base_url = (base_url or settings.llm.llm_base_url).rstrip("/")
+        self.api_key = api_key or settings.llm.llm_api_key or ""
+        self.model = model or settings.llm.chat_model
+        self.vision_model = vision_model or settings.llm.vision_model
      
         logger.info(f"""\n
 {'=' * 50}

@@ -138,7 +138,7 @@ def manage_scheduled_task(
             try:
                 from agent_backend.llm.factory import get_sql_llm
                 from agent_backend.sql_agent.sql_safety import validate_sql_basic
-                from agent_backend.sql_agent.prompt_builder import build_sql_prompt
+                from agent_backend.sql_agent.prompt_builder import build_sql_prompt, SQL_SYSTEM_PROMPT
                 from agent_backend.core.config import get_schema_runtime
                 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -146,7 +146,7 @@ def manage_scheduled_task(
                 prompt = build_sql_prompt(runtime, description)
                 sql_llm = get_sql_llm()
                 messages = [
-                    SystemMessage(content="你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"),
+                    SystemMessage(content=SQL_SYSTEM_PROMPT),
                     HumanMessage(content=prompt),
                 ]
                 response = sql_llm.invoke(messages)

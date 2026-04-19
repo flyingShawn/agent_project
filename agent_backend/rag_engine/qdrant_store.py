@@ -37,7 +37,8 @@ Qdrant向量数据库封装模块
 from __future__ import annotations
 
 import logging
-import os
+
+from agent_backend.core.config import get_settings
 from dataclasses import dataclass
 from typing import Any
 
@@ -94,9 +95,10 @@ class QdrantVectorStore:
             collection: 集合名称，默认desk_agent_docs
             dim: 向量维度，默认384（bge-small-zh-v1.5的维度）
         """
-        self.url = url or os.getenv("RAG_QDRANT_URL", "http://localhost:6333")
-        self.path = path or os.getenv("RAG_QDRANT_PATH")
-        self.api_key = api_key or os.getenv("RAG_QDRANT_API_KEY")
+        settings = get_settings().rag
+        self.url = url or settings.rag_qdrant_url
+        self.path = path or settings.rag_qdrant_path
+        self.api_key = api_key or settings.rag_qdrant_api_key
         self.collection = collection
         self.dim = dim
         self._client = None

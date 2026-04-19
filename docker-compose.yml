@@ -96,11 +96,11 @@ services:
     ports:
       - "80:80"
     environment:
-      - APP_NAME=${APP_NAME:-阳途智能助手}
-      - APP_SUBTITLE=${APP_SUBTITLE:-阳途智能助手为您服务}
-      - APP_WELCOME_TEXT=${APP_WELCOME_TEXT:-有什么我能帮您的呢？}
-      - APP_INPUT_PLACEHOLDER=${APP_INPUT_PLACEHOLDER:-给智能助手发消息}
-      - QUICK_OPTIONS=${QUICK_OPTIONS:-查看客户端在线状态,今日远程操作记录,近期开关机日志,老旧资产设备查询,部门设备数量统计,USB使用记录查询}
+      - VITE_APP_NAME=${VITE_APP_NAME:-阳途智能助手}
+      - VITE_APP_SUBTITLE=${VITE_APP_SUBTITLE:-阳途智能助手为您服务}
+      - VITE_APP_WELCOME_TEXT=${VITE_APP_WELCOME_TEXT:-有什么我能帮您的呢？}
+      - VITE_APP_INPUT_PLACEHOLDER=${VITE_APP_INPUT_PLACEHOLDER:-给智能助手发消息}
+      - VITE_QUICK_OPTIONS=${VITE_QUICK_OPTIONS:-查看客户端在线状态,今日远程操作记录,近期开关机日志,老旧资产设备查询,部门设备数量统计,USB使用记录查询}
     depends_on:
       - backend
     networks:

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from agent_backend.core.config import reload_schema_runtime, reload_prompts
 from agent_backend.scheduler import get_scheduler_manager
 
 router = APIRouter(tags=["health"])
@@ -32,3 +33,24 @@ def health_check() -> dict:
     scheduler = get_scheduler_manager()
     scheduler_info = scheduler.get_scheduler_info()
     return {"status": "ok", "scheduler": scheduler_info}
+
+
+@router.post("/admin/reload_schema")
+def admin_reload_schema() -> dict:
+    runtime = reload_schema_runtime()
+    return {
+        "status": "ok",
+        "message": "Schema元数据已重新加载",
+        "tables": len(runtime.raw.tables),
+        "synonyms": len(runtime.raw.synonyms or {}),
+    }
+
+
+@router.post("/admin/reload_prompts")
+def admin_reload_prompts() -> dict:
+    data = reload_prompts()
+    return {
+        "status": "ok",
+        "message": "提示词配置已重新加载",
+        "keys": list(data.keys()),
+    }

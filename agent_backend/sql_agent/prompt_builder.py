@@ -35,8 +35,10 @@ from __future__ import annotations
 
 import re
 
-from agent_backend.core.config import SchemaRuntime
+from agent_backend.core.config import SchemaRuntime, get_sql_system_prompt
 from agent_backend.rag_engine.retrieval import RetrievedChunk
+
+SQL_SYSTEM_PROMPT = get_sql_system_prompt()
 
 
 def _extract_tables_from_samples(samples: list[RetrievedChunk]) -> set[str]:
@@ -181,6 +183,8 @@ def build_sql_prompt(
         "- WHERE条件构建方式",
         "- 聚合函数使用方式",
         "如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。",
+        "",
+        "【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。",
     ]
     if quote:
         instructions.append(f"数据库标识符引用符是 {quote}，仅在必要时使用。")

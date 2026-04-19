@@ -47,7 +47,7 @@ from agent_backend.llm.factory import get_sql_llm
 from agent_backend.rag_engine.retrieval import search_sql_samples
 from agent_backend.scheduler import get_scheduler_manager
 from agent_backend.sql_agent.executor import execute_sql, SqlExecutionError
-from agent_backend.sql_agent.prompt_builder import build_sql_prompt
+from agent_backend.sql_agent.prompt_builder import build_sql_prompt, SQL_SYSTEM_PROMPT
 from agent_backend.sql_agent.sql_safety import (
     enforce_deny_select_columns,
     validate_sql_basic,
@@ -160,7 +160,7 @@ def schedule_task(
             sql_llm = get_sql_llm()
             from langchain_core.messages import SystemMessage, HumanMessage
             messages = [
-                SystemMessage(content="你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"),
+                SystemMessage(content=SQL_SYSTEM_PROMPT),
                 HumanMessage(content=prompt),
             ]
             response = sql_llm.invoke(messages)

@@ -47,6 +47,7 @@ from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.state import AgentState
 from agent_backend.agent.tools import ALL_TOOLS
 from agent_backend.agent.tools.sql_tool import _SqlJsonEncoder
+from agent_backend.core.config import get_summary_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -327,8 +328,7 @@ def respond_node(state: AgentState) -> dict:
         logger.info(f"\n[respond_node] 达到max_tool_calls且LLM仍在请求工具调用，强制生成最终回答")
         llm = get_llm()
         summary_prompt = SystemMessage(
-            content="你已达到最大工具调用次数限制，无法再调用任何工具。请基于已收集到的工具执行结果，"
-                    "为用户生成一个完整、有用的最终回答。如果已有查询结果数据，请务必在回答中包含具体的数据内容。"
+            content=get_summary_prompt()
         )
         messages = state["messages"] + [summary_prompt]
         try:

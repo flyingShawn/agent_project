@@ -54,7 +54,7 @@ from agent_backend.core.config import get_database_url, get_max_rows, get_schema
 from agent_backend.core.errors import AppError
 from agent_backend.rag_engine.retrieval import search_sql_samples
 from agent_backend.sql_agent.executor import execute_sql, SqlExecutionError
-from agent_backend.sql_agent.prompt_builder import build_sql_prompt
+from agent_backend.sql_agent.prompt_builder import build_sql_prompt, SQL_SYSTEM_PROMPT
 from agent_backend.sql_agent.sql_safety import (
     enforce_deny_select_columns,
     validate_sql_basic,
@@ -160,18 +160,10 @@ def sql_query(question: str) -> str:
             logger.warning(f"\n[sql_query] SQL样本检索失败: {e}")
 
         prompt = build_sql_prompt(runtime, question, sql_samples=sql_samples)
-        prompt += "\n\n【最重要】你必须严格模仿参考SQL样本的写法风格，包括：\n"
-        prompt += "- 表关联方式（JOIN条件和关联表）\n"
-        prompt += "- 别名规则（s_machine用m，s_group用g等）\n"
-        prompt += "- 列别名写法（AS \"中文别名\"，中文别名必须用双引号包裹）\n"
-        prompt += "- WHERE条件构建方式\n"
-        prompt += "- 聚合函数使用方式\n"
-        prompt += "如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。\n"
-        prompt += "\n【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。\n"
 
         sql_llm = get_sql_llm()
         messages = [
-            {"role": "system", "content": "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"},
+            {"role": "system", "content": SQL_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ]
         from langchain_core.messages import HumanMessage, SystemMessage
