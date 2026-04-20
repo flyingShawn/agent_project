@@ -125,6 +125,7 @@ class MiscSettings(BaseSettings):
     agent_name: str = "desk-agent"
     tavily_api_key: str = ""
     web_search_max_results: int = 5
+    sql_log_full_prompt: bool = False
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
@@ -208,6 +209,11 @@ def get_sql_system_prompt() -> str:
 def get_summary_prompt() -> str:
     data = _load_prompts_yaml()
     return data.get("summary_prompt") or _DEFAULT_SUMMARY_PROMPT
+
+
+def get_sql_log_full_prompt() -> bool:
+    load_env_file()
+    return bool(get_settings().misc.sql_log_full_prompt)
 
 
 def reload_prompts() -> dict:

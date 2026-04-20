@@ -72,6 +72,8 @@ WHERE
 ORDER BY INET_ATON(a.IP_C)
 ```
 
+***
+
 #### 查询部门信息
 
 适用场景：当用户询问部门列表、部门名称、部门层级结构等信息时使用。GroupType

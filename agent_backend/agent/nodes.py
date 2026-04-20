@@ -106,6 +106,37 @@ def _format_system_prompts_for_llm_log(messages: list) -> str:
     return "\n\n".join(system_prompts)
 
 
+def _build_sql_query_arg_error(tool_args) -> str | None:
+    if isinstance(tool_args, dict):
+        question = tool_args.get("question")
+        if isinstance(question, str) and question.strip():
+            return None
+    else:
+        question = None
+
+    if not isinstance(tool_args, dict):
+        reason = "tool_args_not_object"
+    elif "sql" in tool_args:
+        reason = "received_sql_instead_of_question"
+    elif "question" in tool_args:
+        reason = "question_empty"
+    else:
+        reason = "question_missing"
+
+    logger.warning(
+        "\n[tool_result_node] sql_query 参数不合法，拒绝执行。原因=%s | 原始参数=%s",
+        reason,
+        _format_log_content(tool_args),
+    )
+    return json.dumps({
+        "error": "sql_query 调用参数错误",
+        "error_code": "sql_query_invalid_args",
+        "reason": reason,
+        "hint": "sql_query 只接受 question（自然语言问题），不要传 sql；示例：{\"question\":\"查看客户端在线状态\"}",
+        "received_args": tool_args,
+    }, ensure_ascii=False)
+
+
 def init_node(state: AgentState) -> dict:
     """
     初始化节点，初始化状态字段。
@@ -229,6 +260,9 @@ def tool_result_node(state: AgentState) -> dict:
             selected_tool = tool_map.get(tool_name)
             if not selected_tool:
                 result = json.dumps({"error": f"未知工具: {tool_name}"}, ensure_ascii=False)
+            elif tool_name == "sql_query":
+                arg_error = _build_sql_query_arg_error(tool_args)
+                result = arg_error if arg_error is not None else selected_tool.invoke(tool_args)
             else:
                 result = selected_tool.invoke(tool_args)
 

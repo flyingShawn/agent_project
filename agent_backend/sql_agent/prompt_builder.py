@@ -33,12 +33,75 @@ SQL 生成提示词构建模块
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import re
 
 from agent_backend.core.config import SchemaRuntime, get_sql_system_prompt
 from agent_backend.rag_engine.retrieval import RetrievedChunk
 
 SQL_SYSTEM_PROMPT = get_sql_system_prompt()
+
+_COLUMN_REF_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b")
+_TABLE_ALIAS_RE = re.compile(
+    r'\b(?:FROM|JOIN)\s+([`"]?[A-Za-z_][A-Za-z0-9_]*[`"]?)(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?',
+    re.IGNORECASE,
+)
+_RESERVED_ALIAS_TOKENS = {
+    "ON", "WHERE", "GROUP", "ORDER", "LIMIT", "HAVING", "LEFT", "RIGHT",
+    "INNER", "OUTER", "FULL", "JOIN", "UNION",
+}
+
+
+@dataclass(frozen=True)
+class SqlPromptBundle:
+    prompt: str
+    selected_tables: list[str]
+    selected_columns_by_table: dict[str, list[str]]
+    synonym_count: int
+    sample_count: int
+    fallback_used: bool
+    sample_tables: list[str] = field(default_factory=list)
+    fallback_tables: list[str] = field(default_factory=list)
+    fallback_reason: str = ""
+    total_columns: int = 0
+
+
+def _normalize_sql_text(text: str) -> str:
+    return text.replace("\\_", "_")
+
+
+def _normalize_identifier(identifier: str) -> str:
+    return identifier.strip().strip("`[]\"").replace("\\_", "_").lower()
+
+
+def _ordered_table_names(runtime: SchemaRuntime, table_names: set[str]) -> list[str]:
+    return [t.name for t in runtime.raw.tables if t.name.lower() in table_names]
+
+
+def _build_synonym_lookup(runtime: SchemaRuntime) -> dict[str, list[str]]:
+    lookup: dict[str, list[str]] = {}
+    for key, values in (runtime.raw.synonyms or {}).items():
+        if "." not in key:
+            continue
+        table_name, column_name = key.split(".", 1)
+        lookup[f"{table_name.lower()}.{column_name.lower()}"] = list(values)
+    return lookup
+
+
+def _question_mentions(question_text: str, candidate: str | None) -> bool:
+    if not candidate:
+        return False
+
+    normalized = candidate.strip().lower()
+    if not normalized:
+        return False
+    if normalized in question_text:
+        return True
+
+    for token in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]{2,}", normalized):
+        if len(token) >= 2 and token in question_text:
+            return True
+    return False
 
 
 def _extract_tables_from_samples(samples: list[RetrievedChunk]) -> set[str]:
@@ -57,77 +120,234 @@ def _extract_tables_from_samples(samples: list[RetrievedChunk]) -> set[str]:
     """
     tables = set()
     for sample in samples:
-        text = sample.text
+        text = _normalize_sql_text(sample.text)
         for line in text.split("\n"):
             stripped = line.strip()
             if stripped.startswith("关键表：") or stripped.startswith("关键表:"):
                 table_str = stripped.split("：", 1)[-1].split(":", 1)[-1].strip()
                 for t in table_str.split(","):
-                    t = t.strip()
+                    t = _normalize_identifier(t.strip())
                     if t:
-                        tables.add(t.lower())
+                        tables.add(t)
         from_pattern = re.findall(r'\bFROM\s+(\w+)', text, re.IGNORECASE)
         join_pattern = re.findall(r'\bJOIN\s+(\w+)', text, re.IGNORECASE)
         for t in from_pattern + join_pattern:
-            tables.add(t.lower())
+            tables.add(_normalize_identifier(t))
     return tables
 
 
-def build_sql_prompt(
+def _extract_table_aliases(text: str) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    normalized = _normalize_sql_text(text)
+    for match in _TABLE_ALIAS_RE.finditer(normalized):
+        table_name = _normalize_identifier(match.group(1) or "")
+        alias = _normalize_identifier(match.group(2) or "")
+        if not table_name:
+            continue
+        aliases[table_name] = table_name
+        if alias and alias.upper() not in _RESERVED_ALIAS_TOKENS:
+            aliases[alias] = table_name
+    return aliases
+
+
+def _extract_columns_from_samples(
+    runtime: SchemaRuntime,
+    samples: list[RetrievedChunk],
+    sample_tables: set[str],
+) -> dict[str, set[str]]:
+    table_column_lookup = {
+        t.name.lower(): {c.name.lower(): c.name for c in t.columns}
+        for t in runtime.raw.tables
+    }
+    sample_columns = {table_name: set() for table_name in sample_tables}
+    if not sample_tables:
+        return sample_columns
+
+    for sample in samples:
+        text = _normalize_sql_text(sample.text)
+        lower_text = text.lower()
+        aliases = _extract_table_aliases(text)
+        relevant_tables = {table_name for table_name in aliases.values() if table_name in sample_columns}
+        if not relevant_tables:
+            relevant_tables = set(sample_tables)
+
+        for alias, column_name in _COLUMN_REF_RE.findall(text):
+            table_name = aliases.get(alias.lower())
+            if not table_name or table_name not in sample_columns:
+                continue
+            actual_column = table_column_lookup.get(table_name, {}).get(column_name.lower())
+            if actual_column:
+                sample_columns[table_name].add(actual_column)
+
+        for table_name in relevant_tables:
+            for lower_column_name, actual_column in table_column_lookup.get(table_name, {}).items():
+                if re.search(
+                    rf"(?<![A-Za-z0-9_]){re.escape(lower_column_name)}(?![A-Za-z0-9_])",
+                    lower_text,
+                ):
+                    sample_columns[table_name].add(actual_column)
+
+    return sample_columns
+
+
+def _collect_question_columns(
+    runtime: SchemaRuntime,
+    question: str,
+    candidate_tables: set[str],
+) -> dict[str, set[str]]:
+    question_text = question.lower()
+    synonym_lookup = _build_synonym_lookup(runtime)
+    matched_columns: dict[str, set[str]] = {table_name: set() for table_name in candidate_tables}
+
+    for table_def in runtime.raw.tables:
+        table_name = table_def.name.lower()
+        if table_name not in candidate_tables:
+            continue
+
+        for column_def in table_def.columns:
+            synonym_key = f"{table_name}.{column_def.name.lower()}"
+            candidates = [column_def.name, column_def.comment or "", column_def.semantic_key or ""]
+            candidates.extend(synonym_lookup.get(synonym_key, []))
+            if any(_question_mentions(question_text, value) for value in candidates):
+                matched_columns[table_name].add(column_def.name)
+
+    return matched_columns
+
+
+def _collect_required_columns(
+    runtime: SchemaRuntime,
+    candidate_tables: set[str],
+) -> dict[str, set[str]]:
+    required_columns: dict[str, set[str]] = {table_name: set() for table_name in candidate_tables}
+    table_column_lookup = {
+        t.name.lower(): {c.name.lower(): c.name for c in t.columns}
+        for t in runtime.raw.tables
+    }
+
+    for table_def in runtime.raw.tables:
+        table_name = table_def.name.lower()
+        if table_name not in candidate_tables:
+            continue
+
+        if table_def.primary_key:
+            actual_column = table_column_lookup[table_name].get(table_def.primary_key.lower())
+            if actual_column:
+                required_columns[table_name].add(actual_column)
+
+        for join_key in table_def.join_keys or []:
+            actual_column = table_column_lookup[table_name].get(join_key.lower())
+            if actual_column:
+                required_columns[table_name].add(actual_column)
+
+    for relationship in runtime.raw.relationships or []:
+        for side in (relationship.from_field, relationship.to):
+            if "." not in side:
+                continue
+            table_name, column_name = side.split(".", 1)
+            table_key = table_name.lower()
+            if table_key not in candidate_tables:
+                continue
+            actual_column = table_column_lookup.get(table_key, {}).get(column_name.lower())
+            if actual_column:
+                required_columns[table_key].add(actual_column)
+
+    return required_columns
+
+
+def build_sql_prompt_bundle(
     runtime: SchemaRuntime,
     question: str,
     *,
     sql_samples: list[RetrievedChunk] | None = None,
-) -> str:
-    """
-    构建 SQL 生成提示词。
-
-    参数：
-        runtime: SchemaRuntime 运行时配置，包含表结构、同义词、安全规则等
-        question: 用户的自然语言问题
-        sql_samples: RAG 检索的参考 SQL 样本（可选）
-
-    返回：
-        str: 完整的提示词字符串，包含指令、Schema、同义词、样本和问题
-
-    构建策略：
-        1. 若有 sql_samples，只包含样本涉及的表（精简策略），否则包含所有表
-        2. 若精简后无表可展示，回退到包含所有表
-        3. 同义词按样本涉及的表过滤，无样本时展示前50条
-        4. 注入别名规则、敏感列禁止、字段使用约束等指令
-        5. 若有样本，追加"参考SQL样本"段落，要求严格模仿
-    """
+) -> SqlPromptBundle:
     naming = runtime.raw.naming
     security = runtime.raw.security
 
-    sample_tables: set[str] = set()
-    if sql_samples:
-        sample_tables = _extract_tables_from_samples(sql_samples)
+    sql_samples = sql_samples or []
+    available_tables = {t.name.lower() for t in runtime.raw.tables}
+    sample_tables = _extract_tables_from_samples(sql_samples) & available_tables if sql_samples else set()
+    ordered_sample_tables = _ordered_table_names(runtime, sample_tables)
+
+    fallback_used = False
+    fallback_reason = ""
+    fallback_tables: list[str] = []
+
+    if sample_tables:
+        selected_tables = ordered_sample_tables
+        selected_table_keys = {table_name.lower() for table_name in selected_tables}
+        sample_columns = _extract_columns_from_samples(runtime, sql_samples, selected_table_keys)
+        question_columns = _collect_question_columns(runtime, question, selected_table_keys)
+        required_columns = _collect_required_columns(runtime, selected_table_keys)
+    else:
+        selected_tables = [t.name for t in runtime.raw.tables]
+        selected_table_keys = {table_name.lower() for table_name in selected_tables}
+        sample_columns = {}
+        question_columns = {}
+        required_columns = {}
+        fallback_used = True
+        fallback_reason = "未命中SQL样本或SQL样本未提取到相关表，已回退到全量表结构"
 
     schema_lines: list[str] = []
-    for t in runtime.raw.tables:
-        if sample_tables and t.name.lower() not in sample_tables:
-            continue
-        cols = ", ".join([f"{c.name}({c.comment or c.semantic_key})" for c in t.columns[:30]])
-        more = "" if len(t.columns) <= 30 else f" ...(+{len(t.columns) - 30})"
-        desc = f"({t.description})" if t.description else ""
-        schema_lines.append(f"- {t.name}{desc}: {cols}{more}")
+    selected_columns_by_table: dict[str, list[str]] = {}
+    total_columns = 0
+    selected_table_set = set(selected_tables)
 
-    if not schema_lines:
-        for t in runtime.raw.tables:
-            cols = ", ".join([f"{c.name}({c.comment or c.semantic_key})" for c in t.columns[:30]])
-            more = "" if len(t.columns) <= 30 else f" ...(+{len(t.columns) - 30})"
-            desc = f"({t.description})" if t.description else ""
-            schema_lines.append(f"- {t.name}{desc}: {cols}{more}")
+    for table_def in runtime.raw.tables:
+        if table_def.name not in selected_table_set:
+            continue
+
+        display_columns = list(table_def.columns[:30])
+        if sample_tables:
+            selected_column_names = set(sample_columns.get(table_def.name.lower(), set()))
+            selected_column_names.update(question_columns.get(table_def.name.lower(), set()))
+            selected_column_names.update(required_columns.get(table_def.name.lower(), set()))
+
+            filtered_columns = [column for column in table_def.columns if column.name in selected_column_names][:30]
+            if filtered_columns:
+                display_columns = filtered_columns
+            else:
+                fallback_tables.append(table_def.name)
+                fallback_used = True
+                if not fallback_reason:
+                    fallback_reason = "部分相关表未提取到相关列，已回退到表内前30列"
+
+        selected_columns_by_table[table_def.name] = [column.name for column in display_columns]
+        total_columns += len(display_columns)
+
+        cols = ", ".join([f"{column.name}({column.comment or column.semantic_key})" for column in display_columns])
+        more = "" if len(table_def.columns) <= len(display_columns) else f" ...(+{len(table_def.columns) - len(display_columns)})"
+        desc = f"({table_def.description})" if table_def.description else ""
+        schema_lines.append(f"- {table_def.name}{desc}: {cols}{more}")
 
     related_synonyms: list[str] = []
-    for k, v in runtime.raw.synonyms.items():
-        table_prefix = k.split(".")[0].lower() if "." in k else ""
-        if not sample_tables or table_prefix in sample_tables:
-            related_synonyms.append(f"- {k}: {', '.join(v[:8])}")
+    synonyms = runtime.raw.synonyms or {}
+    if sample_tables:
+        selected_column_lookup = {
+            table_name.lower(): {column_name.lower() for column_name in column_names}
+            for table_name, column_names in selected_columns_by_table.items()
+        }
+        for key, values in synonyms.items():
+            if "." not in key:
+                continue
+            table_name, column_name = key.split(".", 1)
+            table_key = table_name.lower()
+            if table_key in selected_table_keys and column_name.lower() in selected_column_lookup.get(table_key, set()):
+                related_synonyms.append(f"- {key}: {', '.join(values[:8])}")
+    else:
+        for key, values in list(synonyms.items())[:50]:
+            related_synonyms.append(f"- {key}: {', '.join(values[:8])}")
+
+    if not related_synonyms and sample_tables:
+        for key, values in synonyms.items():
+            if "." not in key:
+                continue
+            table_name = key.split(".", 1)[0].lower()
+            if table_name in selected_table_keys:
+                related_synonyms.append(f"- {key}: {', '.join(values[:8])}")
+
     if not related_synonyms:
-        for k, v in list(runtime.raw.synonyms.items())[:50]:
-            related_synonyms.append(f"- {k}: {', '.join(v[:8])}")
+        for key, values in list(synonyms.items())[:50]:
+            related_synonyms.append(f"- {key}: {', '.join(values[:8])}")
 
     denied_cols = ", ".join(security.deny_select_columns) if security else ""
     quote = naming.identifier_quote if naming else None
@@ -214,5 +434,43 @@ def build_sql_prompt(
         "SQL：",
     ])
 
-    prompt = "\n".join(prompt_parts)
-    return re.sub(r"\n{3,}", "\n\n", prompt).strip() + "\n"
+    prompt = re.sub(r"\n{3,}", "\n\n", "\n".join(prompt_parts)).strip() + "\n"
+    return SqlPromptBundle(
+        prompt=prompt,
+        selected_tables=selected_tables,
+        selected_columns_by_table=selected_columns_by_table,
+        synonym_count=len(related_synonyms),
+        sample_count=len(sql_samples),
+        fallback_used=fallback_used,
+        sample_tables=ordered_sample_tables,
+        fallback_tables=fallback_tables,
+        fallback_reason=fallback_reason,
+        total_columns=total_columns,
+    )
+
+
+def build_sql_prompt(
+    runtime: SchemaRuntime,
+    question: str,
+    *,
+    sql_samples: list[RetrievedChunk] | None = None,
+) -> str:
+    """
+    构建 SQL 生成提示词。
+
+    参数：
+        runtime: SchemaRuntime 运行时配置，包含表结构、同义词、安全规则等
+        question: 用户的自然语言问题
+        sql_samples: RAG 检索的参考 SQL 样本（可选）
+
+    返回：
+        str: 完整的提示词字符串，包含指令、Schema、同义词、样本和问题
+
+    构建策略：
+        1. 若有 sql_samples，只包含样本涉及的表（精简策略），否则包含所有表
+        2. 若精简后无表可展示，回退到包含所有表
+        3. 同义词按样本涉及的表过滤，无样本时展示前50条
+        4. 注入别名规则、敏感列禁止、字段使用约束等指令
+        5. 若有样本，追加"参考SQL样本"段落，要求严格模仿
+    """
+    return build_sql_prompt_bundle(runtime, question, sql_samples=sql_samples).prompt
