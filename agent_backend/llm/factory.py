@@ -60,6 +60,8 @@ def get_llm(
         kwargs["extra_body"] = {"enable_thinking": False}
     elif "deepseek" in base_url:
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+    else:
+        kwargs["extra_body"] = {"reasoning_effort": "none"}
 
     logger.info(
         "\nLLM初始化: base_url=%s, model=%s, streaming=%s, extra_body=%s",
