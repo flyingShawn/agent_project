@@ -25,6 +25,21 @@ class IngestResult:
     errors: list[str] = field(default_factory=list)
 
 
+def _is_valid_sql_chunk(chunk: Chunk) -> bool:
+    text = chunk.text.strip()
+    if len(text) < 20:
+        return False
+
+    lower_text = text.lower()
+    if "```sql" in lower_text or "select" in lower_text:
+        return True
+    if "关键表：" in text or "关键表:" in text:
+        return True
+    if "适用场景：" in text and len(text) >= 40:
+        return True
+    return False
+
+
 def _collect_files(docs_dir: str, extensions: list[str]) -> list[Path]:
     base = Path(docs_dir)
     if not base.exists():
@@ -92,7 +107,10 @@ def ingest_directory(
         collection=collection,
         dim=dim,
     )
-    store.ensure_collection()
+    if mode == "full":
+        store.reset_collection()
+    else:
+        store.ensure_collection()
 
     files = _collect_files(docs_dir, settings.supported_extensions)
     result.files_scanned = len(files)
@@ -119,6 +137,12 @@ def ingest_directory(
             overlap=settings.chunk_overlap,
             source_path=fp.name,
         )
+
+        if kb_type == "sql":
+            before_count = len(chunks)
+            chunks = [chunk for chunk in chunks if _is_valid_sql_chunk(chunk)]
+            if len(chunks) < before_count:
+                logger.info(f"\nSQL样本块过滤: {fp.name} {before_count} -> {len(chunks)}")
 
         if not chunks:
             result.files_skipped += 1

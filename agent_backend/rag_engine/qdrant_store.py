@@ -161,6 +161,25 @@ class QdrantVectorStore:
         except Exception as e:
             logger.warning(f"\nQdrant集合检查/创建失败: {e}")
 
+    def reset_collection(self) -> None:
+        """
+        删除并重建当前集合。
+
+        主要用于 full 同步场景，避免切块策略变化后旧向量点残留，
+        导致同一份源文件的新旧 chunk 混在一起污染检索结果。
+        """
+        try:
+            client = self._get_client()
+            collections = client.get_collections().collections
+            names = [c.name for c in collections]
+            if self.collection in names:
+                client.delete_collection(collection_name=self.collection)
+                logger.info(f"\nQdrant集合已删除: {self.collection}")
+        except Exception as e:
+            logger.warning(f"\nQdrant集合删除失败: {e}")
+
+        self.ensure_collection()
+
     def search(
         self,
         *,

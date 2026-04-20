@@ -83,13 +83,17 @@ def chunk_markdown(
     max_chars: int = 800,
     overlap: int = 100,
     source_path: str = "",
+    split_paragraphs: bool = True,
 ) -> list[Chunk]:
     sections = _split_by_headings(markdown)
     all_chunks: list[Chunk] = []
     idx = 0
 
     for heading, body in sections:
-        sub_chunks = _split_by_paragraphs(body, max_chars, overlap)
+        if split_paragraphs:
+            sub_chunks = _split_by_paragraphs(body, max_chars, overlap)
+        else:
+            sub_chunks = [body.strip()] if body.strip() else []
         for sc in sub_chunks:
             all_chunks.append(
                 Chunk(text=sc, heading=heading, chunk_index=idx)
