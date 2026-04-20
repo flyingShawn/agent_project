@@ -125,7 +125,7 @@ class MiscSettings(BaseSettings):
     agent_name: str = "desk-agent"
     tavily_api_key: str = ""
     web_search_max_results: int = 5
-    sql_log_full_prompt: bool = False
+    sql_log_full_prompt: bool = True
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
@@ -182,6 +182,51 @@ _PROMPTS_YAML_PATH = Path(__file__).parent.parent / "configs" / "prompts.yaml"
 _DEFAULT_SYSTEM_PROMPT = """你是一个专业的桌面管理系统AI助手，拥有以下工具能力：\n\n（默认提示词，请配置 configs/prompts.yaml）"""
 _DEFAULT_SQL_SYSTEM_PROMPT = "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"
 _DEFAULT_SUMMARY_PROMPT = "你已达到最大工具调用次数限制，无法再调用任何工具。请基于已收集到的工具执行结果，为用户生成一个完整、有用的最终回答。如果已有查询结果数据，请务必在回答中包含具体的数据内容。"
+_DEFAULT_SQL_PROMPT_INSTRUCTIONS = """你是一个严谨的数据库 SQL 助手。
+只输出 SQL 本体，不要输出解释、不要 Markdown。
+只使用 SELECT 语句，禁止 INSERT/UPDATE/DELETE/DROP 等。
+禁止返回敏感列。
+
+【重要】表别名规则（必须严格遵守）：
+1. 定义别名后，整个SQL中必须使用别名，不能再用原表名
+2. 示例：FROM s_group g 之后，必须用 g.id，不能用 s_group.id
+3. 常用别名：s_machine 用 m，s_group 用 g，s_user 用 u，admininfo 用 a
+4. 其他表用单字母别名，且全程保持一致
+
+【重要】SQL生成原则：
+1. 优先使用简单的SQL，避免不必要的子查询
+2. 如果只是统计数量，用 SELECT COUNT(*) FROM 表名 即可
+3. 如果只是查询所有某个表数据，用 SELECT * FROM 表名 即可
+
+【重要】列别名规则（必须严格遵守）：
+SELECT 中的每个列必须使用 AS 设置中文别名，别名来源于下方「数据库表与列」中该列的 comment（括号内的语义说明）或「参考SQL样本」中的别名写法。
+中文别名必须用双引号包裹，示例：SELECT m.Name_C AS "设备名称", m.Ip_C AS "IP地址", g.GroupName AS "部门名称"
+聚合函数同样需要中文别名：SELECT COUNT(*) AS "数量", SUM(h.Memory) AS "内存合计"
+
+【重要】字段使用约束（必须严格遵守）：
+禁止使用任何未在下方「数据库表与列」或「参考SQL样本」中出现的字段名。
+只能使用以下来源中明确列出的字段：
+  - 「数据库表与列」中列出的列名（括号内为语义别名）
+  - 「参考SQL样本」中出现的列名
+如果用户问题涉及的字段不在上述来源中，只使用最接近的已知字段，绝不编造不存在的字段。
+
+【重要】禁止重复字段（必须严格遵守）：
+SELECT子句中禁止出现重复的字段或别名，每个字段只选一次。
+如果多个表有同名字段，只选择最相关的那一个，不要重复选取。
+生成SQL后请自查：如果SELECT中有两个以上相同或语义重复的列，删除多余的。
+示例错误：SELECT m.Name_C AS "设备名称", m.Name_C AS "设备名" ← 同一字段重复
+示例正确：SELECT m.Name_C AS "设备名称" ← 只选一次
+
+【最重要】【参考SQL样本（必须严格模仿）最优先参考】
+如果有参考SQL样本，你必须严格模仿其写法风格，包括：
+- 表关联方式（JOIN条件和关联表）
+- 别名规则（s_machine用m，s_group用g等）
+- 列别名写法（AS "中文别名"，中文别名必须用双引号包裹）
+- WHERE条件构建方式
+- 聚合函数使用方式
+如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。
+
+【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。"""
 
 
 @lru_cache(maxsize=1)
@@ -209,6 +254,11 @@ def get_sql_system_prompt() -> str:
 def get_summary_prompt() -> str:
     data = _load_prompts_yaml()
     return data.get("summary_prompt") or _DEFAULT_SUMMARY_PROMPT
+
+
+def get_sql_prompt_instructions() -> str:
+    data = _load_prompts_yaml()
+    return data.get("sql_prompt_instructions") or _DEFAULT_SQL_PROMPT_INSTRUCTIONS
 
 
 def get_sql_log_full_prompt() -> bool:

@@ -36,7 +36,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 
-from agent_backend.core.config import SchemaRuntime, get_sql_system_prompt
+from agent_backend.core.config import (
+    SchemaRuntime,
+    get_sql_prompt_instructions,
+    get_sql_system_prompt,
+)
 from agent_backend.rag_engine.retrieval import RetrievedChunk
 
 SQL_SYSTEM_PROMPT = get_sql_system_prompt()
@@ -359,58 +363,12 @@ def build_sql_prompt_bundle(
             shot_parts.append(f"示例{i}（来源：{sample.heading or sample.source_path}）：\n{sample.text}")
         shot_block = "\n\n".join(shot_parts)
 
-    instructions = [
-        "你是一个严谨的数据库 SQL 助手。",
-        "只输出 SQL 本体，不要输出解释、不要 Markdown。",
-        "只使用 SELECT 语句，禁止 INSERT/UPDATE/DELETE/DROP 等。",
-        "禁止返回敏感列。",
-        "",
-        "【重要】表别名规则（必须严格遵守）：",
-        "1. 定义别名后，整个SQL中必须使用别名，不能再用原表名",
-        "2. 示例：FROM s_group g 之后，必须用 g.id，不能用 s_group.id",
-        "3. 常用别名：s_machine 用 m，s_group 用 g，s_user 用 u，admininfo 用 a",
-        "4. 其他表用单字母别名，且全程保持一致",
-        "",
-        "【重要】SQL生成原则：",
-        "1. 优先使用简单的SQL，避免不必要的子查询",
-        "2. 如果只是统计数量，用 SELECT COUNT(*) FROM 表名 即可",
-        "3. 如果只是查询所有某个表数据，用 SELECT * FROM 表名 即可",
-        "",
-        "【重要】列别名规则（必须严格遵守）：",
-        "SELECT 中的每个列必须使用 AS 设置中文别名，别名来源于下方「数据库表与列」中该列的 comment（括号内的语义说明）或「参考SQL样本」中的别名写法。",
-        "中文别名必须用双引号包裹，示例：SELECT m.Name_C AS \"设备名称\", m.Ip_C AS \"IP地址\", g.GroupName AS \"部门名称\"",
-        "聚合函数同样需要中文别名：SELECT COUNT(*) AS \"数量\", SUM(h.Memory) AS \"内存合计\"",
-        "",
-        "【重要】字段使用约束（必须严格遵守）：",
-        "禁止使用任何未在下方「数据库表与列」或「参考SQL样本」中出现的字段名。",
-        "只能使用以下来源中明确列出的字段：",
-        "  - 「数据库表与列」中列出的列名（括号内为语义别名）",
-        "  - 「参考SQL样本」中出现的列名",
-        "如果用户问题涉及的字段不在上述来源中，只使用最接近的已知字段，绝不编造不存在的字段。",
-        "",
-        "【重要】禁止重复字段（必须严格遵守）：",
-        "SELECT子句中禁止出现重复的字段或别名，每个字段只选一次。",
-        "如果多个表有同名字段，只选择最相关的那一个，不要重复选取。",
-        "生成SQL后请自查：如果SELECT中有两个以上相同或语义重复的列，删除多余的。",
-        "示例错误：SELECT m.Name_C AS \"设备名称\", m.Name_C AS \"设备名\" ← 同一字段重复",
-        "示例正确：SELECT m.Name_C AS \"设备名称\" ← 只选一次",
-        "",
-        "【最重要】【参考SQL样本（必须严格模仿）最优先参考】",
-        "如果有参考SQL样本，你必须严格模仿其写法风格，包括：",
-        "- 表关联方式（JOIN条件和关联表）",
-        "- 别名规则（s_machine用m，s_group用g等）",
-        "- 列别名写法（AS \"中文别名\"，中文别名必须用双引号包裹）",
-        "- WHERE条件构建方式",
-        "- 聚合函数使用方式",
-        "如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。",
-        "",
-        "【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。",
-    ]
+    instructions_text = get_sql_prompt_instructions().strip()
     if quote:
-        instructions.append(f"数据库标识符引用符是 {quote}，仅在必要时使用。")
+        instructions_text += f"\n数据库标识符引用符是 {quote}，仅在必要时使用。"
 
     prompt_parts = [
-        "\n".join(instructions),
+        instructions_text,
         "",
         f"敏感列(禁止返回): {denied_cols}" if denied_cols else "敏感列(禁止返回): 无",
         "",

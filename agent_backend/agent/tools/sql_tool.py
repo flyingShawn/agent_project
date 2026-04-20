@@ -155,10 +155,18 @@ def _log_sql_samples(sql_samples: list | None) -> None:
     logger.info(f"\n[sql_query] 【SQL样本】命中 {len(sql_samples)} 个")
     for index, sample in enumerate(sql_samples, start=1):
         source = sample.heading or sample.source_path or "unknown"
+        chunk_index = ""
+        if isinstance(sample.metadata, dict):
+            chunk_index = sample.metadata.get("chunk_index", "")
+        has_sql_block = "是" if "```sql" in sample.text.lower() else "否"
+        text_len = len(sample.text or "")
         logger.info(
-            "[sql_query] 【SQL样本】%s. 来源=%s | score=%.4f | 摘要=%s",
+            "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | 摘要=%s",
             index,
             source,
+            chunk_index if chunk_index != "" else "-",
+            text_len,
+            has_sql_block,
             sample.score,
             _summarize_sample_text(sample.text),
         )
