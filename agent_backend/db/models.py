@@ -184,3 +184,49 @@ class AgentTaskResult(Base):
     error_message = Column(Text, nullable=True)
     duration_ms = Column(Integer, nullable=True)
     created_at = Column(Float, nullable=False)
+
+
+class OpsReport(Base):
+    """
+    运维简报模型。
+
+    映射到 ops_report 表，保存每次生成的运维简报正文和摘要。
+    """
+    __tablename__ = "ops_report"
+    __table_args__ = (
+        Index("idx_ops_report_report_key", "report_key"),
+        Index("idx_ops_report_generated_at", "generated_at"),
+        Index("idx_ops_report_unread", "unread"),
+    )
+
+    report_id = Column(String(64), primary_key=True)
+    report_key = Column(String(64), nullable=False)
+    title = Column(String(255), nullable=False)
+    summary = Column(Text, nullable=False, default="")
+    content_md = Column(Text, nullable=False, default="")
+    severity = Column(String(16), nullable=False, default="normal")
+    unread = Column(Integer, nullable=False, default=1)
+    generated_at = Column(Float, nullable=False)
+    window_start = Column(Float, nullable=False)
+    window_end = Column(Float, nullable=False)
+    created_at = Column(Float, nullable=False)
+
+
+class OpsMetricSnapshot(Base):
+    """
+    运维简报结构化快照模型。
+
+    映射到 ops_metric_snapshot 表，保存每份简报对应的结构化指标快照，
+    供下一次生成简报时做趋势对比。
+    """
+    __tablename__ = "ops_metric_snapshot"
+    __table_args__ = (
+        Index("idx_ops_metric_snapshot_report_key", "report_key"),
+        Index("idx_ops_metric_snapshot_created_at", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(String(64), ForeignKey("ops_report.report_id"), nullable=False)
+    report_key = Column(String(64), nullable=False)
+    snapshot_data = Column(Text, nullable=False)
+    created_at = Column(Float, nullable=False)

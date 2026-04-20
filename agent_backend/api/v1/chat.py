@@ -109,7 +109,6 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         "max_tool_calls": 5,
         "data_tables": [],
         "references": [],
-        "scheduler_results": [],
     }
 
     if conversation_id:

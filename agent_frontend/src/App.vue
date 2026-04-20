@@ -1,19 +1,33 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import ChatBox from './components/ChatBox.vue'
+import OpsReportInbox from './components/OpsReportInbox.vue'
 import Sidebar from './components/Sidebar.vue'
 import config from './config'
 import { useConversations } from './composables/useConversations'
 
 const userName = ref('admin')
 const showSidebar = ref(false)
+const showOpsInbox = ref(false)
+const unreadOpsCount = ref(0)
 const sidebarRef = ref(null)
 const chatBoxRef = ref(null)
 
-const { currentTitle, currentConversationId, startNewConversation, loadConversations, switchConversation, conversations } = useConversations()
+const {
+  currentTitle,
+  currentConversationId,
+  startNewConversation,
+  loadConversations,
+  switchConversation,
+  conversations,
+} = useConversations()
 
-const toggleSidebar = () => {
+function toggleSidebar() {
   showSidebar.value = !showSidebar.value
+}
+
+function toggleOpsInbox() {
+  showOpsInbox.value = !showOpsInbox.value
 }
 
 async function handleNewConversation() {
@@ -36,12 +50,16 @@ function handleDeleteConversation() {
   }
 }
 
-function handleConversationCreated(conversationId) {
+function handleConversationCreated() {
   loadConversations(userName.value)
 }
 
 function handleConversationUpdated() {
   loadConversations(userName.value)
+}
+
+function handleOpsUnreadChange(count) {
+  unreadOpsCount.value = Number(count || 0)
 }
 
 onMounted(async () => {
@@ -91,7 +109,19 @@ onMounted(async () => {
           <p class="text-[11px] text-text-tertiary mt-0.5">{{ config.subtitle }}</p>
         </div>
 
-        <div class="flex items-center">
+        <div class="flex items-center gap-2">
+          <button
+            @click="toggleOpsInbox"
+            class="relative flex items-center gap-2 px-3 py-1.5 border border-[#e8ecf2] bg-white text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+            title="运维简报"
+          >
+            <span v-if="unreadOpsCount > 0" class="absolute right-2 top-1.5 w-2 h-2 rounded-full bg-rose-500"></span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9 17h6M9 13h6M9 9h6M5 5h14v14H5z" />
+            </svg>
+            <span class="text-[12px] font-medium">运维简报</span>
+          </button>
+
           <div class="flex items-center space-x-1.5 text-text-secondary bg-surface-muted pl-2.5 pr-3 py-1 rounded-full">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -112,5 +142,11 @@ onMounted(async () => {
         </div>
       </main>
     </div>
+
+    <OpsReportInbox
+      :open="showOpsInbox"
+      @close="showOpsInbox = false"
+      @unread-change="handleOpsUnreadChange"
+    />
   </div>
 </template>

@@ -1,58 +1,22 @@
-"""
-LangGraph Agent节点定义模块
-
-文件功能：
-    定义LangGraph StateGraph中的所有节点函数和条件路由逻辑。
-    每个节点接收AgentState，执行业务逻辑，返回状态更新。
-
-在系统架构中的定位：
-    位于Agent编排层核心，是StateGraph节点和边的实际实现。
-    graph.py负责编排，nodes.py负责执行。
-
-主要使用场景：
-    - StateGraph构建时注册节点函数
-    - 条件路由判断（should_continue）
-
-核心函数：
-    - init_node: 初始化节点，注入系统Prompt和初始状态
-    - agent_node: LLM决策节点，调用LLM决定是否使用工具
-    - tool_result_node: 工具执行节点，调用具体Tool并收集结果
-    - should_continue: 条件路由，判断继续调用工具还是进入回答
-    - respond_node: 最终回答节点（当前为空操作，回答由LLM流式输出）
-
-专有技术说明：
-    - agent_node使用llm.bind_tools(ALL_TOOLS)绑定工具，LLM通过Tool Calling自主决策
-    - tool_result_node将Tool执行结果转为ToolMessage写回messages，LLM可继续决策
-    - 安全校验失败时返回错误ToolMessage而非抛异常，让LLM有机会修正
-    - tool_call_count限制最大迭代次数，防止无限循环
-
-关联文件：
-    - agent_backend/agent/graph.py: 注册本模块的节点函数
-    - agent_backend/agent/llm.py: get_llm提供LLM实例
-    - agent_backend/agent/prompts.py: SYSTEM_PROMPT系统提示词
-    - agent_backend/agent/tools/: ALL_TOOLS工具列表
-    - agent_backend/agent/state.py: AgentState状态定义
-"""
 from __future__ import annotations
 
 import json
 import logging
 import time
-from pathlib import Path
+from typing import Any
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
-from agent_backend.llm.factory import get_llm
 from agent_backend.agent.state import AgentState
 from agent_backend.agent.tools import ALL_TOOLS
 from agent_backend.agent.tools.sql_tool import _SqlJsonEncoder
 from agent_backend.core.config import get_summary_prompt
+from agent_backend.llm.factory import get_llm
 
 logger = logging.getLogger(__name__)
 
 
-def _format_log_content(content) -> str:
-    """把消息内容稳定转换成可读日志文本。"""
+def _format_log_content(content: Any) -> str:
     if isinstance(content, str):
         return content
     try:
@@ -61,7 +25,7 @@ def _format_log_content(content) -> str:
         return str(content)
 
 
-def _message_role_for_log(message) -> str:
+def _message_role_for_log(message: Any) -> str:
     message_type = getattr(message, "type", "") or message.__class__.__name__
     role_map = {
         "system": "system",
@@ -72,8 +36,8 @@ def _message_role_for_log(message) -> str:
     return role_map.get(message_type, message_type)
 
 
-def _format_messages_for_llm_log(messages: list) -> str:
-    parts = []
+def _format_messages_for_llm_log(messages: list[Any]) -> str:
+    parts: list[str] = []
     for index, message in enumerate(messages, start=1):
         role = _message_role_for_log(message)
         content = _format_log_content(getattr(message, "content", message))
@@ -95,7 +59,7 @@ def _format_messages_for_llm_log(messages: list) -> str:
     return "\n\n".join(parts)
 
 
-def _format_system_prompts_for_llm_log(messages: list) -> str:
+def _format_system_prompts_for_llm_log(messages: list[Any]) -> str:
     system_prompts = [
         _format_log_content(message.content)
         for message in messages
@@ -106,7 +70,7 @@ def _format_system_prompts_for_llm_log(messages: list) -> str:
     return "\n\n".join(system_prompts)
 
 
-def _build_sql_query_arg_error(tool_args) -> str | None:
+def _build_sql_query_arg_error(tool_args: Any) -> str | None:
     if isinstance(tool_args, dict):
         question = tool_args.get("question")
         if isinstance(question, str) and question.strip():
@@ -128,28 +92,19 @@ def _build_sql_query_arg_error(tool_args) -> str | None:
         reason,
         _format_log_content(tool_args),
     )
-    return json.dumps({
-        "error": "sql_query 调用参数错误",
-        "error_code": "sql_query_invalid_args",
-        "reason": reason,
-        "hint": "sql_query 只接受 question（自然语言问题），不要传 sql；示例：{\"question\":\"查看客户端在线状态\"}",
-        "received_args": tool_args,
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "error": "sql_query 调用参数错误",
+            "error_code": "sql_query_invalid_args",
+            "reason": reason,
+            "hint": 'sql_query 只接受 question（自然语言问题），不要传 sql；示例：{"question":"查看客户端在线状态"}',
+            "received_args": tool_args,
+        },
+        ensure_ascii=False,
+    )
 
 
-def init_node(state: AgentState) -> dict:
-    """
-    初始化节点，初始化状态字段。
-
-    系统Prompt由API入口放入initial_state["messages"]的第一位。
-    这里不要返回完整messages列表，避免LangGraph add_messages reducer把消息追加到末尾。
-
-    参数：
-        state: 当前AgentState
-
-    返回：
-        dict: 包含tool_call_count、max_tool_calls及各结果列表的初始值
-    """
+def init_node(state: AgentState) -> dict[str, Any]:
     return {
         "tool_call_count": 0,
         "max_tool_calls": state.get("max_tool_calls", 5),
@@ -161,43 +116,32 @@ def init_node(state: AgentState) -> dict:
         "chart_configs": [],
         "export_results": [],
         "web_search_results": [],
-        "scheduler_results": [],
         "data_tables": [],
         "references": [],
     }
 
 
-def agent_node(state: AgentState) -> dict:
-    """
-    LLM决策节点，调用绑定了Tools的LLM决定下一步操作。
-
-    LLM根据对话历史和工具描述，自主决定：
-    - 调用哪些工具（返回tool_calls）
-    - 直接回答用户（返回文本内容）
-
-    参数：
-        state: 当前AgentState，包含对话历史和工具执行结果
-
-    返回：
-        dict: {"messages": [AIMessage]}，AIMessage可能包含tool_calls或直接内容
-
-    性能注意事项：
-        - 使用invoke阻塞调用，耗时由LLM推理速度决定
-        - 流式输出由stream.py的astream_events捕获on_chat_model_stream实现
-    """
+def agent_node(state: AgentState) -> dict[str, Any]:
     t0 = time.time()
     llm = get_llm()
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
     messages = state["messages"]
-    logger.info(f"\n[agent_node] 调用LLM, 消息数: {len(messages)}, 已调用工具: {state.get('tool_call_count', 0)}")
-    logger.warning(f"\n[agent_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}")
+    logger.info(
+        f"\n[agent_node] 调用LLM, 消息数: {len(messages)}, 已调用工具: {state.get('tool_call_count', 0)}"
+    )
+    logger.warning(
+        f"\n[agent_node] 给LLM设定的系统提示词:\n{_format_system_prompts_for_llm_log(messages)}"
+    )
+    logger.warning(
+        f"\n[agent_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}"
+    )
 
     response = llm_with_tools.invoke(messages)
 
     elapsed = time.time() - t0
-    if hasattr(response, "tool_calls") and response.tool_calls:
-        tool_names = [tc["name"] for tc in response.tool_calls]
+    if getattr(response, "tool_calls", None):
+        tool_names = [tool_call["name"] for tool_call in response.tool_calls]
         logger.info(f"\n[agent_node] LLM决定调用工具: {tool_names}, 耗时: {elapsed:.2f}秒")
     else:
         logger.info(f"\n[agent_node] LLM直接回答, 耗时: {elapsed:.2f}秒")
@@ -205,27 +149,7 @@ def agent_node(state: AgentState) -> dict:
     return {"messages": [response]}
 
 
-def tool_result_node(state: AgentState) -> dict:
-    """
-    工具执行节点，遍历LLM返回的tool_calls并依次执行对应Tool。
-
-    执行流程：
-    1. 解析AIMessage中的tool_calls列表
-    2. 根据tool_name查找对应的Tool函数
-    3. 调用Tool.invoke执行，收集结果
-    4. 将结果转为ToolMessage写回messages
-    5. 累积data_tables和references用于最终输出
-
-    参数：
-        state: 当前AgentState，messages末尾应为包含tool_calls的AIMessage
-
-    返回：
-        dict: 包含tool_messages、更新后的tool_call_count和各结果列表
-
-    安全注意事项：
-        - SQL安全校验在sql_query Tool内部执行，校验失败返回错误ToolMessage
-        - 工具执行异常时返回错误信息而非抛异常，让LLM有机会修正
-    """
+def tool_result_node(state: AgentState) -> dict[str, Any]:
     t0 = time.time()
     last_message = state["messages"][-1]
 
@@ -233,7 +157,7 @@ def tool_result_node(state: AgentState) -> dict:
         return {}
 
     tool_call_count = state.get("tool_call_count", 0)
-    tool_messages = []
+    tool_messages: list[ToolMessage] = []
     new_data_tables = list(state.get("data_tables", []))
     new_references = list(state.get("references", []))
     new_sql_results = list(state.get("sql_results", []))
@@ -244,9 +168,8 @@ def tool_result_node(state: AgentState) -> dict:
     new_chart_configs = list(state.get("chart_configs", []))
     new_export_results = list(state.get("export_results", []))
     new_web_search_results = list(state.get("web_search_results", []))
-    new_scheduler_results = list(state.get("scheduler_results", []))
 
-    tool_map = {t.name: t for t in ALL_TOOLS}
+    tool_map = {tool.name: tool for tool in ALL_TOOLS}
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
@@ -267,28 +190,35 @@ def tool_result_node(state: AgentState) -> dict:
                 result = selected_tool.invoke(tool_args)
 
             tool_call_count += 1
-            logger.info(f"\n[tool_result_node] 工具 {tool_name} 执行完成, 耗时: {time.time() - t_tool:.2f}秒")
+            logger.info(
+                f"\n[tool_result_node] 工具 {tool_name} 执行完成, 耗时: {time.time() - t_tool:.2f}秒"
+            )
 
             if tool_name == "sql_query":
                 try:
                     parsed = json.loads(result)
-                    if "data_table" in parsed and parsed["data_table"]:
+                    if parsed.get("data_table"):
                         new_data_tables.append(parsed["data_table"])
                     new_sql_results.append(parsed)
-                    result_for_llm = {k: v for k, v in parsed.items() if k != "sql"}
                     if "download_url" in parsed:
-                        new_export_results.append({
-                            "download_url": parsed["download_url"],
-                            "filename": parsed.get("download_filename", ""),
-                        })
-                    result = json.dumps(result_for_llm, ensure_ascii=False, cls=_SqlJsonEncoder)
+                        new_export_results.append(
+                            {
+                                "download_url": parsed["download_url"],
+                                "filename": parsed.get("download_filename", ""),
+                            }
+                        )
+                    result = json.dumps(
+                        {key: value for key, value in parsed.items() if key != "sql"},
+                        ensure_ascii=False,
+                        cls=_SqlJsonEncoder,
+                    )
                 except (json.JSONDecodeError, TypeError):
                     pass
 
             elif tool_name == "rag_search":
                 try:
                     parsed = json.loads(result)
-                    if "sources" in parsed:
+                    if parsed.get("sources"):
                         new_references.extend(parsed["sources"])
                     new_rag_results.append(parsed)
                 except (json.JSONDecodeError, TypeError):
@@ -299,49 +229,40 @@ def tool_result_node(state: AgentState) -> dict:
 
             elif tool_name == "get_current_time":
                 try:
-                    parsed = json.loads(result)
-                    new_time_results.append(parsed)
+                    new_time_results.append(json.loads(result))
                 except (json.JSONDecodeError, TypeError):
                     new_time_results.append({"result": result})
 
             elif tool_name == "calculator":
                 try:
-                    parsed = json.loads(result)
-                    new_calculator_results.append(parsed)
+                    new_calculator_results.append(json.loads(result))
                 except (json.JSONDecodeError, TypeError):
                     new_calculator_results.append({"result": result})
 
             elif tool_name == "generate_chart":
                 try:
-                    parsed = json.loads(result)
-                    new_chart_configs.append(parsed)
+                    new_chart_configs.append(json.loads(result))
                 except (json.JSONDecodeError, TypeError):
                     new_chart_configs.append({"result": result})
 
             elif tool_name == "export_data":
                 try:
-                    parsed = json.loads(result)
-                    new_export_results.append(parsed)
+                    new_export_results.append(json.loads(result))
                 except (json.JSONDecodeError, TypeError):
                     new_export_results.append({"result": result})
 
             elif tool_name == "web_search":
                 try:
-                    parsed = json.loads(result)
-                    new_web_search_results.append(parsed)
+                    new_web_search_results.append(json.loads(result))
                 except (json.JSONDecodeError, TypeError):
                     new_web_search_results.append({"result": result})
 
-            elif tool_name in ("schedule_task", "manage_scheduled_task"):
-                try:
-                    parsed = json.loads(result)
-                    new_scheduler_results.append(parsed)
-                except (json.JSONDecodeError, TypeError):
-                    new_scheduler_results.append({"result": result})
-
-        except Exception as e:
-            logger.error(f"[tool_result_node] 工具执行异常: {tool_name}: {e}")
-            result = json.dumps({"error": f"工具执行失败: {type(e).__name__}: {e}"}, ensure_ascii=False)
+        except Exception as exc:
+            logger.error(f"[tool_result_node] 工具执行异常: {tool_name}: {exc}")
+            result = json.dumps(
+                {"error": f"工具执行失败: {type(exc).__name__}: {exc}"},
+                ensure_ascii=False,
+            )
 
         tool_messages.append(
             ToolMessage(content=str(result), tool_call_id=tool_id, name=tool_name)
@@ -362,31 +283,16 @@ def tool_result_node(state: AgentState) -> dict:
         "chart_configs": new_chart_configs,
         "export_results": new_export_results,
         "web_search_results": new_web_search_results,
-        "scheduler_results": new_scheduler_results,
     }
 
 
 def should_continue(state: AgentState) -> str:
-    """
-    条件路由函数，判断Agent应继续调用工具还是进入最终回答。
-
-    路由逻辑：
-    - tool_call_count >= max_tool_calls → "respond"（强制结束，防死循环）
-    - AIMessage包含tool_calls → "tools"（继续执行工具）
-    - 否则 → "respond"（LLM已生成最终回答）
-
-    参数：
-        state: 当前AgentState
-
-    返回：
-        str: "tools" 或 "respond"
-    """
     last_message = state["messages"][-1]
     tool_call_count = state.get("tool_call_count", 0)
     max_tool_calls = state.get("max_tool_calls", 5)
 
     if tool_call_count >= max_tool_calls:
-        logger.info(f"\n[should_continue] 达到最大工具调用次数 {max_tool_calls}，进入respond")
+        logger.info(f"\n[should_continue] 达到最大工具调用次数 {max_tool_calls}，进入 respond")
         return "respond"
 
     if isinstance(last_message, AIMessage) and last_message.tool_calls:
@@ -395,32 +301,32 @@ def should_continue(state: AgentState) -> str:
     return "respond"
 
 
-def respond_node(state: AgentState) -> dict:
-    """
-    最终回答节点。
-
-    正常情况下LLM的最终回答已通过astream_events流式输出，此节点仅作为终止标记。
-    但当达到max_tool_calls被强制截断时，LLM最后一条消息可能包含tool_calls而非文本回答，
-    此时需要再调用一次LLM（不绑定工具）让其基于已收集的工具结果生成最终总结。
-    """
+def respond_node(state: AgentState) -> dict[str, Any]:
     last_message = state["messages"][-1]
     tool_call_count = state.get("tool_call_count", 0)
     max_tool_calls = state.get("max_tool_calls", 5)
 
     if tool_call_count >= max_tool_calls and isinstance(last_message, AIMessage) and last_message.tool_calls:
-        logger.info(f"\n[respond_node] 达到max_tool_calls且LLM仍在请求工具调用，强制生成最终回答")
+        logger.info("\n[respond_node] 达到 max_tool_calls，强制生成最终总结回答")
         llm = get_llm()
-        summary_prompt = SystemMessage(
-            content=get_summary_prompt()
+        summary_prompt = SystemMessage(content=get_summary_prompt())
+        system_messages = [message for message in state["messages"] if isinstance(message, SystemMessage)]
+        non_system_messages = [
+            message for message in state["messages"] if not isinstance(message, SystemMessage)
+        ]
+        messages = system_messages + [summary_prompt] + non_system_messages
+        logger.warning(
+            f"\n[respond_node] 给LLM设定的系统提示词:\n{_format_system_prompts_for_llm_log(messages)}"
         )
-        messages = state["messages"] + [summary_prompt]
-        logger.warning(f"\n[respond_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}")
+        logger.warning(
+            f"\n[respond_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}"
+        )
         try:
             response = llm.invoke(messages)
-            logger.info(f"\n[respond_node] 强制总结回答生成完成")
+            logger.info("\n[respond_node] 强制总结回答生成完成")
             return {"messages": [response]}
-        except Exception as e:
-            logger.error(f"\n[respond_node] 强制总结回答生成失败: {e}")
+        except Exception as exc:
+            logger.error(f"\n[respond_node] 强制总结回答生成失败: {exc}")
             return {}
 
     return {}
