@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Change Commit Guard"
+  short_description: "Commit code edits, explain changes, and handle rollback"
+  default_prompt: "Use $code-change-commit-guard to finish a code change, create a focused git commit, explain the edits in natural language, and roll back the latest version when requested."
