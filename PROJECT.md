@@ -632,8 +632,8 @@ main.py → create_app()
 | **智能体** | `AGENT_NAME` | `desk-agent` | 智能体名称，影响知识库路径 |
 | **LLM** | `LLM_BASE_URL` | `http://localhost:11434/v1` | LLM 服务地址（OpenAI 兼容） |
 | | `LLM_API_KEY` | 空 | API Key（本地留空，云端必填） |
-| | `CHAT_MODEL` | `qwen2.5:7b` | 文本对话模型 |
-| | `VISION_MODEL` | `qwen2.5-vl:7b` | 视觉模型 |
+| | `CHAT_MODEL` | `qwen3:14b` | 文本对话模型 |
+| | `VISION_MODEL` | `qwen3.5:9b` | 视觉模型 |
 | | `ENABLE_CLOUD_FALLBACK` | `0` | 云端 API 兜底开关 |
 | **数据库** | `DB_TYPE` | `mysql` | 数据库类型（mysql/postgresql） |
 | | `DATABASE_URL` | - | 完整连接 URL（优先级更高） |

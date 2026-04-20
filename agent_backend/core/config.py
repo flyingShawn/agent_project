@@ -81,8 +81,8 @@ def load_env_file() -> None:
 class LlmSettings(BaseSettings):
     llm_base_url: str = "http://localhost:11434/v1"
     llm_api_key: str = "ollama"
-    chat_model: str = "qwen2.5:7b"
-    vision_model: str = "qwen2.5-vl:7b"
+    chat_model: str = "qwen3.5:9b"
+    vision_model: str = "qwen3.5:9b"
     ollama_base_url: str = "http://localhost:11434"
 
     model_config = {"env_file": ".env", "extra": "ignore"}

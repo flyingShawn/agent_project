@@ -48,8 +48,8 @@ curl http://localhost:11434/api/tags
 
 # 确认模型已下载
 ollama list
-ollama pull qwen2.5:7b
-ollama pull qwen2.5-vl:7b
+ollama pull qwen3.5:9b
+ollama pull qwen3:14b
 ```
 
 ## 四、部署步骤
@@ -74,10 +74,10 @@ LLM_BASE_URL=http://host.docker.internal:11434/v1
 # LLM_BASE_URL=http://172.17.0.1:11434/v1
 
 # 文本对话模型
-CHAT_MODEL=qwen2.5:7b
+CHAT_MODEL=qwen3.5:9b
 
 # 视觉模型
-VISION_MODEL=qwen2.5-vl:7b
+VISION_MODEL=qwen3.5:9b
 
 # 数据库配置
 DATABASE_URL=mysql+pymysql://user:password@host:3306/dbname?charset=utf8mb4
@@ -305,8 +305,8 @@ docker compose logs backend | grep -i scheduler
 # ==================== 大模型配置 ====================
 LLM_BASE_URL=http://host.docker.internal:11434/v1
 LLM_API_KEY=
-CHAT_MODEL=qwen2.5:7b
-VISION_MODEL=qwen2.5-vl:7b
+CHAT_MODEL=qwen3:14b
+VISION_MODEL=qwen3.5:9b
 
 # ==================== 数据库配置 ====================
 DATABASE_URL=mysql+pymysql://user:password@host:3306/dbname?charset=utf8mb4

@@ -154,7 +154,7 @@ def main():
    - 运行 'npm run dev' 启动前端
 
 4. 如果没有安装模型：
-   - 运行 'ollama pull qwen2.5:7b-instruct'
+   - 运行 'ollama pull qwen3:14b'
    - 运行 'ollama pull qwen3.5:9b'（用于视觉）
 
 5. 启动顺序建议：

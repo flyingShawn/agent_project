@@ -43,10 +43,11 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from agent_backend.agent.graph import get_agent_graph
+from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.stream import stream_graph_response
 from agent_backend.core.sse import sse_event
 from agent_backend.db.chat_history import async_session
@@ -96,7 +97,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     )
 
     initial_state = {
-        "messages": [],
+        "messages": [SystemMessage(content=SYSTEM_PROMPT)],
         "question": req.question,
         "session_id": session_id,
         "lognum": req.lognum,

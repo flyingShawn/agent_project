@@ -30,7 +30,7 @@ LLM 客户端模块
       - 本地 Ollama:  http://localhost:11434/v1
       - DeepSeek:     https://api.deepseek.com/v1
       - Qwen 云端:    https://dashscope.aliyuncs.com/compatible-mode/v1
-    - 文本模型默认 qwen2.5:7b，视觉模型默认 qwen2.5-vl:7b
+    - 文本模型默认 qwen3:14b，视觉模型默认 qwen3.5:9b
     - 通过 LLM_BASE_URL/LLM_API_KEY/CHAT_MODEL/VISION_MODEL 环境变量配置
     - HTTP 超时设置为 120 秒，适配大模型推理耗时
 
@@ -78,8 +78,8 @@ class OllamaChatClient:
 
         参数：
             base_url: Ollama 服务地址，默认读取 OLLAMA_BASE_URL 环境变量或 http://localhost:11434
-            model: 文本对话模型名称，默认读取 CHAT_MODEL 环境变量或 qwen2.5:7b
-            vision_model: 视觉模型名称，默认读取 VISION_MODEL 环境变量或 qwen2.5-vl:7b
+            model: 文本对话模型名称，默认读取 CHAT_MODEL 环境变量或 qwen3.5:9b
+            vision_model: 视觉模型名称，默认读取 VISION_MODEL 环境变量或 qwen3.5:9b
 
         说明：
             - 三个参数均可通过环境变量配置，优先使用显式传入值

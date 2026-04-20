@@ -28,8 +28,8 @@ notepad .env
 
 ```env
 LLM_BASE_URL=http://localhost:11434/v1
-CHAT_MODEL=qwen2.5:7b
-VISION_MODEL=qwen2.5-vl:7b
+CHAT_MODEL=qwen3.5:9b
+VISION_MODEL=qwen3.5:9b
 
 DB_TYPE=mysql
 DB_HOST=localhost
@@ -43,8 +43,8 @@ DB_PASSWORD=your_password
 
 ```bash
 ollama serve
-ollama pull qwen2.5:7b
-ollama pull qwen2.5-vl:7b
+ollama pull qwen3.5:9b
+ollama pull qwen3:14b
 ```
 
 ### 3. 启动后端
@@ -215,8 +215,8 @@ agent_project/
 |------|--------|------|
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | LLM 服务地址（OpenAI 兼容协议） |
 | `LLM_API_KEY` | 空 | API Key（本地 Ollama 留空，云端必填） |
-| `CHAT_MODEL` | `qwen2.5:7b` | 文本对话模型 |
-| `VISION_MODEL` | `qwen2.5-vl:7b` | 视觉模型（图片理解/多模态 RAG） |
+| `CHAT_MODEL` | `qwen3:14b` | 文本对话模型 |
+| `VISION_MODEL` | `qwen3.5:9b` | 视觉模型（图片理解/多模态 RAG） |
 | `ENABLE_CLOUD_FALLBACK` | `0` | 云端 API 兜底开关（0=关, 1=开） |
 
 **LLM 后端选择：**
@@ -231,9 +231,8 @@ agent_project/
 
 | 模型 | 大小 | 适用场景 |
 |------|------|---------|
-| `qwen2.5:3b` | ~2GB | 低配置，快速响应 |
-| `qwen2.5:7b` | ~4.7GB | 推荐，平衡性能 |
-| `qwen2.5:14b` | ~9GB | 高配置，效果最好 |
+| `qwen3.5:9b` | ~4.7GB | 推荐，平衡性能 |
+| `qwen3:14b` | ~9GB | 高配置，效果最好 |
 
 ### 数据库配置（只读）
 
@@ -474,7 +473,7 @@ Docker 容器内访问宿主机 Ollama：
 **Ollama 连接失败**
 ```bash
 ollama list                    # 检查 Ollama 是否运行
-ollama pull qwen2.5:7b         # 确认模型已下载
+ollama pull qwen3:9b         # 确认模型已下载
 ```
 
 **数据库连接失败**
