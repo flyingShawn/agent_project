@@ -38,7 +38,7 @@ import os
 import logging
 from pathlib import Path
 
-from agent_backend.core.config import load_env_file
+from agent_backend.core.config import load_env_file, get_settings
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
@@ -46,7 +46,8 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 load_env_file()
-SQLITE_DB_PATH = os.environ.get("CHAT_DB_PATH", "data/chat_history.db")
+_settings = get_settings()
+SQLITE_DB_PATH = _settings.misc.chat_db_path
 
 db_path = Path(SQLITE_DB_PATH).resolve()
 db_path.parent.mkdir(parents=True, exist_ok=True)

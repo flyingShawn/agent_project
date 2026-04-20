@@ -40,21 +40,27 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 from agent_backend.llm.factory import get_sql_llm
-from agent_backend.core.config import get_database_url, get_max_rows, get_schema_runtime
+from agent_backend.core.config import (
+    get_database_url,
+    get_schema_runtime,
+    get_sql_log_full_prompt,
+)
 from agent_backend.core.errors import AppError
 from agent_backend.rag_engine.retrieval import search_sql_samples
 from agent_backend.sql_agent.executor import execute_sql, SqlExecutionError
-from agent_backend.sql_agent.prompt_builder import build_sql_prompt
+from agent_backend.sql_agent.prompt_builder import (
+    SQL_SYSTEM_PROMPT,
+    SqlPromptBundle,
+    build_sql_prompt_bundle,
+)
 from agent_backend.sql_agent.sql_safety import (
     enforce_deny_select_columns,
     validate_sql_basic,
@@ -95,7 +101,13 @@ def _sanitize_rows(rows: list[dict]) -> list[dict]:
 
 class SqlQueryInput(BaseModel):
     """SQL查询工具入参模型"""
-    question: str = Field(description="用户的自然语言问题，用于生成SQL查询")
+    question: str = Field(
+        description=(
+            "用户的自然语言问题，不是SQL语句。"
+            "例如：查看客户端在线状态。"
+            "不要传 SELECT * FROM ... 这样的SQL。"
+        )
+    )
 
 
 def _build_markdown_table(rows: list[dict]) -> str:
@@ -128,6 +140,75 @@ def _build_markdown_table(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _summarize_sample_text(text: str, max_len: int = 160) -> str:
+    normalized = " ".join(text.replace("\n", " ").split())
+    if len(normalized) <= max_len:
+        return normalized
+    return normalized[:max_len] + "..."
+
+
+def _log_sql_samples(sql_samples: list | None) -> None:
+    if not sql_samples:
+        logger.info("\n[sql_query] 【SQL样本】未命中，将回退到Schema信息直接生成SQL")
+        return
+
+    logger.info(f"\n[sql_query] 【SQL样本】命中 {len(sql_samples)} 个")
+    for index, sample in enumerate(sql_samples, start=1):
+        source = sample.heading or sample.source_path or "unknown"
+        chunk_index = ""
+        if isinstance(sample.metadata, dict):
+            chunk_index = sample.metadata.get("chunk_index", "")
+        has_sql_block = "是" if "```sql" in sample.text.lower() else "否"
+        text_len = len(sample.text or "")
+        logger.info(
+            "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | 摘要=%s",
+            index,
+            source,
+            chunk_index if chunk_index != "" else "-",
+            text_len,
+            has_sql_block,
+            sample.score,
+            _summarize_sample_text(sample.text),
+        )
+
+
+def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:
+    sample_tables = ", ".join(bundle.sample_tables) if bundle.sample_tables else "无"
+    fallback_desc = "否"
+    if bundle.fallback_used:
+        fallback_desc = "是"
+        if bundle.fallback_reason:
+            fallback_desc += f"（{bundle.fallback_reason}）"
+
+    logger.info(
+        "\n[sql_query] 【Schema裁剪】样本相关表=%s | 最终表数=%s | 最终列数=%s | 回退=%s",
+        sample_tables,
+        len(bundle.selected_tables),
+        bundle.total_columns,
+        fallback_desc,
+    )
+
+    if bundle.selected_columns_by_table:
+        detail_parts = []
+        for table_name, column_names in bundle.selected_columns_by_table.items():
+            preview = ", ".join(column_names[:10])
+            more = "" if len(column_names) <= 10 else f" ...(+{len(column_names) - 10})"
+            detail_parts.append(f"{table_name}[{len(column_names)}]: {preview}{more}")
+        logger.info("\n[sql_query] 【Schema裁剪详情】%s", " | ".join(detail_parts))
+
+    logger.info(
+        "\n[sql_query] 【Prompt摘要】长度=%s字符 | 表数=%s | 列数=%s | 同义词=%s | 样本=%s",
+        len(bundle.prompt),
+        len(bundle.selected_tables),
+        bundle.total_columns,
+        bundle.synonym_count,
+        bundle.sample_count,
+    )
+
+    if get_sql_log_full_prompt():
+        logger.info("\n[sql_query] 【完整Prompt】\n%s", bundle.prompt)
+
+
 @tool(args_schema=SqlQueryInput)
 def sql_query(question: str) -> str:
     """
@@ -135,9 +216,12 @@ def sql_query(question: str) -> str:
     当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员、
     操作记录、远程操作记录、登录日志、任何"记录"或"日志"类查询等
     需要从数据库获取数据时使用此工具。
+    只接受自然语言问题，不接受SQL语句本身。
+    正确示例：{"question": "查看客户端在线状态"}
+    错误示例：{"sql": "SELECT * FROM onlineinfo"}
 
     参数：
-        question: 用户的自然语言问题，用于生成SQL查询
+        question: 用户的自然语言问题，用于生成SQL查询，不是SQL语句
 
     返回：
         str: JSON格式字符串，包含sql/rows/row_count/columns/data_table字段；
@@ -152,26 +236,17 @@ def sql_query(question: str) -> str:
         sql_samples = None
         try:
             sql_samples = search_sql_samples(question)
-            if sql_samples:
-                logger.info(f"\n[sql_query] 检索到 {len(sql_samples)} 个SQL样本")
-            else:
-                logger.info("\n[sql_query] 未检索到SQL样本")
+            _log_sql_samples(sql_samples)
         except Exception as e:
             logger.warning(f"\n[sql_query] SQL样本检索失败: {e}")
 
-        prompt = build_sql_prompt(runtime, question, sql_samples=sql_samples)
-        prompt += "\n\n【最重要】你必须严格模仿参考SQL样本的写法风格，包括：\n"
-        prompt += "- 表关联方式（JOIN条件和关联表）\n"
-        prompt += "- 别名规则（s_machine用m，s_group用g等）\n"
-        prompt += "- 列别名写法（AS \"中文别名\"，中文别名必须用双引号包裹）\n"
-        prompt += "- WHERE条件构建方式\n"
-        prompt += "- 聚合函数使用方式\n"
-        prompt += "如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。\n"
-        prompt += "\n【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。\n"
+        prompt_bundle = build_sql_prompt_bundle(runtime, question, sql_samples=sql_samples)
+        _log_prompt_bundle(prompt_bundle)
+        prompt = prompt_bundle.prompt
 
         sql_llm = get_sql_llm()
         messages = [
-            {"role": "system", "content": "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"},
+            {"role": "system", "content": SQL_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ]
         from langchain_core.messages import HumanMessage, SystemMessage

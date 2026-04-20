@@ -42,7 +42,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_backend.api.routes import router as api_router
-from agent_backend.core.config import load_env_file
+from agent_backend.core.config import load_env_file, get_settings
 from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
@@ -89,7 +89,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="desk-agent-backend", lifespan=lifespan)
 
-    cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+    cors_origins = [o.strip() for o in get_settings().misc.cors_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,

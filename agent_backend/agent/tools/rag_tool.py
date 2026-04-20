@@ -64,7 +64,7 @@ def rag_search(question: str) -> str:
     logger.info(f"\n[rag_search] 开始检索: {question}")
 
     try:
-        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score = get_rag_settings()
+        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score, candidate_k, alpha = get_rag_settings()
 
         embedding_model = get_or_create_embedding(embedding_model_name)
 
@@ -82,6 +82,8 @@ def rag_search(question: str) -> str:
             store=store,
             embedding_model=embedding_model,
             top_k=top_k,
+            candidate_k=candidate_k,
+            alpha=alpha,
             min_score=0.5,
             vector_min_score=vector_min_score,
         )

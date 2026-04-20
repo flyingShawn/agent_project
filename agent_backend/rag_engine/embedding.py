@@ -37,7 +37,8 @@
 from __future__ import annotations
 
 import logging
-import os
+
+from agent_backend.core.config import get_settings
 from typing import Any
 
 import numpy as np
@@ -72,9 +73,7 @@ class EmbeddingModel:
             model_name: 模型名称，为None时从RAG_EMBEDDING_MODEL环境变量读取，
                        默认BAAI/bge-small-zh-v1.5
         """
-        self.model_name = model_name or os.getenv(
-            "RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"
-        )
+        self.model_name = model_name or get_settings().rag.rag_embedding_model
         self._model = None
         self._dimension: int | None = None
 

@@ -95,7 +95,7 @@ async def stream_graph_response(
     graph: Any,
     initial_state: dict,
 ) -> AsyncIterator[str]:
-    logger.info("\n[stream] 开始流式输出 (astream_events v2), 超时: {0}秒".format(AGENT_TIMEOUT_SECONDS))
+    logger.info("\n[stream] 开始流式输出 (astream_events v2), 超时阈值: {0}秒".format(AGENT_TIMEOUT_SECONDS))
 
     references: list[str] = []
     chart_configs: list[dict] = []

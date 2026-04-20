@@ -43,34 +43,114 @@ from pathlib import Path
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from agent_backend.llm.factory import get_llm
-from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.state import AgentState
 from agent_backend.agent.tools import ALL_TOOLS
 from agent_backend.agent.tools.sql_tool import _SqlJsonEncoder
+from agent_backend.core.config import get_summary_prompt
 
 logger = logging.getLogger(__name__)
 
 
+def _format_log_content(content) -> str:
+    """把消息内容稳定转换成可读日志文本。"""
+    if isinstance(content, str):
+        return content
+    try:
+        return json.dumps(content, ensure_ascii=False, default=str)
+    except TypeError:
+        return str(content)
+
+
+def _message_role_for_log(message) -> str:
+    message_type = getattr(message, "type", "") or message.__class__.__name__
+    role_map = {
+        "system": "system",
+        "human": "user",
+        "ai": "assistant",
+        "tool": "tool",
+    }
+    return role_map.get(message_type, message_type)
+
+
+def _format_messages_for_llm_log(messages: list) -> str:
+    parts = []
+    for index, message in enumerate(messages, start=1):
+        role = _message_role_for_log(message)
+        content = _format_log_content(getattr(message, "content", message))
+        block = [f"--- message {index} [{role}] ---", content]
+
+        tool_calls = getattr(message, "tool_calls", None)
+        if tool_calls:
+            block.append(f"tool_calls: {_format_log_content(tool_calls)}")
+
+        tool_call_id = getattr(message, "tool_call_id", None)
+        if tool_call_id:
+            block.append(f"tool_call_id: {tool_call_id}")
+
+        name = getattr(message, "name", None)
+        if name:
+            block.append(f"name: {name}")
+
+        parts.append("\n".join(block))
+    return "\n\n".join(parts)
+
+
+def _format_system_prompts_for_llm_log(messages: list) -> str:
+    system_prompts = [
+        _format_log_content(message.content)
+        for message in messages
+        if isinstance(message, SystemMessage)
+    ]
+    if not system_prompts:
+        return "(未找到 SystemMessage)"
+    return "\n\n".join(system_prompts)
+
+
+def _build_sql_query_arg_error(tool_args) -> str | None:
+    if isinstance(tool_args, dict):
+        question = tool_args.get("question")
+        if isinstance(question, str) and question.strip():
+            return None
+    else:
+        question = None
+
+    if not isinstance(tool_args, dict):
+        reason = "tool_args_not_object"
+    elif "sql" in tool_args:
+        reason = "received_sql_instead_of_question"
+    elif "question" in tool_args:
+        reason = "question_empty"
+    else:
+        reason = "question_missing"
+
+    logger.warning(
+        "\n[tool_result_node] sql_query 参数不合法，拒绝执行。原因=%s | 原始参数=%s",
+        reason,
+        _format_log_content(tool_args),
+    )
+    return json.dumps({
+        "error": "sql_query 调用参数错误",
+        "error_code": "sql_query_invalid_args",
+        "reason": reason,
+        "hint": "sql_query 只接受 question（自然语言问题），不要传 sql；示例：{\"question\":\"查看客户端在线状态\"}",
+        "received_args": tool_args,
+    }, ensure_ascii=False)
+
+
 def init_node(state: AgentState) -> dict:
     """
-    初始化节点，注入系统Prompt和初始状态字段。
+    初始化节点，初始化状态字段。
 
-    检查messages中是否已包含SystemMessage，若没有则注入SYSTEM_PROMPT。
-    同时初始化工具调用计数和结果累积列表。
+    系统Prompt由API入口放入initial_state["messages"]的第一位。
+    这里不要返回完整messages列表，避免LangGraph add_messages reducer把消息追加到末尾。
 
     参数：
         state: 当前AgentState
 
     返回：
-        dict: 包含messages、tool_call_count、max_tool_calls及各结果列表的初始值
+        dict: 包含tool_call_count、max_tool_calls及各结果列表的初始值
     """
-    messages = state.get("messages", [])
-    has_system = any(isinstance(m, SystemMessage) for m in messages)
-    if not has_system:
-        messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
-
     return {
-        "messages": messages,
         "tool_call_count": 0,
         "max_tool_calls": state.get("max_tool_calls", 5),
         "sql_results": [],
@@ -111,6 +191,7 @@ def agent_node(state: AgentState) -> dict:
 
     messages = state["messages"]
     logger.info(f"\n[agent_node] 调用LLM, 消息数: {len(messages)}, 已调用工具: {state.get('tool_call_count', 0)}")
+    logger.warning(f"\n[agent_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}")
 
     response = llm_with_tools.invoke(messages)
 
@@ -179,6 +260,9 @@ def tool_result_node(state: AgentState) -> dict:
             selected_tool = tool_map.get(tool_name)
             if not selected_tool:
                 result = json.dumps({"error": f"未知工具: {tool_name}"}, ensure_ascii=False)
+            elif tool_name == "sql_query":
+                arg_error = _build_sql_query_arg_error(tool_args)
+                result = arg_error if arg_error is not None else selected_tool.invoke(tool_args)
             else:
                 result = selected_tool.invoke(tool_args)
 
@@ -327,10 +411,10 @@ def respond_node(state: AgentState) -> dict:
         logger.info(f"\n[respond_node] 达到max_tool_calls且LLM仍在请求工具调用，强制生成最终回答")
         llm = get_llm()
         summary_prompt = SystemMessage(
-            content="你已达到最大工具调用次数限制，无法再调用任何工具。请基于已收集到的工具执行结果，"
-                    "为用户生成一个完整、有用的最终回答。如果已有查询结果数据，请务必在回答中包含具体的数据内容。"
+            content=get_summary_prompt()
         )
         messages = state["messages"] + [summary_prompt]
+        logger.warning(f"\n[respond_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}")
         try:
             response = llm.invoke(messages)
             logger.info(f"\n[respond_node] 强制总结回答生成完成")

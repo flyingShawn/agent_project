@@ -44,7 +44,8 @@ yarn-error.log*
 *~
 
 *.log
-*.lock
+yarn.lock
+pnpm-lock.yaml
 
 .state/
 .qdrant_local_demo/
@@ -68,6 +69,12 @@ data/desk-agent/docs/
 # User data (keep directory structure but ignore contents)
 data/docs/*
 !data/docs/.gitkeep
+
+# IDE / Tool config
+.trae/
+
+# Temp files
+suggest.txt
 
 # OS specific
 .DS_Store

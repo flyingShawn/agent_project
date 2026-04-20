@@ -44,7 +44,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-from agent_backend.core.config import load_env_file
+from agent_backend.core.config import load_env_file, get_settings
 
 load_env_file()
 
@@ -326,58 +326,33 @@ def hybrid_search(
     return results
 
 
-def get_rag_settings() -> tuple[str, str, str | None, str | None, str, int, float]:
-    """
-    获取 RAG 文档检索的环境变量配置。
-
-    返回：
-        tuple: (qdrant_url, qdrant_path, qdrant_api_key, collection,
-               embedding_model_name, top_k, vector_min_score)
-
-    环境变量：
-        RAG_QDRANT_URL: Qdrant 服务地址，默认 http://localhost:6333
-        RAG_QDRANT_PATH: Qdrant 本地路径（优先于 URL）
-        RAG_QDRANT_API_KEY: Qdrant API 密钥
-        RAG_QDRANT_COLLECTION: 文档集合名称，默认 desk_agent_docs
-        RAG_EMBEDDING_MODEL: 向量模型名称，默认 BAAI/bge-small-zh-v1.5
-        RAG_TOP_K: 返回结果数，默认 5
-        RAG_VECTOR_MIN_SCORE: 向量分数最低阈值，默认 0.5
-    """
-    qdrant_url = os.getenv("RAG_QDRANT_URL", "http://localhost:6333")
-    qdrant_path = os.getenv("RAG_QDRANT_PATH")
-    qdrant_api_key = os.getenv("RAG_QDRANT_API_KEY")
-    collection = os.getenv("RAG_QDRANT_COLLECTION", "desk_agent_docs")
-    embedding_model_name = os.getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
-    top_k = int(os.getenv("RAG_TOP_K", "5"))
-    vector_min_score = float(os.getenv("RAG_VECTOR_MIN_SCORE", "0.5"))
-
-    return qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score
+def get_rag_settings() -> tuple[str, str, str | None, str | None, str, int, float, int, float]:
+    rag = get_settings().rag
+    return (
+        rag.rag_qdrant_url,
+        rag.rag_qdrant_path,
+        rag.rag_qdrant_api_key,
+        rag.rag_qdrant_collection,
+        rag.rag_embedding_model,
+        rag.rag_top_k,
+        rag.rag_vector_min_score,
+        rag.rag_candidate_k,
+        rag.rag_hybrid_alpha,
+    )
 
 
 def get_sql_rag_settings() -> tuple[str, str, str | None, str | None, str, int, int, float]:
-    """
-    获取 SQL 样本检索的环境变量配置。
-
-    返回：
-        tuple: (qdrant_url, qdrant_path, qdrant_api_key, collection,
-               embedding_model_name, top_k, candidate_k, alpha)
-
-    环境变量：
-        RAG_SQL_QDRANT_COLLECTION: SQL 样本集合名称，默认 desk_agent_sql
-        RAG_SQL_TOP_K: 返回结果数，默认 3
-        RAG_SQL_CANDIDATE_K: 候选集大小，默认 15
-        RAG_SQL_HYBRID_ALPHA: 向量分数权重，默认 0.8
-    """
-    qdrant_url = os.getenv("RAG_QDRANT_URL", "http://localhost:6333")
-    qdrant_path = os.getenv("RAG_QDRANT_PATH")
-    qdrant_api_key = os.getenv("RAG_QDRANT_API_KEY")
-    collection = os.getenv("RAG_SQL_QDRANT_COLLECTION", "desk_agent_sql")
-    embedding_model_name = os.getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
-    top_k = int(os.getenv("RAG_SQL_TOP_K", "3"))
-    candidate_k = int(os.getenv("RAG_SQL_CANDIDATE_K", "15"))
-    alpha = float(os.getenv("RAG_SQL_HYBRID_ALPHA", "0.8"))
-
-    return qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha
+    rag = get_settings().rag
+    return (
+        rag.rag_qdrant_url,
+        rag.rag_qdrant_path,
+        rag.rag_qdrant_api_key,
+        rag.rag_sql_qdrant_collection,
+        rag.rag_embedding_model,
+        rag.rag_sql_top_k,
+        rag.rag_sql_candidate_k,
+        rag.rag_sql_hybrid_alpha,
+    )
 
 
 def search_sql_samples(

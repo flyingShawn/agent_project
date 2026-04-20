@@ -46,6 +46,7 @@ from urllib.parse import quote_plus
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from pydantic_settings import BaseSettings
 
 from agent_backend.core.schema_models import SchemaRoot
 
@@ -77,65 +78,198 @@ def load_env_file() -> None:
     _env_loaded = True
 
 
+class LlmSettings(BaseSettings):
+    llm_base_url: str = "http://localhost:11434/v1"
+    llm_api_key: str = "ollama"
+    chat_model: str = "qwen3.5:9b"
+    vision_model: str = "qwen3.5:9b"
+    ollama_base_url: str = "http://localhost:11434"
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+class DatabaseSettings(BaseSettings):
+    database_url: str = ""
+    db_type: str = "mysql"
+    db_host: str = ""
+    db_port: str = ""
+    db_name: str = ""
+    db_user: str = ""
+    db_password: str = ""
+    sql_max_rows: int = 500
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+class RagSettings(BaseSettings):
+    rag_qdrant_url: str = "http://localhost:6333"
+    rag_qdrant_path: str | None = None
+    rag_qdrant_api_key: str | None = None
+    rag_qdrant_collection: str = "desk_agent_docs"
+    rag_sql_qdrant_collection: str = "desk_agent_sql"
+    rag_embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    rag_top_k: int = 5
+    rag_vector_min_score: float = 0.5
+    rag_hybrid_alpha: float = 0.7
+    rag_candidate_k: int = 30
+    rag_sql_top_k: int = 3
+    rag_sql_candidate_k: int = 15
+    rag_sql_hybrid_alpha: float = 0.8
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+class MiscSettings(BaseSettings):
+    chat_db_path: str = "data/chat_history.db"
+    cors_origins: str = "http://localhost:3000"
+    agent_name: str = "desk-agent"
+    tavily_api_key: str = ""
+    web_search_max_results: int = 5
+    sql_log_full_prompt: bool = True
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+class AppSettings(BaseModel):
+    llm: LlmSettings = LlmSettings()
+    database: DatabaseSettings = DatabaseSettings()
+    rag: RagSettings = RagSettings()
+    misc: MiscSettings = MiscSettings()
+
+    def build_database_url(self) -> str | None:
+        if self.database.database_url:
+            return self.database.database_url
+        db = self.database
+        if not all([db.db_host, db.db_name, db.db_user]):
+            return None
+        db_type = db.db_type.lower()
+        if db_type == "postgresql":
+            port = db.db_port or "5432"
+            return f"postgresql+psycopg2://{quote_plus(db.db_user)}:{quote_plus(db.db_password)}@{db.db_host}:{port}/{db.db_name}"
+        port = db.db_port or "3306"
+        return f"mysql+pymysql://{quote_plus(db.db_user)}:{quote_plus(db.db_password)}@{db.db_host}:{port}/{db.db_name}"
+
+
+_settings_instance: AppSettings | None = None
+
+
+def get_settings() -> AppSettings:
+    global _settings_instance
+    if _settings_instance is None:
+        load_env_file()
+        _settings_instance = AppSettings()
+        logger.info("\n已生效配置摘要:")
+        logger.info(f"  LLM: base_url={_settings_instance.llm.llm_base_url}, model={_settings_instance.llm.chat_model}")
+        logger.info(f"  DB: type={_settings_instance.database.db_type}, host={_settings_instance.database.db_host}")
+        logger.info(f"  RAG: qdrant_url={_settings_instance.rag.rag_qdrant_url}, collection={_settings_instance.rag.rag_qdrant_collection}")
+        logger.info(f"  Misc: agent_name={_settings_instance.misc.agent_name}, cors={_settings_instance.misc.cors_origins}")
+    return _settings_instance
+
+
 def get_database_url() -> str | None:
-    """
-    获取数据库连接URL。
-
-    优先级：
-        1. DATABASE_URL环境变量（完整连接串，优先级最高）
-        2. 从DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD组件变量拼接
-
-    参数：
-        无（从环境变量读取）
-
-    返回：
-        str | None: 数据库连接URL，未配置时返回None
-
-    支持的数据库类型：
-        - mysql: 拼接为 mysql+pymysql://user:pass@host:port/db
-        - postgresql: 拼接为 postgresql+psycopg2://user:pass@host:port/db
-
-    安全注意事项：
-        - 密码中的特殊字符需要URL编码
-        - 未配置必要参数时返回None而非抛异常，由调用方决定处理方式
-    """
     load_env_file()
-    url = os.getenv("DATABASE_URL")
-    if url:
-        return url
-    db_type = os.getenv("DB_TYPE", "mysql").lower()
-    host = os.getenv("DB_HOST")
-    port = os.getenv("DB_PORT")
-    name = os.getenv("DB_NAME")
-    user = os.getenv("DB_USER")
-    password = os.getenv("DB_PASSWORD")
-    if not all([host, name, user]):
-        return None
-    if db_type == "postgresql":
-        port = port or "5432"
-        return f"postgresql+psycopg2://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{name}"
-    port = port or "3306"
-    return f"mysql+pymysql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{name}"
+    return get_settings().build_database_url()
 
 
 def get_max_rows() -> int:
-    """
-    获取SQL查询最大返回行数限制。
-
-    从SQL_MAX_ROWS环境变量读取，默认500行。
-    该限制用于防止SQL查询返回过多数据导致内存溢出。
-
-    参数：
-        无（从环境变量读取）
-
-    返回：
-        int: 最大行数限制，默认500
-    """
     load_env_file()
-    return int(os.getenv("SQL_MAX_ROWS", "500"))
+    return get_settings().database.sql_max_rows
 
 
 _SCHEMA_YAML_PATH = Path(__file__).parent.parent / "configs" / "schema_metadata.yaml"
+_PROMPTS_YAML_PATH = Path(__file__).parent.parent / "configs" / "prompts.yaml"
+
+_DEFAULT_SYSTEM_PROMPT = """你是一个专业的桌面管理系统AI助手，拥有以下工具能力：\n\n（默认提示词，请配置 configs/prompts.yaml）"""
+_DEFAULT_SQL_SYSTEM_PROMPT = "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"
+_DEFAULT_SUMMARY_PROMPT = "你已达到最大工具调用次数限制，无法再调用任何工具。请基于已收集到的工具执行结果，为用户生成一个完整、有用的最终回答。如果已有查询结果数据，请务必在回答中包含具体的数据内容。"
+_DEFAULT_SQL_PROMPT_INSTRUCTIONS = """你是一个严谨的数据库 SQL 助手。
+只输出 SQL 本体，不要输出解释、不要 Markdown。
+只使用 SELECT 语句，禁止 INSERT/UPDATE/DELETE/DROP 等。
+禁止返回敏感列。
+
+【重要】表别名规则（必须严格遵守）：
+1. 定义别名后，整个SQL中必须使用别名，不能再用原表名
+2. 示例：FROM s_group g 之后，必须用 g.id，不能用 s_group.id
+3. 常用别名：s_machine 用 m，s_group 用 g，s_user 用 u，admininfo 用 a
+4. 其他表用单字母别名，且全程保持一致
+
+【重要】SQL生成原则：
+1. 优先使用简单的SQL，避免不必要的子查询
+2. 如果只是统计数量，用 SELECT COUNT(*) FROM 表名 即可
+3. 如果只是查询所有某个表数据，用 SELECT * FROM 表名 即可
+
+【重要】列别名规则（必须严格遵守）：
+SELECT 中的每个列必须使用 AS 设置中文别名，别名来源于下方「数据库表与列」中该列的 comment（括号内的语义说明）或「参考SQL样本」中的别名写法。
+中文别名必须用双引号包裹，示例：SELECT m.Name_C AS "设备名称", m.Ip_C AS "IP地址", g.GroupName AS "部门名称"
+聚合函数同样需要中文别名：SELECT COUNT(*) AS "数量", SUM(h.Memory) AS "内存合计"
+
+【重要】字段使用约束（必须严格遵守）：
+禁止使用任何未在下方「数据库表与列」或「参考SQL样本」中出现的字段名。
+只能使用以下来源中明确列出的字段：
+  - 「数据库表与列」中列出的列名（括号内为语义别名）
+  - 「参考SQL样本」中出现的列名
+如果用户问题涉及的字段不在上述来源中，只使用最接近的已知字段，绝不编造不存在的字段。
+
+【重要】禁止重复字段（必须严格遵守）：
+SELECT子句中禁止出现重复的字段或别名，每个字段只选一次。
+如果多个表有同名字段，只选择最相关的那一个，不要重复选取。
+生成SQL后请自查：如果SELECT中有两个以上相同或语义重复的列，删除多余的。
+示例错误：SELECT m.Name_C AS "设备名称", m.Name_C AS "设备名" ← 同一字段重复
+示例正确：SELECT m.Name_C AS "设备名称" ← 只选一次
+
+【最重要】【参考SQL样本（必须严格模仿）最优先参考】
+如果有参考SQL样本，你必须严格模仿其写法风格，包括：
+- 表关联方式（JOIN条件和关联表）
+- 别名规则（s_machine用m，s_group用g等）
+- 列别名写法（AS "中文别名"，中文别名必须用双引号包裹）
+- WHERE条件构建方式
+- 聚合函数使用方式
+如果没有参考SQL样本，请按照最简洁规范的SQL写法生成。
+
+【再次强调】SELECT中禁止重复字段！每个列只选一次，不要出现同名字段或语义重复的列。"""
+
+
+@lru_cache(maxsize=1)
+def _load_prompts_yaml() -> dict:
+    yaml_path = _PROMPTS_YAML_PATH
+    if not yaml_path.exists():
+        logger.warning(f"\n提示词配置文件不存在: {yaml_path}，使用默认值")
+        return {}
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    logger.info(f"\n提示词配置已加载: {yaml_path}")
+    return data or {}
+
+
+def get_system_prompt() -> str:
+    data = _load_prompts_yaml()
+    return data.get("system_prompt") or _DEFAULT_SYSTEM_PROMPT
+
+
+def get_sql_system_prompt() -> str:
+    data = _load_prompts_yaml()
+    return data.get("sql_system_prompt") or _DEFAULT_SQL_SYSTEM_PROMPT
+
+
+def get_summary_prompt() -> str:
+    data = _load_prompts_yaml()
+    return data.get("summary_prompt") or _DEFAULT_SUMMARY_PROMPT
+
+
+def get_sql_prompt_instructions() -> str:
+    data = _load_prompts_yaml()
+    return data.get("sql_prompt_instructions") or _DEFAULT_SQL_PROMPT_INSTRUCTIONS
+
+
+def get_sql_log_full_prompt() -> bool:
+    load_env_file()
+    return bool(get_settings().misc.sql_log_full_prompt)
+
+
+def reload_prompts() -> dict:
+    _load_prompts_yaml.cache_clear()
+    logger.info("\n提示词配置缓存已清除，重新加载...")
+    return _load_prompts_yaml()
 
 
 class ColumnSemantics(BaseModel):
@@ -186,27 +320,14 @@ class SchemaRuntime:
             self.synonyms = {k: list(v) for k, v in self.raw.synonyms.items()}
 
 
-@lru_cache(maxsize=1)
+_schema_runtime_cache: SchemaRuntime | None = None
+
+
 def get_schema_runtime() -> SchemaRuntime:
-    """
-    获取SchemaRuntime单例实例。
+    global _schema_runtime_cache
+    if _schema_runtime_cache is not None:
+        return _schema_runtime_cache
 
-    使用lru_cache(maxsize=1)实现单例缓存，首次调用时加载YAML并构建索引，
-    后续调用直接返回缓存实例。YAML文件仅解析一次，避免重复IO和解析开销。
-
-    参数：
-        无
-
-    返回：
-        SchemaRuntime: 包含完整Schema索引的运行时实例
-
-    异常：
-        FileNotFoundError: schema_metadata.yaml文件不存在时抛出
-
-    性能注意事项：
-        - 首次调用有YAML解析和索引构建开销
-        - lru_cache确保全局仅解析一次
-    """
     yaml_path = _SCHEMA_YAML_PATH
     if not yaml_path.exists():
         raise FileNotFoundError(f"Schema元数据文件不存在: {yaml_path}")
@@ -216,5 +337,13 @@ def get_schema_runtime() -> SchemaRuntime:
 
     raw = SchemaRoot(**data)
     runtime = SchemaRuntime(raw=raw)
+    _schema_runtime_cache = runtime
     logger.info(f"\nSchema元数据已加载: {len(raw.tables)} 个表, {len(raw.synonyms or {})} 组同义词")
     return runtime
+
+
+def reload_schema_runtime() -> SchemaRuntime:
+    global _schema_runtime_cache
+    _schema_runtime_cache = None
+    logger.info("\nSchema元数据缓存已清除，重新加载...")
+    return get_schema_runtime()

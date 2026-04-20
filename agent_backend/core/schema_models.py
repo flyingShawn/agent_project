@@ -73,25 +73,6 @@ class NamingDef(BaseModel):
     identifier_quote: str | None = None
 
 
-class QueryPattern(BaseModel):
-    """
-    查询模板模型，定义预审核的SQL模板。
-
-    模板匹配命中时直接返回预定义SQL，绕过LLM生成，
-    获得更稳定和安全的查询结果。
-
-    属性：
-        name: 模板名称
-        user_intent: 用户意图描述，用于关键字评分匹配
-        requires_permission: 所需权限规则名称
-        sql: SQL模板，支持:ip, :limit等参数占位符
-    """
-    name: str
-    user_intent: str | None = None
-    requires_permission: str | None = None
-    sql: str = ""
-
-
 class RelationshipDef(BaseModel):
     """
     表关联关系模型，描述数据库表之间的外键关联。
@@ -114,29 +95,12 @@ class RelationshipDef(BaseModel):
         super().__init__(**data)
 
 
-class DisplayFieldDef(BaseModel):
-    """展示字段定义模型，描述前端展示时需要的字段映射"""
-    name: str = ""
-    column: str = ""
-    display: bool | None = None
-    required: bool | None = None
-    aggregate: bool | None = None
-    fallback: str | None = None
-    note: str | None = None
-
-
-class DisplayGroupDef(BaseModel):
-    """展示字段分组模型，按业务场景组织展示字段"""
-    prompt: str | None = None
-    fields: list[DisplayFieldDef] = []
-
-
 class SchemaRoot(BaseModel):
     """
     Schema元数据根模型，对应schema_metadata.yaml的完整结构。
 
     包含数据库类型、命名规则、安全配置、同义词、表定义、
-    关联关系、查询模板、展示字段等所有元数据。
+    关联关系等所有元数据。
     """
     db_type: str | None = None
     naming: NamingDef | None = None
@@ -144,6 +108,3 @@ class SchemaRoot(BaseModel):
     synonyms: dict[str, list[str]] | None = None
     tables: list[TableDef] = []
     relationships: list[RelationshipDef] = []
-    query_patterns: list[QueryPattern] | None = None
-    display_fields: dict[str, DisplayGroupDef] | None = None
-    required_fields: list[str] | None = None

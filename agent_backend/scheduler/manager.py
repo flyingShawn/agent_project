@@ -58,6 +58,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select, update, delete, func
 
+from agent_backend.core.config import get_settings
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import AgentTask, AgentTaskResult
 from agent_backend.scheduler.executor import TaskExecutor
@@ -182,7 +183,7 @@ class SchedulerManager:
             - task_id 格式为 {agent_name}_{task_type}_{uuid8}，保证全局唯一
             - 创建后立即注册到 APScheduler，无需重启即可生效
         """
-        agent_name = os.environ.get("AGENT_NAME", "desk-agent")
+        agent_name = get_settings().misc.agent_name
         task_id = f"{agent_name}_{task_type}_{uuid.uuid4().hex[:8]}"
         now = time.time()
 
@@ -606,7 +607,7 @@ class SchedulerManager:
             logger.error(f"\n[Scheduler] 加载默认任务配置失败: {e}")
             return
 
-        agent_name = os.environ.get("AGENT_NAME", "desk-agent")
+        agent_name = get_settings().misc.agent_name
         tasks = config.get("tasks", [])
         loaded_count = 0
 

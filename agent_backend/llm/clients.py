@@ -30,7 +30,7 @@ LLM 客户端模块
       - 本地 Ollama:  http://localhost:11434/v1
       - DeepSeek:     https://api.deepseek.com/v1
       - Qwen 云端:    https://dashscope.aliyuncs.com/compatible-mode/v1
-    - 文本模型默认 qwen2.5:7b，视觉模型默认 qwen2.5-vl:7b
+    - 文本模型默认 qwen3:14b，视觉模型默认 qwen3.5:9b
     - 通过 LLM_BASE_URL/LLM_API_KEY/CHAT_MODEL/VISION_MODEL 环境变量配置
     - HTTP 超时设置为 120 秒，适配大模型推理耗时
 
@@ -47,6 +47,7 @@ import os
 import urllib.request
 from typing import Iterator
 
+from agent_backend.core.config import get_settings
 from agent_backend.core.errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -77,17 +78,16 @@ class OllamaChatClient:
 
         参数：
             base_url: Ollama 服务地址，默认读取 OLLAMA_BASE_URL 环境变量或 http://localhost:11434
-            model: 文本对话模型名称，默认读取 CHAT_MODEL 环境变量或 qwen2.5:7b
-            vision_model: 视觉模型名称，默认读取 VISION_MODEL 环境变量或 qwen2.5-vl:7b
+            model: 文本对话模型名称，默认读取 CHAT_MODEL 环境变量或 qwen3.5:9b
+            vision_model: 视觉模型名称，默认读取 VISION_MODEL 环境变量或 qwen3.5:9b
 
         说明：
             - 三个参数均可通过环境变量配置，优先使用显式传入值
         """
-        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434").rstrip(
-            "/"
-        )
-        self.model = model or os.getenv("CHAT_MODEL") or "qwen2.5:7b"
-        self.vision_model = vision_model or os.getenv("VISION_MODEL") or "qwen2.5-vl:7b"
+        settings = get_settings()
+        self.base_url = (base_url or settings.llm.ollama_base_url).rstrip("/")
+        self.model = model or settings.llm.chat_model
+        self.vision_model = vision_model or settings.llm.vision_model
         logger.info(f"\n【LLM客户端】初始化完成")
         logger.info(f"\n - Base URL: {self.base_url}")
         logger.info(f"\n - 文本模型: {self.model}")
@@ -290,12 +290,11 @@ class OpenAICompatibleClient:
         model: str | None = None,
         vision_model: str | None = None,
     ) -> None:
-        self.base_url = (base_url or os.getenv("LLM_BASE_URL") or "http://localhost:11434/v1").rstrip(
-            "/"
-        )
-        self.api_key = api_key or os.getenv("LLM_API_KEY") or ""
-        self.model = model or os.getenv("CHAT_MODEL") or "qwen2.5:7b"
-        self.vision_model = vision_model or os.getenv("VISION_MODEL") or "qwen2.5-vl:7b"
+        settings = get_settings()
+        self.base_url = (base_url or settings.llm.llm_base_url).rstrip("/")
+        self.api_key = api_key or settings.llm.llm_api_key or ""
+        self.model = model or settings.llm.chat_model
+        self.vision_model = vision_model or settings.llm.vision_model
      
         logger.info(f"""\n
 {'=' * 50}
