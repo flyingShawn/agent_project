@@ -149,7 +149,7 @@ ORDER BY
 
 #### 查询最近设备远程记录
 
-适用场景：当用户询问客户端远程记录时使用。managerid是发起远程的管理机id，其他内容是被远程的客户端设备信息。
+适用场景：当用户询问客户端远程记录，查询远程操作记录时使用。managerid是发起远程的管理机id，其他内容是被远程的客户端设备信息。
 
 关键表：a\_remoteinfo
 
@@ -229,6 +229,8 @@ ORDER BY
 	a.OpenTime DESC
 ```
 
+***
+
 #### 查询设备usb使用日志
 
 适用场景：需要查询某一段时间内所有客户端（机器、设备、电脑）usb使用和操作日志，查询有接入U盘的电脑相关
@@ -263,6 +265,8 @@ ORDER BY
 	a.USBPlugTime DESC
 ```
 
+***
+
 #### 客户端在线数量
 
 ```sql
@@ -271,15 +275,16 @@ SELECT
 FROM
 	onlineinfo;
 ```
-
+***
 #### 客户端总数
-
 ```sql
 SELECT
 	COUNT(*) AS "设备数量" 
 FROM
 	s_machine;
 ```
+
+***
 
 #### 部门总数
 
@@ -290,6 +295,8 @@ FROM
 	s_group;
 ```
 
+***
+
 #### USB日志记录数数量
 
 ```sql
@@ -299,16 +306,107 @@ FROM
 	usbdb;
 ```
 
-#### 客户端空闲数量
+***
 
+#### 查询老旧资产设备
+适用场景：硬件资产条件查询中按「出厂日期」判断老旧设备；主板生产日期早于「当前日期往前推 N 年」的阈值。`:years` 为年限数字（如 `5` 表示机龄约 5 年及以上），默认为5。仅取当前有效硬件快照 `IsNew = 1`。
+
+关键表：A_ClientHardInfo2, s_Machine, s_User, s_Group
+
+MySQL：
+
+```sql
+SELECT
+    a.MtID AS "设备ID",
+    b.Name_C AS "计算机名",
+    d.DepPath AS "所属部门",
+    a.ManufactureDate AS "出厂日期",
+    a.Board AS "主板",
+    a.biosinfo AS "BIOS信息",
+    b.IP_C AS "IP地址"
+FROM
+    A_ClientHardInfo2 a
+    INNER JOIN s_Machine b ON a.MtID = b.ID
+    LEFT OUTER JOIN s_User c ON c.ID = b.ClientID
+    LEFT OUTER JOIN s_Group d ON d.ID = b.GroupID
+WHERE
+    a.IsNew = 1
+    AND a.ManufactureDate IS NOT NULL
+    AND a.ManufactureDate <= DATE_SUB(CURDATE(), INTERVAL :years YEAR)
+ORDER BY
+    a.ManufactureDate ASC,
+    a.MtID ASC
 ```
+
+SQL Server：
+
+```sql
+SELECT
+    a.MtID AS "设备ID",
+    b.Name_C AS "计算机名",
+    d.DepPath AS "所属部门",
+    a.ManufactureDate AS "出厂日期",
+    a.Board AS "主板",
+    a.biosinfo AS "BIOS信息",
+    b.IP_C AS "IP地址"
+FROM
+    A_ClientHardInfo2 a
+    INNER JOIN s_Machine b ON a.MtID = b.ID
+    LEFT OUTER JOIN s_User c ON c.ID = b.ClientID
+    LEFT OUTER JOIN s_Group d ON d.ID = b.GroupID
+WHERE
+    a.IsNew = 1
+    AND a.ManufactureDate IS NOT NULL
+    AND a.ManufactureDate <= DATEADD(YEAR, -:years, CAST(GETDATE() AS DATE))
+ORDER BY
+    a.ManufactureDate ASC,
+    a.MtID ASC
 ```
 
+---
 
+#### 在线终端空闲情况
+适用场景：查询在线终端空闲状态（实时），`nIsIdle`为1 表示客户端处于空闲，这里会列举出所有在线是被列表和空闲情况
 
-#### 老旧资产设备查询
+关键表：onlineinfo, s_Machine
 
-----
+```sql
+SELECT
+	a.MtID AS "设备ID",
+	b.Name_C AS "设备名称",
+	b.IP_C AS "IP地址",
+	b.Mac_C AS "MAC地址",
+	IFNULL( b.MtCmt, '无' ) AS "机器备注",
+	c.deppath,
+	CASE WHEN a.nIsIdle = 1 THEN '是' ELSE '否' END AS "是否空闲" 
+FROM
+	onlineinfo a
+	INNER JOIN s_Machine b ON a.MtID = b.ID
+	LEFT JOIN s_group c ON b.GroupID = c.id 
+ORDER BY
+	b.Name_C ASC;
+```
 
-#### 终端空闲情况
-在线设备数量，分布的部门
+---
+
+#### 空闲设备查询
+
+```sql
+SELECT
+	a.MtID AS "设备ID",
+	b.Name_C AS "设备名称",
+	b.IP_C AS "IP地址",
+	b.Mac_C AS "MAC地址",
+	IFNULL( b.MtCmt, '无' ) AS "机器备注",
+	c.deppath,
+	CASE WHEN a.nIsIdle = 1 THEN '是' ELSE '否' END AS "是否空闲" 
+FROM
+	onlineinfo a
+	INNER JOIN s_Machine b ON a.MtID = b.ID
+	LEFT JOIN s_group c ON b.GroupID = c.id 
+WHERE
+	a.nIsIdle = 1
+ORDER BY
+	b.Name_C ASC;
+```
+

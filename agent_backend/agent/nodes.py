@@ -66,8 +66,12 @@ def _format_messages_for_llm_log(messages: list[Any]) -> str:
     parts: list[str] = []
     for index, message in enumerate(messages, start=1):
         role = _message_role_for_log(message)
-        content = _format_log_content(getattr(message, "content", message))
-        block = [f"--- message {index} [{role}] ---", content]
+        block = [f"--- message {index} [{role}] ---"]
+        
+        # 对于系统消息，只显示标记，不显示内容
+        if role != "system":
+            content = _format_log_content(getattr(message, "content", message))
+            block.append(content)
 
         tool_calls = getattr(message, "tool_calls", None)
         if tool_calls:
