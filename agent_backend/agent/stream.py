@@ -1,3 +1,24 @@
+"""
+SSE 流式输出适配模块
+
+文件功能：
+    把 LangGraph 的 astream_events 事件流转换成前端可消费的 SSE 事件流。
+    同时在流式过程中补发工具状态、图表数据、导出链接和参考来源。
+
+在系统架构中的定位：
+    位于 Agent 编排层与 API 层之间，是 Graph 输出对接前端聊天流的适配层。
+    chat.py 调用本模块，把 Graph 事件统一转成前端约定的 SSE 格式。
+
+主要使用场景：
+    - 捕获 LLM 的 token 流并实时推送到前端
+    - 在工具调用前后展示状态文案
+    - 在流式结束后补发参考来源、图表和导出结果
+
+关联文件：
+    - agent_backend/api/v1/chat.py: 调用 stream_graph_response
+    - agent_backend/core/sse.py: 提供 sse_event 事件格式化函数
+    - agent_backend/agent/state.py: 定义 AgentState 结构
+"""
 from __future__ import annotations
 
 import asyncio
@@ -13,29 +34,30 @@ logger = logging.getLogger(__name__)
 AGENT_TIMEOUT_SECONDS = 300
 
 _TOOL_STATUS_MESSAGES = {
-    "sql_query": "正在查询数据...",
-    "rag_search": "正在检索知识库...",
-    "generate_chart": "正在生成图表...",
-    "export_data": "正在导出数据...",
-    "metadata_query": "正在查询表结构...",
-    "get_current_time": "正在获取时间...",
-    "calculator": "正在计算...",
-    "web_search": "正在搜索...",
+    "sql_query": "🔍 正在查询数据...",
+    "rag_search": "🔍 正在检索知识库...",
+    "generate_chart": "📊 正在生成图表...",
+    "export_data": "📥 正在导出数据...",
+    "metadata_query": "📋 正在查询表结构...",
+    "get_current_time": "🕐 正在获取时间...",
+    "calculator": "🧮 正在计算...",
+    "web_search": "🌐 正在搜索...",
 }
 
 _TOOL_COMPLETE_MESSAGES = {
-    "sql_query": "数据查询完成，正在整理结果...",
-    "rag_search": "知识检索完成，正在整理结果...",
-    "generate_chart": "图表生成完成...",
-    "export_data": "数据导出完成...",
-    "metadata_query": "表结构查询完成...",
-    "get_current_time": "时间获取完成...",
-    "calculator": "计算完成...",
-    "web_search": "搜索完成...",
+    "sql_query": "✅ 数据查询完成，正在整理结果...",
+    "rag_search": "✅ 知识检索完成，正在整理结果...",
+    "generate_chart": "✅ 图表生成完成...",
+    "export_data": "✅ 数据导出完成...",
+    "metadata_query": "✅ 表结构查询完成...",
+    "get_current_time": "✅ 时间获取完成...",
+    "calculator": "✅ 计算完成...",
+    "web_search": "✅ 搜索完成...",
 }
 
 
 async def _aiter_with_timeout(aiter: AsyncIterator, timeout: float) -> AsyncIterator:
+    """为异步事件流增加总超时限制，避免单次请求无限挂起。"""
     deadline = asyncio.get_event_loop().time() + timeout
     async for item in aiter:
         remaining = deadline - asyncio.get_event_loop().time()
@@ -48,6 +70,7 @@ async def stream_graph_response(
     graph: Any,
     initial_state: dict,
 ) -> AsyncIterator[str]:
+    """把 Graph 事件流转换成 SSE 输出，并在结束时补发附加结果。"""
     logger.info(f"\n[stream] 开始流式输出 (astream_events v2), 超时: {AGENT_TIMEOUT_SECONDS}秒")
 
     references: list[str] = []
@@ -95,7 +118,7 @@ async def stream_graph_response(
                     tool_names = [tool_call.get("name", "") for tool_call in output.tool_calls]
                     status_msg = _TOOL_STATUS_MESSAGES.get(
                         tool_names[0] if tool_names else "",
-                        "正在处理...",
+                        "⏳ 正在处理...",
                     )
                     yield sse_event("status", status_msg)
                     has_status_shown = True
@@ -107,12 +130,12 @@ async def stream_graph_response(
             elif kind == "on_tool_start":
                 logger.info(f"\n[stream] 开始执行工具: {name}")
                 if has_status_shown:
-                    yield sse_event("status", _TOOL_STATUS_MESSAGES.get(name, "正在处理..."))
+                    yield sse_event("status", _TOOL_STATUS_MESSAGES.get(name, "⏳ 正在处理..."))
 
             elif kind == "on_tool_end":
                 logger.info(f"\n[stream] 工具执行完成: {name}")
                 if has_status_shown:
-                    yield sse_event("status", _TOOL_COMPLETE_MESSAGES.get(name, "处理完成..."))
+                    yield sse_event("status", _TOOL_COMPLETE_MESSAGES.get(name, "✅ 处理完成..."))
 
                 output = event["data"].get("output")
                 if isinstance(output, str):
@@ -161,7 +184,7 @@ async def stream_graph_response(
         yield sse_event(
             "error",
             {
-                "error": "处理超时了，请尝试把问题再收窄一点，或者稍后重试。",
+                "error": "抱歉，处理时间有点长，我已经尽力了但还是没能完成。请尝试简化您的问题，或者稍后再试试吧~",
             },
         )
         return
@@ -170,11 +193,11 @@ async def stream_graph_response(
         import traceback
 
         logger.error(traceback.format_exc())
-        yield sse_event("error", {"error": "查询失败，请稍后再试。"})
+        yield sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
         return
 
     if references:
-        yield sse_event("delta", "\n\n---\n\n**参考来源：**\n")
+        yield sse_event("delta", "\n\n---\n\n**📚 参考来源：**\n")
         yield sse_event("delta", "\n".join(references))
 
     for chart in chart_configs:

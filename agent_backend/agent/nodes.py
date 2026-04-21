@@ -1,3 +1,26 @@
+"""
+LangGraph Agent 节点定义模块
+
+文件功能：
+    定义 LangGraph StateGraph 中的节点函数和条件路由逻辑。
+    各节点通过 AgentState 读取上下文、执行 LLM 或工具调用，并返回状态增量。
+
+在系统架构中的定位：
+    位于 Agent 编排层核心，负责承接 graph.py 中注册的节点执行逻辑。
+    chat.py 负责构造初始状态，nodes.py 负责具体处理每一步状态流转。
+
+主要使用场景：
+    - 初始化图状态字段
+    - 调用 LLM 决策是否使用工具
+    - 执行工具并把结果写回消息列表
+    - 在达到工具调用上限时生成兜底总结
+
+关联文件：
+    - agent_backend/agent/graph.py: 注册本模块中的节点与边
+    - agent_backend/agent/state.py: 定义 AgentState 结构
+    - agent_backend/api/v1/chat.py: 构造初始消息列表并写入系统提示词
+    - agent_backend/agent/tools/__init__.py: 导出 ALL_TOOLS
+"""
 from __future__ import annotations
 
 import json
@@ -17,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 def _format_log_content(content: Any) -> str:
+    """把消息内容稳定转成字符串，便于 warning 日志完整输出。"""
     if isinstance(content, str):
         return content
     try:
@@ -26,6 +50,7 @@ def _format_log_content(content: Any) -> str:
 
 
 def _message_role_for_log(message: Any) -> str:
+    """把 LangChain 消息类型映射成更直观的日志角色名。"""
     message_type = getattr(message, "type", "") or message.__class__.__name__
     role_map = {
         "system": "system",
@@ -37,6 +62,7 @@ def _message_role_for_log(message: Any) -> str:
 
 
 def _format_messages_for_llm_log(messages: list[Any]) -> str:
+    """按顺序格式化消息列表，方便排查最终送给 LLM 的完整上下文。"""
     parts: list[str] = []
     for index, message in enumerate(messages, start=1):
         role = _message_role_for_log(message)
@@ -60,6 +86,7 @@ def _format_messages_for_llm_log(messages: list[Any]) -> str:
 
 
 def _format_system_prompts_for_llm_log(messages: list[Any]) -> str:
+    """提取消息列表中的所有系统提示词，单独打印用于核对。"""
     system_prompts = [
         _format_log_content(message.content)
         for message in messages
@@ -71,6 +98,7 @@ def _format_system_prompts_for_llm_log(messages: list[Any]) -> str:
 
 
 def _build_sql_query_arg_error(tool_args: Any) -> str | None:
+    """在执行 sql_query 前做最小参数校验，避免模型传错字段后直接打库。"""
     if isinstance(tool_args, dict):
         question = tool_args.get("question")
         if isinstance(question, str) and question.strip():
@@ -105,6 +133,14 @@ def _build_sql_query_arg_error(tool_args: Any) -> str | None:
 
 
 def init_node(state: AgentState) -> dict[str, Any]:
+    """
+    初始化图运行过程中会累计的状态字段。
+
+    注意：
+        系统提示词已经在 chat.py 构造 initial_state 时放到 messages 第一位。
+        这里不要再返回完整 messages 列表，否则会被 add_messages 追加合并，
+        重新引入“系统提示词跑到用户问题后面”的顺序问题。
+    """
     return {
         "tool_call_count": 0,
         "max_tool_calls": state.get("max_tool_calls", 5),
@@ -122,6 +158,7 @@ def init_node(state: AgentState) -> dict[str, Any]:
 
 
 def agent_node(state: AgentState) -> dict[str, Any]:
+    """调用绑定工具的 LLM，让模型决定直接回答还是发起工具调用。"""
     t0 = time.time()
     llm = get_llm()
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
@@ -150,6 +187,7 @@ def agent_node(state: AgentState) -> dict[str, Any]:
 
 
 def tool_result_node(state: AgentState) -> dict[str, Any]:
+    """执行 LLM 请求的工具，并把结果整理成 ToolMessage 回写到状态中。"""
     t0 = time.time()
     last_message = state["messages"][-1]
 
@@ -287,6 +325,7 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
 
 
 def should_continue(state: AgentState) -> str:
+    """根据最近一次消息和工具调用次数，决定图继续走 tools 还是 respond。"""
     last_message = state["messages"][-1]
     tool_call_count = state.get("tool_call_count", 0)
     max_tool_calls = state.get("max_tool_calls", 5)
@@ -302,6 +341,11 @@ def should_continue(state: AgentState) -> str:
 
 
 def respond_node(state: AgentState) -> dict[str, Any]:
+    """
+    在达到工具调用上限且最后一条仍是 tool_calls 时，生成兜底总结回答。
+
+    正常情况下最终回答已经在流式阶段输出，这里只处理“工具迭代被强制截断”的收尾场景。
+    """
     last_message = state["messages"][-1]
     tool_call_count = state.get("tool_call_count", 0)
     max_tool_calls = state.get("max_tool_calls", 5)
