@@ -85,6 +85,11 @@ docker compose build
 docker compose up -d
 ```
 
+同步说明：
+- 普通安装模式不会在后端启动时自动同步文档或 SQL，需要你手动执行脚本或调用同步 API。
+- Docker 模式会在 `backend` 容器启动前自动执行一次 SQL 样本库全量同步，命令是 `python scripts/sync_rag.py --target sql --sql-dir /data/sql --mode full`。
+- Docker 模式不会在容器启动时自动同步文档知识库，文档同步仍然建议按需手动触发。
+
 部署后访问地址：
 
 | 服务 | 地址 |
@@ -401,17 +406,38 @@ LLM 通过 Tool Calling 自主决策调用以下 10 种工具：
 - 文本文件：Markdown (.md), 纯文本 (.txt)
 - 图片：PNG, JPG, JPEG, WebP（OCR 识别）
 
-#### 文档导入
+#### 文档与 SQL 同步
 
-将文档放入 `data/desk-agent/docs/` 目录，然后调用同步接口：
+`mode` 可选：
+- `incremental`：基于 `.rag_state/*.json` 中记录的 SHA-256 指纹跳过未变更文件。
+- `full`：先重建目标集合，再重新导入全部文件。
 
-```bash
-curl -X POST http://localhost:8000/api/v1/rag/sync \
-  -H "Content-Type: application/json" \
-  -d '{"mode": "incremental"}'
+普通安装模式下，后端启动不会自动同步，按需在 PowerShell 执行：
+
+```powershell
+python scripts/sync_rag.py --target all --mode incremental
+python scripts/sync_rag.py --target docs --mode full
+python scripts/sync_rag.py --target sql --mode full
 ```
 
-`mode` 可选：`incremental`（增量，基于 SHA-256 指纹跳过未变更文件）或 `full`（全量重建）。
+Docker 模式下，可直接在 PowerShell 执行：
+
+```powershell
+docker compose exec backend python scripts/sync_rag.py --target all --mode incremental
+docker compose exec backend python scripts/sync_rag.py --target docs --mode full
+docker compose exec backend python scripts/sync_rag.py --target sql --mode full
+```
+
+如果你更偏向 API 方式，也可以触发同步接口：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/rag/sync -ContentType "application/json" -Body '{"mode":"incremental"}'
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/rag/sync-sql -ContentType "application/json" -Body '{"mode":"incremental"}'
+```
+
+同步时机说明：
+- 普通安装：仅在你手动执行脚本或调用 API 时同步。
+- Docker 模式：`backend` 容器每次启动前自动全量同步 SQL 样本库；文档知识库不自动同步。
 
 #### 检索流程
 
@@ -511,6 +537,7 @@ taskkill /PID <进程ID> /F      # 结束进程
 | `scripts/test_chat_api.py` | API 测试 |
 | `scripts/测试数据库连接.py` | 数据库连接测试 |
 | `scripts/诊断工具.py` | 诊断工具 |
+| `scripts/sync_rag.py` | 统一同步文档和 SQL |
 | `scripts/sync_sql_samples.py` | SQL 样本同步 |
 | `scripts/sync_docs.py` | 文档同步 |
 | `scripts/stop_backend.bat` | 停止后端服务 |

@@ -58,4 +58,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # --port 8000: 监听8000端口
 # --workers 1: 单进程模式（适合容器化部署）
 # 先执行RAG索引，再启动服务
-CMD ["sh", "-c", "python -m agent_backend.rag_engine.cli --sql-dir /data/sql --mode full && uvicorn agent_backend.main:app --host 0.0.0.0 --port 8000 --workers 1"]
+CMD ["sh", "-c", "python scripts/sync_rag.py --target sql --sql-dir /data/sql --mode full && uvicorn agent_backend.main:app --host 0.0.0.0 --port 8000 --workers 1"]
