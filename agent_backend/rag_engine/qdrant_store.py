@@ -97,7 +97,7 @@ class QdrantVectorStore:
         """
         settings = get_settings().rag
         self.url = url or settings.rag_qdrant_url
-        self.path = path or settings.rag_qdrant_path
+        self.path = (path or settings.rag_qdrant_path) or None
         self.api_key = api_key or settings.rag_qdrant_api_key
         self.collection = collection
         self.dim = dim
@@ -136,6 +136,22 @@ class QdrantVectorStore:
         except Exception as e:
             logger.error(f"\nQdrant连接失败: {e}")
             raise
+
+    def close(self) -> None:
+        """
+        关闭Qdrant客户端连接，释放文件锁等资源。
+
+        本地路径模式下QdrantClient会持有存储目录的文件锁，
+        必须显式关闭才能让其他实例访问同一存储路径。
+        远程URL模式下为空操作（HTTP连接无需手动释放）。
+        """
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception as e:
+                logger.warning(f"\nQdrant客户端关闭异常: {e}")
+            finally:
+                self._client = None
 
     def ensure_collection(self) -> None:
         """
@@ -247,20 +263,16 @@ class QdrantVectorStore:
         异常：
             Exception: 写入失败时抛出
         """
-        try:
-            client = self._get_client()
-            from qdrant_client.models import PointStruct
+        client = self._get_client()
+        from qdrant_client.models import PointStruct
 
-            qdrant_points = []
-            for p in points:
-                qdrant_points.append(
-                    PointStruct(
-                        id=p["id"],
-                        vector=p["vector"],
-                        payload=p.get("payload", {}),
-                    )
+        qdrant_points = []
+        for p in points:
+            qdrant_points.append(
+                PointStruct(
+                    id=p["id"],
+                    vector=p["vector"],
+                    payload=p.get("payload", {}),
                 )
-            client.upsert(collection_name=self.collection, points=qdrant_points)
-        except Exception as e:
-            logger.error(f"\nQdrant upsert失败: {e}")
-            # Qdrant不可用时记录错误但不抛出异常，实现优雅降级
+            )
+        client.upsert(collection_name=self.collection, points=qdrant_points)

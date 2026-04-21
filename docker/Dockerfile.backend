@@ -43,7 +43,7 @@ COPY agent_backend ./agent_backend
 COPY scripts ./scripts
 
 # 创建数据目录（用于存储文档和向量数据库）
-RUN mkdir -p /data/docs /app/.qdrant_local /app/data
+RUN mkdir -p /data/docs /app/data
 
 # 暴露端口（FastAPI默认端口）
 EXPOSE 8000
