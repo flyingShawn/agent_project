@@ -97,6 +97,13 @@ def _format_system_prompts_for_llm_log(messages: list[Any]) -> str:
     return "\n\n".join(system_prompts)
 
 
+def _log_final_llm_messages(tag: str, messages: list[Any]) -> None:
+    """只在最终收尾时打印一次完整LLM输入，避免每轮工具迭代都刷屏。"""
+    logger.warning(
+        f"\n[{tag}] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}"
+    )
+
+
 def _build_sql_query_arg_error(tool_args: Any) -> str | None:
     """在执行 sql_query 前做最小参数校验，避免模型传错字段后直接打库。"""
     if isinstance(tool_args, dict):
@@ -163,15 +170,9 @@ def agent_node(state: AgentState) -> dict[str, Any]:
     llm = get_llm()
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
-    messages = state["messages"]
+    messages = list(state["messages"])
     logger.info(
         f"\n[agent_node] 调用LLM, 消息数: {len(messages)}, 已调用工具: {state.get('tool_call_count', 0)}"
-    )
-    logger.warning(
-        f"\n[agent_node] 给LLM设定的系统提示词:\n{_format_system_prompts_for_llm_log(messages)}"
-    )
-    logger.warning(
-        f"\n[agent_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}"
     )
 
     response = llm_with_tools.invoke(messages)
@@ -183,7 +184,10 @@ def agent_node(state: AgentState) -> dict[str, Any]:
     else:
         logger.info(f"\n[agent_node] LLM直接回答, 耗时: {elapsed:.2f}秒")
 
-    return {"messages": [response]}
+    return {
+        "messages": [response],
+        "last_llm_input_messages": messages,
+    }
 
 
 def tool_result_node(state: AgentState) -> dict[str, Any]:
@@ -337,6 +341,8 @@ def should_continue(state: AgentState) -> str:
     if isinstance(last_message, AIMessage) and last_message.tool_calls:
         return "tools"
 
+    final_messages = state.get("last_llm_input_messages") or state["messages"]
+    _log_final_llm_messages("agent_final", final_messages)
     return "respond"
 
 
@@ -359,12 +365,7 @@ def respond_node(state: AgentState) -> dict[str, Any]:
             message for message in state["messages"] if not isinstance(message, SystemMessage)
         ]
         messages = system_messages + [summary_prompt] + non_system_messages
-        logger.warning(
-            f"\n[respond_node] 给LLM设定的系统提示词:\n{_format_system_prompts_for_llm_log(messages)}"
-        )
-        logger.warning(
-            f"\n[respond_node] 提供给LLM的聊天内容与所有提示词组合之后的内容:\n{_format_messages_for_llm_log(messages)}"
-        )
+        _log_final_llm_messages("respond_node", messages)
         try:
             response = llm.invoke(messages)
             logger.info("\n[respond_node] 强制总结回答生成完成")

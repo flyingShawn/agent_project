@@ -31,7 +31,7 @@ export default {
         },
       },
       maxWidth: {
-        'chat': '780px',
+        'chat': '960px',
       },
       borderRadius: {
         'chat': '16px',

@@ -19,6 +19,7 @@ Agent状态Schema定义模块
 
 字段说明：
     - messages: 对话消息列表，使用add_messages reducer自动合并
+    - last_llm_input_messages: 最近一次实际传给LLM的消息列表快照（用于收尾日志）
     - question: 用户原始问题
     - session_id: 数据库连接会话ID
     - lognum: 用户工号
@@ -45,6 +46,7 @@ from langgraph.graph.message import add_messages
 
 class AgentState(TypedDict, total=False):
     messages: Annotated[list, add_messages]
+    last_llm_input_messages: list
     question: str
     session_id: str
     lognum: str
