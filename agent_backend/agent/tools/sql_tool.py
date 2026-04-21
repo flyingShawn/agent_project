@@ -121,9 +121,17 @@ def _build_summary_hint(
     if has_more:
         return (
             f"本次查询共 {row_count} 条，仅返回前 {preview_row_count} 条预览。"
-            "回答时先说明总量，再概括预览数据，不要把预览条数说成全部结果。"
+            "回答时先说明总量，再展示预览数据表格，之后概括预览数据，不要把预览条数说成全部结果。"
         )
     return f"本次查询共 {row_count} 条，可直接基于全部结果回答。"
+
+
+def _append_export_failure_hint(summary_hint: str, export_error: str) -> str:
+    return (
+        f"{summary_hint}"
+        " 当前没有可用下载链接，请不要声称已导出。"
+        f" 如果用户明确要求导出，请直接说明本次自动导出失败，原因：{export_error}。"
+    )
 
 
 class SqlQueryInput(BaseModel):
@@ -397,8 +405,24 @@ def sql_query(question: str) -> str:
                     result_dict["download_filename"] = export_parsed.get("filename", "")
                     result_dict["download_row_count"] = export_parsed.get("row_count", export_row_count)
                     logger.info(f"\n[sql_query] 自动导出成功: {export_parsed.get('filename')}")
+                else:
+                    export_error = export_parsed.get("error", "自动导出失败，且未返回下载链接")
+                    result_dict["export_failed"] = True
+                    result_dict["export_error"] = export_error
+                    result_dict["summary_hint"] = _append_export_failure_hint(
+                        result_dict["summary_hint"],
+                        export_error,
+                    )
+                    logger.warning(f"\n[sql_query] 自动导出失败: {export_error}")
             except Exception as export_err:
-                logger.warning(f"\n[sql_query] 自动导出失败: {export_err}")
+                export_error = f"{type(export_err).__name__}: {export_err}"
+                result_dict["export_failed"] = True
+                result_dict["export_error"] = export_error
+                result_dict["summary_hint"] = _append_export_failure_hint(
+                    result_dict["summary_hint"],
+                    export_error,
+                )
+                logger.warning(f"\n[sql_query] 自动导出失败: {export_error}")
 
         return json.dumps(result_dict, ensure_ascii=False, cls=_SqlJsonEncoder)
 

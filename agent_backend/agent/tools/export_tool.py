@@ -41,10 +41,10 @@
 from __future__ import annotations
 
 import csv
-import io
 import json
 import logging
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime
@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 _EXPORT_DIR = os.path.join(tempfile.gettempdir(), "desk_agent_exports")
 _MAX_ROWS = 10000
 _FILE_TTL_HOURS = 2
+_ILLEGAL_XLSX_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]")
 
 try:
     import openpyxl
@@ -87,7 +88,7 @@ def _cleanup_old_files() -> None:
         pass
 
 
-def _export_csv(columns: list[str], rows: list[dict], filepath: str) -> None:
+def _export_csv(columns: list[str], rows: list[list[Any]], filepath: str) -> None:
     """
     将数据导出为CSV文件。
 
@@ -96,16 +97,55 @@ def _export_csv(columns: list[str], rows: list[dict], filepath: str) -> None:
 
     参数：
         columns: 列名列表
-        rows: 数据行列表
+        rows: 按列顺序展开后的数据行列表
         filepath: 输出文件路径
     """
     with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
-        writer.writeheader()
+        writer = csv.writer(f)
+        writer.writerow(columns)
         writer.writerows(rows[:_MAX_ROWS])
 
 
-def _export_xlsx(columns: list[str], rows: list[dict], filepath: str) -> None:
+def _sanitize_export_text(text: str) -> tuple[str, bool]:
+    cleaned = _ILLEGAL_XLSX_CHAR_RE.sub("", text)
+    return cleaned, cleaned != text
+
+
+def _sanitize_export_value(value: Any) -> tuple[Any, bool]:
+    if value is None:
+        return "", False
+    if isinstance(value, str):
+        return _sanitize_export_text(value)
+    if isinstance(value, (int, float, bool)):
+        return value, False
+    return _sanitize_export_text(str(value))
+
+
+def _prepare_export_table(columns: list[str], rows: list[dict]) -> tuple[list[str], list[list[Any]], int]:
+    """统一清洗导出头和单元格，避免隐藏控制字符导致 xlsx 写入失败。"""
+    cleaned_columns: list[str] = []
+    cleaned_rows: list[list[Any]] = []
+    cleaned_cell_count = 0
+
+    for column in columns:
+        cleaned_column, changed = _sanitize_export_text(str(column))
+        cleaned_columns.append(cleaned_column)
+        if changed:
+            cleaned_cell_count += 1
+
+    for row in rows[:_MAX_ROWS]:
+        cleaned_row: list[Any] = []
+        for column in columns:
+            cleaned_value, changed = _sanitize_export_value(row.get(column, ""))
+            cleaned_row.append(cleaned_value)
+            if changed:
+                cleaned_cell_count += 1
+        cleaned_rows.append(cleaned_row)
+
+    return cleaned_columns, cleaned_rows, cleaned_cell_count
+
+
+def _export_xlsx(columns: list[str], rows: list[list[Any]], filepath: str) -> None:
     """
     将数据导出为Excel文件。
 
@@ -114,7 +154,7 @@ def _export_xlsx(columns: list[str], rows: list[dict], filepath: str) -> None:
 
     参数：
         columns: 列名列表
-        rows: 数据行列表
+        rows: 按列顺序展开后的数据行列表
         filepath: 输出文件路径
 
     异常：
@@ -128,7 +168,7 @@ def _export_xlsx(columns: list[str], rows: list[dict], filepath: str) -> None:
     ws.title = "数据"
     ws.append(columns)
     for row in rows[:_MAX_ROWS]:
-        ws.append([row.get(col, "") for col in columns])
+        ws.append(row)
     wb.save(filepath)
 
 
@@ -198,10 +238,14 @@ def export_data(data: str, filename: str = "export", format: str = "xlsx") -> st
         full_filename = f"{safe_name}_{file_id}.{format}"
         filepath = os.path.join(_EXPORT_DIR, full_filename)
 
+        sanitized_columns, sanitized_rows, cleaned_cell_count = _prepare_export_table(columns, rows)
+        if cleaned_cell_count:
+            logger.warning(f"\n[export_data] 已清洗 {cleaned_cell_count} 个非法字符单元，继续导出")
+
         if format == "csv":
-            _export_csv(columns, rows, filepath)
+            _export_csv(sanitized_columns, sanitized_rows, filepath)
         else:
-            _export_xlsx(columns, rows, filepath)
+            _export_xlsx(sanitized_columns, sanitized_rows, filepath)
 
         download_url = f"/api/v1/export/download/{full_filename}"
 
