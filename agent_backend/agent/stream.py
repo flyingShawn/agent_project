@@ -32,6 +32,10 @@ from agent_backend.core.sse import sse_event
 logger = logging.getLogger(__name__)
 
 AGENT_TIMEOUT_SECONDS = 300
+STREAM_EMPTY_FALLBACK_MESSAGE = (
+    "抱歉，本次信息收集未能成功完成，暂时还没找到相关结果。"
+    "你可以换个关键词，或者缩小范围后再试一次。"
+)
 
 _TOOL_STATUS_MESSAGES = {
     "sql_query": "🔍 正在查询数据...",
@@ -54,6 +58,29 @@ _TOOL_COMPLETE_MESSAGES = {
     "calculator": "✅ 计算完成...",
     "web_search": "✅ 搜索完成...",
 }
+
+
+def _extract_text_content(output: Any) -> str:
+    """把模型输出里的文本内容尽量提取成字符串，兼容字符串和多段 content。"""
+    if isinstance(output, str):
+        return output.strip()
+
+    content = getattr(output, "content", None)
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+        return "\n".join(parts).strip()
+
+    return ""
 
 
 async def _aiter_with_timeout(aiter: AsyncIterator, timeout: float) -> AsyncIterator:
@@ -125,6 +152,15 @@ async def stream_graph_response(
                     first_token = True
                     logger.info(f"\n[stream] LLM调用完成(工具调用): {name}, tools={tool_names}")
                 else:
+                    output_text = _extract_text_content(output)
+                    if first_token:
+                        if has_status_shown:
+                            yield sse_event("replace", "")
+                            has_status_shown = False
+                        fallback_text = output_text or STREAM_EMPTY_FALLBACK_MESSAGE
+                        yield sse_event("delta", fallback_text)
+                        first_token = False
+                        logger.info("\n[stream] 直接回答未产生流式 token，已补发最终文本")
                     logger.info(f"\n[stream] LLM调用完成(直接回答): {name}")
 
             elif kind == "on_tool_start":

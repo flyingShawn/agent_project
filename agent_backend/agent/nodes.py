@@ -38,6 +38,11 @@ from agent_backend.llm.factory import get_llm
 
 logger = logging.getLogger(__name__)
 
+MAX_TOOL_CALLS_FALLBACK_MESSAGE = (
+    "抱歉，我已经达到本次信息收集上限，但暂时还没找到足够可靠的结果。"
+    "建议你换个角度再问，或者缩小查询范围后重试。"
+)
+
 
 def _format_log_content(content: Any) -> str:
     """把消息内容稳定转成字符串，便于 warning 日志完整输出。"""
@@ -141,6 +146,22 @@ def _build_sql_query_arg_error(tool_args: Any) -> str | None:
         },
         ensure_ascii=False,
     )
+
+
+def _has_meaningful_content(message: Any) -> bool:
+    """判断模型返回里是否真的带了可展示的文本内容。"""
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        return bool(content.strip())
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, str) and item.strip():
+                return True
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    return True
+    return False
 
 
 def init_node(state: AgentState) -> dict[str, Any]:
@@ -377,10 +398,13 @@ def respond_node(state: AgentState) -> dict[str, Any]:
         _log_final_llm_messages("respond_node", messages)
         try:
             response = llm.invoke(messages)
+            if not _has_meaningful_content(response):
+                logger.warning("\n[respond_node] 强制总结为空，改为返回固定兜底文案")
+                response = AIMessage(content=MAX_TOOL_CALLS_FALLBACK_MESSAGE)
             logger.info("\n[respond_node] 强制总结回答生成完成")
             return {"messages": [response]}
         except Exception as exc:
             logger.error(f"\n[respond_node] 强制总结回答生成失败: {exc}")
-            return {}
+            return {"messages": [AIMessage(content=MAX_TOOL_CALLS_FALLBACK_MESSAGE)]}
 
     return {}
