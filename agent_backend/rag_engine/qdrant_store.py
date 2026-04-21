@@ -143,6 +143,7 @@ class QdrantVectorStore:
 
         使用COSINE距离度量和指定维度创建集合。
         集合已存在时跳过创建，仅记录日志。
+        Qdrant不可用时记录警告并返回，实现优雅降级。
         """
         try:
             client = self._get_client()
@@ -160,6 +161,7 @@ class QdrantVectorStore:
                 logger.info(f"\nQdrant集合已存在: {self.collection}")
         except Exception as e:
             logger.warning(f"\nQdrant集合检查/创建失败: {e}")
+            # Qdrant不可用时记录警告并返回，实现优雅降级
 
     def reset_collection(self) -> None:
         """
@@ -167,6 +169,7 @@ class QdrantVectorStore:
 
         主要用于 full 同步场景，避免切块策略变化后旧向量点残留，
         导致同一份源文件的新旧 chunk 混在一起污染检索结果。
+        Qdrant不可用时记录警告并返回，实现优雅降级。
         """
         try:
             client = self._get_client()
@@ -177,6 +180,8 @@ class QdrantVectorStore:
                 logger.info(f"\nQdrant集合已删除: {self.collection}")
         except Exception as e:
             logger.warning(f"\nQdrant集合删除失败: {e}")
+            # Qdrant不可用时记录警告并返回，实现优雅降级
+            return
 
         self.ensure_collection()
 
@@ -229,6 +234,7 @@ class QdrantVectorStore:
             return out
         except Exception as e:
             logger.warning(f"\nQdrant搜索失败: {e}")
+            # 搜索失败时返回空列表，实现优雅降级
             return []
 
     def upsert(self, points: list[dict[str, Any]]) -> None:
@@ -257,4 +263,4 @@ class QdrantVectorStore:
             client.upsert(collection_name=self.collection, points=qdrant_points)
         except Exception as e:
             logger.error(f"\nQdrant upsert失败: {e}")
-            raise
+            # Qdrant不可用时记录错误但不抛出异常，实现优雅降级

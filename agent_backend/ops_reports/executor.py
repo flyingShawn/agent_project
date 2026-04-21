@@ -1,3 +1,47 @@
+"""
+运维简报生成执行器
+
+文件功能：
+    实现运维智能简报的完整生成流程，包括数据采集、趋势分析、异常检测、
+    摘要生成（模板+LLM润色）和Markdown报告构建。
+
+在系统架构中的定位：
+    位于运维简报模块的核心执行层，被 OpsReportManager 调用。
+    直接查询业务数据库（SQL Server/MySQL）获取运维指标数据。
+
+主要使用场景：
+    - 定时任务自动生成运维简报
+    - API手动触发生成运维简报
+
+核心类：
+    - OpsReportExecutor: 运维简报执行器
+
+数据采集指标：
+    - 在线状态: 在线客户端数、总数、在线率、未开机设备数
+    - 远程协助: 远程次数统计、Top20客户端、部门关联
+    - USB使用: U盘日志总数、Top20设备、Top20电脑
+
+报告生成流程：
+    1. 采集在线/远程/USB三类指标数据
+    2. 加载上一期快照进行趋势对比
+    3. 基于阈值检测异常波动
+    4. 生成模板摘要（可选LLM润色）
+    5. 构建Markdown格式报告
+    6. 存储报告和指标快照到SQLite
+
+专有技术说明：
+    - 远程协助日志解析使用正则匹配 AdminLog 中的特定格式
+    - LLM润色使用低温度(0.2)确保不修改数字和事实
+    - 异常检测基于可配置阈值，支持绝对值和百分比两种判定方式
+    - 严重级别: normal(无异常) / attention(1项异常) / warning(≥2项异常)
+
+关联文件：
+    - agent_backend/ops_reports/manager.py: OpsReportManager 调用执行器
+    - agent_backend/core/config.py: get_database_url 业务数据库配置
+    - agent_backend/db/chat_history.py: async_session SQLite会话
+    - agent_backend/db/models.py: OpsReport, OpsMetricSnapshot ORM模型
+    - agent_backend/llm/factory.py: get_llm LLM润色调用
+"""
 from __future__ import annotations
 
 import asyncio
@@ -25,16 +69,47 @@ REMOTE_DOINFO_PATTERN = re.compile(
 
 
 class OpsReportExecutor:
+    """
+    运维简报生成执行器
+
+    负责从业务数据库采集运维指标、分析趋势、检测异常、生成报告。
+    使用SQLAlchemy同步引擎查询业务数据库，通过asyncio.to_thread实现异步调用。
+    """
     def __init__(self) -> None:
+        """
+        初始化执行器，创建业务数据库连接引擎。
+
+        异常：
+            RuntimeError: 未配置业务数据库URL时抛出
+        """
         database_url = get_database_url()
         if not database_url:
             raise RuntimeError("未配置业务数据库，无法生成运维简报")
         self._engine = create_engine(database_url, pool_pre_ping=True, pool_recycle=3600)
 
     def close(self) -> None:
+        """释放数据库连接引擎资源"""
         self._engine.dispose()
 
     async def generate_report(self, report_key: str, config: dict[str, Any]) -> dict[str, Any]:
+        """
+        生成运维简报的完整流程。
+
+        执行流程：
+            1. 加载上一期指标快照
+            2. 采集在线/远程/USB三类指标
+            3. 构建趋势对比和异常检测
+            4. 生成模板摘要（可选LLM润色）
+            5. 构建Markdown报告
+            6. 存储报告和快照
+
+        参数：
+            report_key: 简报配置标识
+            config: 简报配置字典，包含 top_n、lookback_days、llm_polish_enabled、thresholds
+
+        返回：
+            包含 report_id、title、summary、content_md、severity、snapshot 等字段的字典
+        """
         top_n = int(config.get("top_n", 20))
         lookback_days = int(config.get("lookback_days", 3))
         llm_polish_enabled = bool(config.get("llm_polish_enabled", True))
@@ -85,9 +160,29 @@ class OpsReportExecutor:
         )
 
     async def _query_rows(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """
+        异步执行SQL查询并返回字典列表。
+
+        参数：
+            sql: SQL查询语句
+            params: 查询参数字典
+
+        返回：
+            查询结果行列表，每行为 {列名: 值} 字典
+        """
         return await asyncio.to_thread(self._query_rows_sync, sql, params or {})
 
     def _query_rows_sync(self, sql: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        同步执行SQL查询（内部方法，通过asyncio.to_thread异步调用）。
+
+        参数：
+            sql: SQL查询语句
+            params: 查询参数字典
+
+        返回：
+            查询结果行列表
+        """
         with self._engine.connect() as conn:
             result = conn.execute(text(sql), params)
             rows = result.fetchall()
@@ -95,6 +190,21 @@ class OpsReportExecutor:
         return [{key: row[index] for index, key in enumerate(keys)} for row in rows]
 
     async def _collect_online_metrics(self, cutoff_dt: datetime) -> dict[str, Any]:
+        """
+        采集客户端在线状态指标。
+
+        查询数据：
+            - 当前在线客户端数（onlineinfo表）
+            - 客户端总数（s_machine表）
+            - 未开机设备数（最近lookback_days未启动的设备）
+            - 缺少开机记录的设备数
+
+        参数：
+            cutoff_dt: 统计截止时间，早于此时间未开机的设备视为未开机
+
+        返回：
+            包含 online_count、total_count、online_rate、not_booted_count、missing_runtime_count 的字典
+        """
         cutoff_str = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
 
         online_rows = await self._query_rows(
@@ -148,6 +258,19 @@ class OpsReportExecutor:
         }
 
     async def _collect_remote_metrics(self, cutoff_dt: datetime, top_n: int) -> dict[str, Any]:
+        """
+        采集远程协助指标。
+
+        查询 AdminLog 表中远程协助日志，解析机器名和IP，
+        聚合统计每个客户端的被远程次数，返回Top N。
+
+        参数：
+            cutoff_dt: 统计起始时间
+            top_n: 返回Top N客户端
+
+        返回：
+            包含 remote_total_count、parse_failed_count、top_clients 的字典
+        """
         cutoff_str = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
         rows = await self._query_rows(
             """
@@ -212,6 +335,15 @@ class OpsReportExecutor:
         }
 
     async def _enrich_remote_departments(self, top_clients: list[dict[str, Any]]) -> None:
+        """
+        为远程协助Top客户端补充部门信息。
+
+        根据IP地址关联 s_machine 和 s_group 表查询部门路径，
+        直接修改top_clients列表中的department字段。
+
+        参数：
+            top_clients: 远程协助Top客户端列表（原地修改）
+        """
         ips = [item["ip"] for item in top_clients if item.get("ip")]
         if not ips:
             return
@@ -246,6 +378,18 @@ class OpsReportExecutor:
                 item["machine_name"] = matched.get("db_machine_name") or ""
 
     async def _collect_usb_metrics(self, cutoff_dt: datetime, top_n: int) -> dict[str, Any]:
+        """
+        采集U盘使用指标。
+
+        查询 usbdb 表统计U盘使用日志，返回Top N设备和Top N电脑。
+
+        参数：
+            cutoff_dt: 统计起始时间
+            top_n: 返回Top N
+
+        返回：
+            包含 usb_total_count、top_devices、top_machines 的字典
+        """
         cutoff_str = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
 
         total_rows = await self._query_rows(
@@ -309,6 +453,15 @@ class OpsReportExecutor:
         }
 
     async def _load_previous_snapshot(self, report_key: str) -> dict[str, Any] | None:
+        """
+        加载上一期运维指标快照，用于趋势对比。
+
+        参数：
+            report_key: 简报配置标识
+
+        返回：
+            上一期快照字典，无历史数据时返回None
+        """
         from sqlalchemy import select
 
         async with async_session() as session:
@@ -334,6 +487,19 @@ class OpsReportExecutor:
         current: dict[str, Any],
         previous: dict[str, Any] | None,
     ) -> dict[str, Any]:
+        """
+        构建当前与上一期指标的趋势对比。
+
+        计算在线数、在线率、未开机数、远程次数、U盘日志数的变化量，
+        以及Top1远程客户端和Top1 U盘设备/电脑是否变化。
+
+        参数：
+            current: 当期指标快照
+            previous: 上期指标快照，None时趋势值均为None
+
+        返回：
+            趋势对比字典，包含各类delta和changed字段
+        """
         def get_number(snapshot: dict[str, Any] | None, *keys: str) -> int | float | None:
             node: Any = snapshot
             for key in keys:
@@ -400,6 +566,23 @@ class OpsReportExecutor:
         previous: dict[str, Any] | None,
         thresholds: dict[str, Any],
     ) -> list[dict[str, Any]]:
+        """
+        基于阈值检测运维指标异常波动。
+
+        检测项：
+            - online_drop: 在线客户端下降超过阈值（绝对值+百分比双重判定）
+            - not_booted_increase: 未开机设备增加超过阈值
+            - remote_spike: Top1被远程次数超过阈值且增幅显著
+            - usb_spike: U盘日志总数增长超过阈值（绝对值+百分比双重判定）
+
+        参数：
+            current: 当期指标快照（含trends）
+            previous: 上期指标快照
+            thresholds: 阈值配置字典
+
+        返回：
+            异常信息列表，每项包含 code 和 message
+        """
         trends = current["trends"]
         anomalies: list[dict[str, Any]] = []
 
@@ -463,6 +646,18 @@ class OpsReportExecutor:
         return anomalies
 
     def _build_template_summary(self, snapshot: dict[str, Any]) -> str:
+        """
+        基于模板生成运维简报摘要文本。
+
+        按在线状态→远程协助→U盘使用→关注项的顺序组织摘要内容，
+        包含趋势变化描述和异常提示。
+
+        参数：
+            snapshot: 完整指标快照（含online、remote、usb、trends、anomalies）
+
+        返回：
+            模板生成的摘要文本
+        """
         online = snapshot["online"]
         remote = snapshot["remote"]
         usb = snapshot["usb"]
@@ -522,6 +717,19 @@ class OpsReportExecutor:
         return "\n".join(lines)
 
     async def _polish_summary(self, summary: str, snapshot: dict[str, Any]) -> str:
+        """
+        使用LLM润色运维简报摘要。
+
+        LLM被约束为只能润色语气和表达，不允许修改任何数字和事实。
+        润色失败时回退到模板摘要。
+
+        参数：
+            summary: 模板生成的原始摘要
+            snapshot: 指标快照（作为LLM参考上下文）
+
+        返回：
+            润色后的摘要文本，失败时返回原始摘要
+        """
         try:
             llm = get_llm(streaming=False, temperature=0.2)
             system_prompt = (
@@ -554,6 +762,20 @@ class OpsReportExecutor:
         snapshot: dict[str, Any],
         severity: str,
     ) -> str:
+        """
+        构建Markdown格式的运维简报。
+
+        报告结构：标题→概览→在线状态→远程协助Top20→U盘使用统计→关注项
+
+        参数：
+            title: 报告标题
+            summary: 摘要文本
+            snapshot: 指标快照
+            severity: 严重级别（normal/attention/warning）
+
+        返回：
+            Markdown格式的完整报告文本
+        """
         generated_label = datetime.fromtimestamp(snapshot["generated_at"]).strftime("%Y-%m-%d %H:%M:%S")
         window_start = datetime.fromtimestamp(snapshot["window_start"]).strftime("%Y-%m-%d %H:%M:%S")
         window_end = datetime.fromtimestamp(snapshot["window_end"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -695,6 +917,25 @@ class OpsReportExecutor:
         window_end: float,
         snapshot: dict[str, Any],
     ) -> dict[str, Any]:
+        """
+        将报告和指标快照存储到SQLite数据库。
+
+        同时写入 OpsReport（报告内容）和 OpsMetricSnapshot（指标快照）两条记录。
+
+        参数：
+            report_key: 简报配置标识
+            title: 报告标题
+            summary: 摘要文本
+            content_md: Markdown格式报告内容
+            severity: 严重级别
+            generated_at: 生成时间戳
+            window_start: 统计窗口起始时间戳
+            window_end: 统计窗口结束时间戳
+            snapshot: 指标快照字典
+
+        返回：
+            包含完整报告信息的字典
+        """
         report_id = uuid.uuid4().hex
         now = time.time()
 

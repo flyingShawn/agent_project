@@ -1,3 +1,38 @@
+"""
+运维简报管理器
+
+文件功能：
+    管理运维简报的调度、配置加载、报告查询和生命周期。
+    使用APScheduler实现定时自动生成，支持手动触发生成。
+
+在系统架构中的定位：
+    位于运维简报模块的管理层，被 main.py 启动/关闭，被 api/v1/ops.py 查询。
+    通过 OpsReportExecutor 委托实际的报告生成工作。
+
+主要使用场景：
+    - 应用启动时自动启动调度器
+    - API查询简报列表、详情、最新一期
+    - API手动触发生成简报
+    - API标记简报已读
+
+核心类：
+    - OpsReportManager: 运维简报管理器（单例模式）
+
+管理能力：
+    - 定时调度: 基于YAML配置注册定时任务
+    - 配置加载: 从 ops_reports.yaml 加载简报配置
+    - 报告查询: 列表、详情、最新一期、未读统计
+    - 手动触发: 立即生成一期简报
+    - 已读标记: 标记简报为已读
+
+关联文件：
+    - agent_backend/ops_reports/executor.py: OpsReportExecutor 报告生成器
+    - agent_backend/db/chat_history.py: async_session SQLite会话
+    - agent_backend/db/models.py: OpsReport, OpsMetricSnapshot ORM模型
+    - agent_backend/configs/ops_reports.yaml: 简报配置文件
+    - agent_backend/api/v1/ops.py: REST API 调用入口
+    - agent_backend/main.py: 应用启动/关闭时调用 start/shutdown
+"""
 from __future__ import annotations
 
 import json
@@ -19,9 +54,16 @@ _CONFIG_PATH = Path(__file__).parent.parent / "configs" / "ops_reports.yaml"
 
 
 class OpsReportManager:
+    """
+    运维简报管理器（单例模式）
+
+    负责调度器的启停、配置加载、报告查询和手动触发。
+    通过 APScheduler 实现定时自动生成运维简报。
+    """
     _instance: "OpsReportManager | None" = None
 
     def __new__(cls) -> "OpsReportManager":
+        """单例模式：确保全局只有一个管理器实例"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -35,6 +77,12 @@ class OpsReportManager:
         self._configs: dict[str, dict[str, Any]] = {}
 
     async def start(self) -> None:
+        """
+        启动运维简报调度器。
+
+        加载YAML配置，为每个启用的简报任务注册定时调度。
+        使用 IntervalTrigger 按配置的间隔时间定时执行。
+        """
         if self._scheduler is not None and self._scheduler.running:
             logger.info("\n[OpsReport] 运维简报调度器已在运行")
             return
@@ -64,6 +112,7 @@ class OpsReportManager:
         logger.info("\n[OpsReport] 运维简报调度器已启动")
 
     async def shutdown(self) -> None:
+        """关闭调度器并释放执行器资源"""
         if self._scheduler is not None:
             logger.info("\n[OpsReport] 正在关闭运维简报调度器...")
             self._scheduler.shutdown(wait=True)
@@ -76,6 +125,12 @@ class OpsReportManager:
         logger.info("\n[OpsReport] 运维简报调度器已关闭")
 
     def get_info(self) -> dict[str, Any]:
+        """
+        获取调度器运行状态信息。
+
+        返回：
+            包含 running、active_reports、report_keys、jobs 的字典
+        """
         configs = list(self._configs.keys()) if self._configs else list(self._load_configs().keys())
         if not self._scheduler:
             return {"running": False, "active_reports": 0, "report_keys": configs, "jobs": []}
@@ -92,6 +147,12 @@ class OpsReportManager:
         }
 
     def get_default_report_key(self) -> str:
+        """
+        获取默认的简报配置标识（第一个启用的配置）。
+
+        异常：
+            RuntimeError: 没有可用的简报配置时抛出
+        """
         if not self._configs:
             self._configs = self._load_configs()
 
@@ -101,6 +162,18 @@ class OpsReportManager:
         raise RuntimeError("没有可用的运维简报配置")
 
     async def run_report_now(self, report_key: str | None = None) -> dict[str, Any]:
+        """
+        手动触发生成运维简报。
+
+        参数：
+            report_key: 简报配置标识，None时使用默认配置
+
+        返回：
+            生成结果字典
+
+        异常：
+            ValueError: 配置不存在时抛出
+        """
         if not self._configs:
             self._configs = self._load_configs()
         if self._executor is None:
@@ -114,6 +187,16 @@ class OpsReportManager:
         return await self._executor.generate_report(target_key, config)
 
     async def list_reports(self, limit: int = 20, unread_only: bool = False) -> dict[str, Any]:
+        """
+        查询运维简报列表。
+
+        参数：
+            limit: 返回数量上限，默认20
+            unread_only: 是否只返回未读简报
+
+        返回：
+            包含 reports、total、unread_total 的字典
+        """
         from sqlalchemy import func, select
 
         async with async_session() as session:
@@ -144,6 +227,12 @@ class OpsReportManager:
         }
 
     async def get_latest_report(self) -> dict[str, Any]:
+        """
+        获取最新一期运维简报。
+
+        返回：
+            包含 report、unread_total 的字典
+        """
         from sqlalchemy import func, select
 
         async with async_session() as session:
@@ -164,6 +253,15 @@ class OpsReportManager:
         }
 
     async def get_report(self, report_id: str) -> dict[str, Any] | None:
+        """
+        获取指定ID的运维简报详情（含完整内容和指标快照）。
+
+        参数：
+            report_id: 简报ID
+
+        返回：
+            简报详情字典，不存在时返回None
+        """
         from sqlalchemy import select
 
         async with async_session() as session:
@@ -194,6 +292,15 @@ class OpsReportManager:
         return self._serialize_report(report, include_content=True, snapshot=snapshot_data)
 
     async def mark_report_read(self, report_id: str) -> dict[str, Any] | None:
+        """
+        标记指定简报为已读。
+
+        参数：
+            report_id: 简报ID
+
+        返回：
+            包含 report_id、unread、unread_total 的字典，不存在时返回None
+        """
         from sqlalchemy import func, select
 
         async with async_session() as session:
@@ -224,6 +331,12 @@ class OpsReportManager:
             logger.error(f"\n[OpsReport] 定时生成简报失败: {report_key}, error={exc}")
 
     def _load_configs(self) -> dict[str, dict[str, Any]]:
+        """
+        从YAML配置文件加载简报配置。
+
+        异常：
+            RuntimeError: 配置文件不存在或配置为空时抛出
+        """
         if not _CONFIG_PATH.exists():
             raise RuntimeError(f"运维简报配置不存在: {_CONFIG_PATH}")
 
@@ -249,6 +362,17 @@ class OpsReportManager:
         include_content: bool,
         snapshot: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        """
+        将ORM模型序列化为API响应字典。
+
+        参数：
+            report: OpsReport ORM实例
+            include_content: 是否包含完整Markdown内容和快照
+            snapshot: 指标快照字典
+
+        返回：
+            序列化后的字典，report为None时返回None
+        """
         if report is None:
             return None
 
@@ -270,4 +394,5 @@ class OpsReportManager:
 
 
 def get_ops_report_manager() -> OpsReportManager:
+    """获取运维简报管理器单例实例"""
     return OpsReportManager()
