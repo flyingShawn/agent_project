@@ -294,11 +294,11 @@ agent_project/
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `APP_NAME` | `阳途智能助手` | 应用名称（标题栏） |
-| `APP_SUBTITLE` | `阳途智能助手为您服务` | 应用副标题 |
-| `APP_WELCOME_TEXT` | `有什么我能帮您的呢？` | 欢迎语 |
-| `APP_INPUT_PLACEHOLDER` | `给智能助手发消息` | 输入框占位文字 |
-| `QUICK_OPTIONS` | `查看客户端在线状态,...` | 快捷选项（逗号分隔） |
+| `VITE_APP_NAME` | `阳途智能助手` | 应用名称（标题栏） |
+| `VITE_APP_SUBTITLE` | `阳途智能助手为您服务` | 应用副标题 |
+| `VITE_APP_WELCOME_TEXT` | `有什么我能帮您的呢？` | 欢迎语 |
+| `VITE_APP_INPUT_PLACEHOLDER` | `给智能助手发消息` | 输入框占位文字 |
+| `VITE_QUICK_OPTIONS` | `查看客户端在线状态,...` | 快捷选项（逗号分隔） |
 
 前端配置通过两种方式生效：
 - **本地开发**：修改 `agent_frontend/src/config.js`
