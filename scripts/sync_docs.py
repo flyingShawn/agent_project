@@ -1,9 +1,9 @@
 """
-文档知识库同步脚本
+文档知识库同步脚本。
 
 用法：
-    python scripts/sync_docs.py              # 增量同步
-    python scripts/sync_docs.py --mode full   # 全量同步
+    python scripts/sync_docs.py
+    python scripts/sync_docs.py --mode full
 """
 from __future__ import annotations
 
@@ -20,8 +20,13 @@ from agent_backend.rag_engine.state import IngestStateStore
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="同步文档知识库到向量数据库")
-    parser.add_argument("--docs-dir", default=None, help="文档目录（默认读取配置）")
-    parser.add_argument("--mode", choices=["full", "incremental"], default="full", help="同步模式")
+    parser.add_argument("--docs-dir", default=None, help="文档目录，默认读取 RAG_DOCS_DIR")
+    parser.add_argument(
+        "--mode",
+        choices=["full", "incremental"],
+        default="incremental",
+        help="同步模式，默认 incremental",
+    )
     args = parser.parse_args()
 
     settings = RagIngestSettings()
@@ -42,11 +47,14 @@ def main() -> int:
         kb_type="docs",
     )
 
-    print(f"同步完成: 扫描={result.files_scanned}, 跳过={result.files_skipped}, 写入={result.chunks_upserted}")
+    print(
+        f"同步完成: 扫描={result.files_scanned}, 跳过={result.files_skipped}, "
+        f"处理={result.files_processed}, 写入={result.chunks_upserted}"
+    )
     if result.errors:
         print(f"错误: {len(result.errors)}")
-        for e in result.errors:
-            print(f"  - {e}")
+        for error in result.errors:
+            print(f"  - {error}")
     return 0
 
 

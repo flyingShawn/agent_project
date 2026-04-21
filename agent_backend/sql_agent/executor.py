@@ -211,7 +211,7 @@ def execute_sql(
 
     sql2, params2 = _ensure_limit(sql, params, max_rows)
 
-    logger.info(f"\n【执行的SQL】:{sql2}")
+    # logger.info(f"\n【执行的SQL】:{sql2}")
 
     conn_manager = get_connection_manager()
     connection_recreated = False

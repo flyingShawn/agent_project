@@ -34,6 +34,8 @@ SQL 生成提示词构建模块
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 import re
 
 from agent_backend.core.config import (
@@ -41,7 +43,9 @@ from agent_backend.core.config import (
     get_sql_prompt_instructions,
     get_sql_system_prompt,
 )
+from agent_backend.rag_engine.chunking import chunk_markdown
 from agent_backend.rag_engine.retrieval import RetrievedChunk
+from agent_backend.rag_engine.settings import RagIngestSettings
 
 SQL_SYSTEM_PROMPT = get_sql_system_prompt()
 
@@ -258,6 +262,58 @@ def _collect_required_columns(
     return required_columns
 
 
+@lru_cache(maxsize=32)
+def _load_sql_sections(source_path: str) -> dict[str, str]:
+    settings = RagIngestSettings()
+    base_dir = Path(settings.resolve_path(settings.sql_dir))
+
+    candidate_paths = [Path(source_path)]
+    candidate_paths.append(base_dir / source_path)
+    candidate_paths.append(base_dir / Path(source_path).name)
+
+    file_path = next((path for path in candidate_paths if path.exists()), None)
+    if file_path is None:
+        return {}
+
+    markdown = file_path.read_text(encoding="utf-8", errors="replace")
+    sections: dict[str, str] = {}
+    for chunk in chunk_markdown(markdown, source_path=file_path.name, split_paragraphs=False):
+        if chunk.heading and chunk.text:
+            sections[chunk.heading] = chunk.text
+    return sections
+
+
+def _prepare_sql_samples(sql_samples: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    prepared: list[RetrievedChunk] = []
+    seen: set[tuple[str, str]] = set()
+
+    for sample in sql_samples:
+        dedupe_key = (sample.source_path or "", sample.heading or "")
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        metadata = dict(sample.metadata or {})
+        full_text = sample.text
+        if sample.heading and sample.source_path:
+            full_text = _load_sql_sections(sample.source_path).get(sample.heading, sample.text)
+            if full_text != sample.text:
+                metadata["hydrated_from_source"] = True
+
+        prepared.append(
+            RetrievedChunk(
+                text=full_text,
+                source_path=sample.source_path,
+                heading=sample.heading,
+                score=sample.score,
+                raw_vector_score=sample.raw_vector_score,
+                metadata=metadata,
+            )
+        )
+
+    return prepared
+
+
 def build_sql_prompt_bundle(
     runtime: SchemaRuntime,
     question: str,
@@ -267,7 +323,8 @@ def build_sql_prompt_bundle(
     naming = runtime.raw.naming
     security = runtime.raw.security
 
-    sql_samples = sql_samples or []
+    raw_sql_samples = sql_samples or []
+    sql_samples = _prepare_sql_samples(raw_sql_samples)
     available_tables = {t.name.lower() for t in runtime.raw.tables}
     sample_tables = _extract_tables_from_samples(sql_samples) & available_tables if sql_samples else set()
     ordered_sample_tables = _ordered_table_names(runtime, sample_tables)

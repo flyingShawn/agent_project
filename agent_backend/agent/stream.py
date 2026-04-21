@@ -1,44 +1,23 @@
 """
-SSE流式输出适配模块
+SSE 流式输出适配模块
 
 文件功能：
-    将LangGraph的astream_events事件流转换为SSE（Server-Sent Events）格式，
-    实现逐token流式输出到前端。同时收集工具执行结果中的数据表格和参考来源，
-    在流式输出末尾追加。
+    把 LangGraph 的 astream_events 事件流转换成前端可消费的 SSE 事件流。
+    同时在流式过程中补发工具状态、图表数据、导出链接和参考来源。
 
 在系统架构中的定位：
-    位于Agent编排层与API层之间，是Graph输出到SSE响应的桥梁。
-    替代旧架构中handlers.py手动拼接SSE事件的逻辑。
+    位于 Agent 编排层与 API 层之间，是 Graph 输出对接前端聊天流的适配层。
+    chat.py 调用本模块，把 Graph 事件统一转成前端约定的 SSE 格式。
 
 主要使用场景：
-    - api/v1/chat.py的generate()生成器调用stream_graph_response
-    - 捕获LLM的token流、工具执行事件，转为SSE事件
-
-核心函数：
-    - stream_graph_response: 异步生成器，将Graph事件流转为SSE事件流
-    - sse_event: SSE事件格式化工具函数（来自core.sse）
-
-SSE事件格式（与前端兼容）：
-    - event: delta    → data: "文本片段"（逐token流式追加）
-    - event: status   → data: "状态文字"（替换消息内容，如"正在查询..."）
-    - event: replace  → data: ""（清空消息内容，准备接收新的流式文本）
-    - event: start    → data: {"intent":"agent","session_id":"..."}
-    - event: done     → data: {"route":"agent","session_id":"...","meta":{}}
-    - event: error    → data: {"error":"..."}
-
-专有技术说明：
-    - 使用graph.astream_events(version="v2")捕获细粒度事件
-    - 仅处理langgraph_node="agent"的LLM流式事件，过滤工具内部LLM调用
-    - agent LLM的chunk立即流式推送（delta事件），实现逐token打字机效果
-    - on_chat_model_end检测到tool_call时，发送replace事件清空已推送的SQL内容，
-      再发送status事件显示"正在查询..."
-    - on_tool_end事件中提取data_tables和references用于末尾追加
-    - 异步生成器配合FastAPI的StreamingResponse实现真正的流式推送
+    - 捕获 LLM 的 token 流并实时推送到前端
+    - 在工具调用前后展示状态文案
+    - 在流式结束后补发参考来源、图表和导出结果
 
 关联文件：
-    - agent_backend/agent/graph.py: 提供Graph实例
-    - agent_backend/api/v1/chat.py: 调用stream_graph_response并包装为StreamingResponse
-    - agent_backend/agent/state.py: AgentState状态定义
+    - agent_backend/api/v1/chat.py: 调用 stream_graph_response
+    - agent_backend/core/sse.py: 提供 sse_event 事件格式化函数
+    - agent_backend/agent/state.py: 定义 AgentState 结构
 """
 from __future__ import annotations
 
@@ -53,6 +32,10 @@ from agent_backend.core.sse import sse_event
 logger = logging.getLogger(__name__)
 
 AGENT_TIMEOUT_SECONDS = 300
+STREAM_EMPTY_FALLBACK_MESSAGE = (
+    "抱歉，本次信息收集未能成功完成，暂时还没找到相关结果。"
+    "你可以换个关键词，或者缩小范围后再试一次。"
+)
 
 _TOOL_STATUS_MESSAGES = {
     "sql_query": "🔍 正在查询数据...",
@@ -63,8 +46,6 @@ _TOOL_STATUS_MESSAGES = {
     "get_current_time": "🕐 正在获取时间...",
     "calculator": "🧮 正在计算...",
     "web_search": "🌐 正在搜索...",
-    "schedule_task": "⏰ 正在创建定时任务...",
-    "manage_scheduled_task": "⏰ 正在管理定时任务...",
 }
 
 _TOOL_COMPLETE_MESSAGES = {
@@ -76,13 +57,34 @@ _TOOL_COMPLETE_MESSAGES = {
     "get_current_time": "✅ 时间获取完成...",
     "calculator": "✅ 计算完成...",
     "web_search": "✅ 搜索完成...",
-    "schedule_task": "✅ 定时任务创建完成...",
-    "manage_scheduled_task": "✅ 定时任务管理完成...",
 }
 
 
+def _extract_text_content(output: Any) -> str:
+    """把模型输出里的文本内容尽量提取成字符串，兼容字符串和多段 content。"""
+    if isinstance(output, str):
+        return output.strip()
+
+    content = getattr(output, "content", None)
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+        return "\n".join(parts).strip()
+
+    return ""
+
+
 async def _aiter_with_timeout(aiter: AsyncIterator, timeout: float) -> AsyncIterator:
-    """为异步迭代器添加总超时限制，超时后抛出asyncio.TimeoutError"""
+    """为异步事件流增加总超时限制，避免单次请求无限挂起。"""
     deadline = asyncio.get_event_loop().time() + timeout
     async for item in aiter:
         remaining = deadline - asyncio.get_event_loop().time()
@@ -95,7 +97,8 @@ async def stream_graph_response(
     graph: Any,
     initial_state: dict,
 ) -> AsyncIterator[str]:
-    logger.info("\n[stream] 开始流式输出 (astream_events v2), 超时阈值: {0}秒".format(AGENT_TIMEOUT_SECONDS))
+    """把 Graph 事件流转换成 SSE 输出，并在结束时补发附加结果。"""
+    logger.info(f"\n[stream] 开始流式输出 (astream_events v2), 超时: {AGENT_TIMEOUT_SECONDS}秒")
 
     references: list[str] = []
     chart_configs: list[dict] = []
@@ -112,7 +115,6 @@ async def stream_graph_response(
         async for event in timed_stream:
             kind = event["event"]
             name = event.get("name", "")
-            run_id = event.get("run_id", "")
 
             if kind == "on_chat_model_stream":
                 chunk = event["data"].get("chunk")
@@ -121,11 +123,12 @@ async def stream_graph_response(
                     node = metadata.get("langgraph_node", "")
                     if node not in ("agent", "respond"):
                         continue
+
                     if first_token:
                         if has_status_shown:
                             yield sse_event("replace", "")
                             has_status_shown = False
-                        logger.info("\n[stream] 收到首个token，流式输出已生效")
+                        logger.info("\n[stream] 收到首个 token，流式输出已生效")
                         first_token = False
                     yield sse_event("delta", chunk.content)
 
@@ -134,11 +137,12 @@ async def stream_graph_response(
                 node = metadata.get("langgraph_node", "")
                 if node not in ("agent", "respond"):
                     continue
+
                 output = event["data"].get("output")
                 has_tool_calls = hasattr(output, "tool_calls") and output.tool_calls
                 if has_tool_calls:
                     yield sse_event("replace", "")
-                    tool_names = [tc.get("name", "") for tc in output.tool_calls]
+                    tool_names = [tool_call.get("name", "") for tool_call in output.tool_calls]
                     status_msg = _TOOL_STATUS_MESSAGES.get(
                         tool_names[0] if tool_names else "",
                         "⏳ 正在处理...",
@@ -148,34 +152,50 @@ async def stream_graph_response(
                     first_token = True
                     logger.info(f"\n[stream] LLM调用完成(工具调用): {name}, tools={tool_names}")
                 else:
+                    output_text = _extract_text_content(output)
+                    if first_token:
+                        if has_status_shown:
+                            yield sse_event("replace", "")
+                            has_status_shown = False
+                        fallback_text = output_text or STREAM_EMPTY_FALLBACK_MESSAGE
+                        yield sse_event("delta", fallback_text)
+                        first_token = False
+                        logger.info("\n[stream] 直接回答未产生流式 token，已补发最终文本")
                     logger.info(f"\n[stream] LLM调用完成(直接回答): {name}")
 
             elif kind == "on_tool_start":
                 logger.info(f"\n[stream] 开始执行工具: {name}")
                 if has_status_shown:
-                    tool_status = _TOOL_STATUS_MESSAGES.get(name, "⏳ 正在处理...")
-                    yield sse_event("status", tool_status)
+                    yield sse_event("status", _TOOL_STATUS_MESSAGES.get(name, "⏳ 正在处理..."))
 
             elif kind == "on_tool_end":
                 logger.info(f"\n[stream] 工具执行完成: {name}")
                 if has_status_shown:
-                    complete_msg = _TOOL_COMPLETE_MESSAGES.get(name, "✅ 处理完成...")
-                    yield sse_event("status", complete_msg)
+                    yield sse_event("status", _TOOL_COMPLETE_MESSAGES.get(name, "✅ 处理完成..."))
+
                 output = event["data"].get("output")
-                output_str = ""
                 if isinstance(output, str):
                     output_str = output
                 elif hasattr(output, "content"):
                     output_str = str(output.content)
+                else:
+                    output_str = ""
 
                 if name == "sql_query" and output_str:
                     try:
                         parsed = json.loads(output_str)
                         if "download_url" in parsed:
-                            export_results.append({
-                                "download_url": parsed["download_url"],
-                                "filename": parsed.get("download_filename", ""),
-                            })
+                            export_results.append(
+                                {
+                                    "download_url": parsed["download_url"],
+                                    "filename": parsed.get("download_filename", ""),
+                                    "row_count": parsed.get("row_count", 0),
+                                    "preview_row_count": parsed.get("preview_row_count", 0),
+                                    "export_row_count": parsed.get("export_row_count", 0),
+                                    "has_more": bool(parsed.get("has_more", False)),
+                                    "overflow_capped": bool(parsed.get("overflow_capped", False)),
+                                }
+                            )
                     except (json.JSONDecodeError, TypeError):
                         pass
                 elif name == "rag_search" and output_str:
@@ -202,11 +222,17 @@ async def stream_graph_response(
 
     except asyncio.TimeoutError:
         logger.warning(f"\n[stream] Agent执行超时({AGENT_TIMEOUT_SECONDS}秒)，强制结束")
-        yield sse_event("error", {"error": "抱歉，处理时间有点长，我已经尽力了但还是没能完成。请尝试简化您的问题，或者稍后再试试吧~"})
+        yield sse_event(
+            "error",
+            {
+                "error": "抱歉，处理时间有点长，我已经尽力了但还是没能完成。请尝试简化您的问题，或者稍后再试试吧~",
+            },
+        )
         return
-    except Exception as e:
-        logger.error(f"[stream] 流式输出异常: {type(e).__name__}: {e}")
+    except Exception as exc:
+        logger.error(f"[stream] 流式输出异常: {type(exc).__name__}: {exc}")
         import traceback
+
         logger.error(traceback.format_exc())
         yield sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
         return
@@ -218,7 +244,7 @@ async def stream_graph_response(
     for chart in chart_configs:
         yield sse_event("chart", chart)
 
-    seen_urls = set()
+    seen_urls: set[str] = set()
     for export_item in export_results:
         url = export_item.get("download_url", "")
         if url and url in seen_urls:

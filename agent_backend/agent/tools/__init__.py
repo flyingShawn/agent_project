@@ -29,8 +29,6 @@ from agent_backend.agent.tools.calculator_tool import calculator
 from agent_backend.agent.tools.chart_tool import generate_chart
 from agent_backend.agent.tools.export_tool import export_data
 from agent_backend.agent.tools.web_search_tool import web_search
-from agent_backend.agent.tools.scheduler_tool import schedule_task
-from agent_backend.agent.tools.scheduler_manage_tool import manage_scheduled_task
 
 ALL_TOOLS = [
     sql_query,
@@ -41,6 +39,4 @@ ALL_TOOLS = [
     generate_chart,
     export_data,
     web_search,
-    schedule_task,
-    manage_scheduled_task,
 ]

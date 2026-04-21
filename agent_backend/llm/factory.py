@@ -35,6 +35,21 @@ def get_llm(
     streaming: bool = True,
     temperature: float = 0.3,
 ) -> ChatOpenAI:
+    """
+    获取ChatOpenAI LLM实例。
+
+    根据配置中的base_url自动适配不同厂商的特殊参数：
+        - 阿里云通义千问: 禁用思考模式（enable_thinking=False）
+        - DeepSeek: 禁用思考模式（thinking.type=disabled）
+        - 其他: 关闭推理努力度（reasoning_effort=none）
+
+    参数：
+        streaming: 是否启用流式输出，默认True
+        temperature: 生成温度，默认0.3
+
+    返回：
+        配置完成的ChatOpenAI实例
+    """
     settings = get_settings()
     llm_cfg = settings.llm
 
@@ -72,4 +87,13 @@ def get_llm(
 
 
 def get_sql_llm() -> ChatOpenAI:
+    """
+    获取SQL生成专用LLM实例。
+
+    使用同步模式（streaming=False）和零温度（temperature=0），
+    确保SQL生成的确定性和一致性。
+
+    返回：
+        同步模式、零温度的ChatOpenAI实例
+    """
     return get_llm(streaming=False, temperature=0.0)

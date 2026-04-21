@@ -1,9 +1,9 @@
 """
-SQL样本库同步脚本
+SQL 样本知识库同步脚本。
 
 用法：
-    python scripts/sync_sql_samples.py              # 增量同步
-    python scripts/sync_sql_samples.py --mode full   # 全量同步
+    python scripts/sync_sql_samples.py
+    python scripts/sync_sql_samples.py --mode full
 """
 from __future__ import annotations
 
@@ -19,15 +19,20 @@ from agent_backend.rag_engine.state import IngestStateStore
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="同步SQL样本库到向量数据库")
-    parser.add_argument("--sql-dir", default=None, help="SQL样本目录（默认读取配置）")
-    parser.add_argument("--mode", choices=["full", "incremental"], default="full", help="同步模式")
+    parser = argparse.ArgumentParser(description="同步 SQL 样本知识库到向量数据库")
+    parser.add_argument("--sql-dir", default=None, help="SQL 目录，默认读取 RAG_SQL_DIR")
+    parser.add_argument(
+        "--mode",
+        choices=["full", "incremental"],
+        default="incremental",
+        help="同步模式，默认 incremental",
+    )
     args = parser.parse_args()
 
     settings = RagIngestSettings()
     sql_dir = args.sql_dir or settings.resolve_path(settings.sql_dir)
 
-    print(f"SQL样本目录: {sql_dir}")
+    print(f"SQL 目录: {sql_dir}")
     print(f"向量集合: {settings.qdrant_sql_collection}")
     print(f"同步模式: {args.mode}")
     print()
@@ -42,7 +47,14 @@ def main() -> int:
         kb_type="sql",
     )
 
-    print(f"同步完成: 扫描={result.files_scanned}, 跳过={result.files_skipped}, 写入={result.chunks_upserted}")
+    print(
+        f"同步完成: 扫描={result.files_scanned}, 跳过={result.files_skipped}, "
+        f"处理={result.files_processed}, 写入={result.chunks_upserted}"
+    )
+    if result.errors:
+        print(f"错误: {len(result.errors)}")
+        for error in result.errors:
+            print(f"  - {error}")
     return 0
 
 

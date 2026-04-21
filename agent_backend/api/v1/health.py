@@ -23,16 +23,16 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from agent_backend.core.config import reload_schema_runtime, reload_prompts
-from agent_backend.scheduler import get_scheduler_manager
+from agent_backend.ops_reports import get_ops_report_manager
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
 def health_check() -> dict:
-    scheduler = get_scheduler_manager()
-    scheduler_info = scheduler.get_scheduler_info()
-    return {"status": "ok", "scheduler": scheduler_info}
+    ops_reports = get_ops_report_manager()
+    ops_report_info = ops_reports.get_info()
+    return {"status": "ok", "ops_reports": ops_report_info}
 
 
 @router.post("/admin/reload_schema")

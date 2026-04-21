@@ -1,0 +1,15 @@
+reports:
+  - report_key: default_ops_brief
+    enabled: true
+    interval_seconds: 7200
+    lookback_days: 3
+    top_n: 20
+    llm_polish_enabled: true
+    thresholds:
+      online_drop_abs: 5
+      online_drop_pct: 0.05
+      not_booted_increase_abs: 5
+      remote_top1_min_count: 8
+      remote_top1_increase_abs: 3
+      usb_total_growth_pct: 0.20
+      usb_total_growth_abs: 20
