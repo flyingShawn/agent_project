@@ -153,6 +153,21 @@ const stopGeneration = () => {
   abortCurrentRequest()
 }
 
+const buildExportLinkText = (data) => {
+  if (!data?.download_url || !data?.filename) return ''
+
+  if (data.overflow_capped) {
+    const exportCount = Number(data.export_row_count || 5000)
+    return `\n\n数据量过大，当前已导出前${exportCount}条，详情可查看具体表格：[${data.filename}](${data.download_url})`
+  }
+
+  if (Number(data.row_count || 0) > 20) {
+    return `\n\n当前查询数量过多，详情可查看具体表格：[${data.filename}](${data.download_url})`
+  }
+
+  return `\n\n以下是表格数据，可进行下载：[${data.filename}](${data.download_url})`
+}
+
 const sendMessage = async (overrideText) => {
   const text = (overrideText || inputText.value).trim()
 
@@ -233,8 +248,7 @@ const sendMessage = async (overrideText) => {
           scrollToBottom()
         } else if (event === 'export') {
           if (data.download_url && data.filename) {
-            const link = `\n\n以下是表格数据，可进行下载：[${data.filename}](${data.download_url})`
-            msg.content = msg.content + link
+            msg.content = msg.content + buildExportLinkText(data)
             scrollToBottom()
           }
         } else if (event === 'chart') {

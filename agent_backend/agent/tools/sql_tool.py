@@ -69,7 +69,10 @@ from agent_backend.sql_agent.utils import clean_sql_markdown
 
 logger = logging.getLogger(__name__)
 
-MAX_DISPLAY_ROWS = 50
+PREVIEW_ROWS = 20
+EXPORT_ROWS = 5000
+OVERFLOW_PROBE_ROWS = EXPORT_ROWS + 1
+MAX_DISPLAY_ROWS = PREVIEW_ROWS
 
 
 class _SqlJsonEncoder(json.JSONEncoder):
@@ -97,6 +100,30 @@ def _sanitize_rows(rows: list[dict]) -> list[dict]:
             clean[k] = v
         out.append(clean)
     return out
+
+
+def _build_summary_hint(
+    *,
+    row_count: int,
+    preview_row_count: int,
+    has_more: bool,
+    overflow_capped: bool,
+) -> str:
+    """稳定约束最终总结口径，避免模型把预览结果误当成全量数据。"""
+    if row_count == 0:
+        return "查询结果为空，请告知用户没有找到匹配的数据，并建议可能的原因。"
+    if overflow_capped:
+        return (
+            f"本次查询结果过多，当前只返回前 {preview_row_count} 条预览，"
+            f"并已导出前 {EXPORT_ROWS} 条详情。回答时不要声称精确总数，"
+            "请明确说明数据量过大，并基于预览数据概括主要信息。"
+        )
+    if has_more:
+        return (
+            f"本次查询共 {row_count} 条，仅返回前 {preview_row_count} 条预览。"
+            "回答时先说明总量，再概括预览数据，不要把预览条数说成全部结果。"
+        )
+    return f"本次查询共 {row_count} 条，可直接基于全部结果回答。"
 
 
 class SqlQueryInput(BaseModel):
@@ -279,7 +306,12 @@ def sql_query(question: str) -> str:
             return json.dumps({"error": "数据库未配置", "hint": "请检查DATABASE_URL配置"}, ensure_ascii=False)
 
         try:
-            exec_result = execute_sql(sql=sql, params={}, database_url=db_url)
+            exec_result = execute_sql(
+                sql=sql,
+                params={},
+                database_url=db_url,
+                max_rows=OVERFLOW_PROBE_ROWS,
+            )
         except SqlExecutionError as e:
             logger.warning(f"\n[sql_query] SQL执行错误，通知LLM自检: {e.db_error}")
             return json.dumps({
@@ -295,6 +327,10 @@ def sql_query(question: str) -> str:
                 "sql": sql,
                 "rows": [],
                 "row_count": 0,
+                "preview_row_count": 0,
+                "export_row_count": 0,
+                "has_more": False,
+                "overflow_capped": False,
                 "columns": [],
                 "data_table": "",
                 "summary_hint": "查询结果为空，请告知用户没有找到匹配的数据，并建议可能的原因",
@@ -303,6 +339,13 @@ def sql_query(question: str) -> str:
         columns = list(exec_result[0].keys())
 
         sanitized = _sanitize_rows(exec_result)
+        overflow_capped = len(sanitized) >= OVERFLOW_PROBE_ROWS
+        export_rows = sanitized[:EXPORT_ROWS]
+        preview_rows = export_rows[:PREVIEW_ROWS]
+        row_count = EXPORT_ROWS if overflow_capped else len(sanitized)
+        preview_row_count = len(preview_rows)
+        export_row_count = len(export_rows)
+        has_more = overflow_capped or row_count > preview_row_count
 
         # 请不要删除基础注释，旧方法留作纪念的
         # if len(exec_result) == 1 and len(exec_result[0]) == 1:
@@ -319,16 +362,30 @@ def sql_query(question: str) -> str:
         data_table = ""
         result_dict = {
             "sql": sql,
-            "rows": sanitized[:MAX_DISPLAY_ROWS],
-            "row_count": len(exec_result),
+            "rows": preview_rows,
+            "row_count": row_count,
+            "preview_row_count": preview_row_count,
+            "export_row_count": export_row_count,
+            "has_more": has_more,
+            "overflow_capped": overflow_capped,
             "columns": columns,
             "data_table": data_table,
+            "summary_hint": _build_summary_hint(
+                row_count=row_count,
+                preview_row_count=preview_row_count,
+                has_more=has_more,
+                overflow_capped=overflow_capped,
+            ),
         }
 
         if len(exec_result) > 1 and columns:
             try:
                 from agent_backend.agent.tools.export_tool import export_data
-                export_json = json.dumps({"columns": columns, "rows": sanitized[:MAX_DISPLAY_ROWS]}, ensure_ascii=False, cls=_SqlJsonEncoder)
+                export_json = json.dumps(
+                    {"columns": columns, "rows": export_rows},
+                    ensure_ascii=False,
+                    cls=_SqlJsonEncoder,
+                )
                 export_result_str = export_data.invoke({
                     "data": export_json,
                     "filename": "query_result",
@@ -338,6 +395,7 @@ def sql_query(question: str) -> str:
                 if "download_url" in export_parsed:
                     result_dict["download_url"] = export_parsed["download_url"]
                     result_dict["download_filename"] = export_parsed.get("filename", "")
+                    result_dict["download_row_count"] = export_parsed.get("row_count", export_row_count)
                     logger.info(f"\n[sql_query] 自动导出成功: {export_parsed.get('filename')}")
             except Exception as export_err:
                 logger.warning(f"\n[sql_query] 自动导出失败: {export_err}")

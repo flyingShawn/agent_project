@@ -247,6 +247,11 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
                             {
                                 "download_url": parsed["download_url"],
                                 "filename": parsed.get("download_filename", ""),
+                                "row_count": parsed.get("row_count", 0),
+                                "preview_row_count": parsed.get("preview_row_count", 0),
+                                "export_row_count": parsed.get("export_row_count", 0),
+                                "has_more": bool(parsed.get("has_more", False)),
+                                "overflow_capped": bool(parsed.get("overflow_capped", False)),
                             }
                         )
                     result = json.dumps(
