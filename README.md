@@ -87,8 +87,9 @@ docker compose up -d
 
 同步说明：
 - 普通安装模式不会在后端启动时自动同步文档或 SQL，需要你手动执行脚本或调用同步 API。
-- Docker 模式会在 `backend` 容器启动前自动执行一次 SQL 样本库全量同步，命令是 `python scripts/sync_rag.py --target sql --sql-dir /data/sql --mode full`。
-- Docker 模式不会在容器启动时自动同步文档知识库，文档同步仍然建议按需手动触发。
+- Docker 模式会在 `backend` 容器启动前自动执行一次 SQL 样本库全量同步，当前命令是 `python scripts/sync_rag.py --target sql --sql-dir /data/sql --mode full`。
+- Docker 模式不会在容器启动时自动同步文档知识库，文档仍需手动同步。
+- 运维简报接口和 RAG 同步接口当前都不要求外部账号签名。
 
 部署后访问地址：
 
@@ -269,6 +270,10 @@ agent_project/
 | `RAG_CANDIDATE_K` | `30` | 候选文档数（用于重排序） |
 | `RAG_VECTOR_MIN_SCORE` | `0.5` | 最低相似度阈值（低于此值过滤） |
 
+说明：
+- 本地运行且没有独立 Qdrant 服务时，配置 `RAG_QDRANT_PATH=本地目录`，例如 `RAG_QDRANT_PATH=./.qdrant_local`。代码会优先使用本地路径模式。
+- Docker 运行时不要设置 `RAG_QDRANT_PATH`，保持为空，改用 `RAG_QDRANT_URL=http://qdrant:6333`。
+
 ### SQL 样本库配置
 
 | 变量 | 默认值 | 说明 |
@@ -358,8 +363,19 @@ agent_project/
 | `/api/v1/scheduler/tasks/{task_id}/pause` | PUT | 暂停任务 |
 | `/api/v1/scheduler/tasks/{task_id}/resume` | PUT | 恢复任务 |
 | `/api/v1/scheduler/tasks/{task_id}` | DELETE | 删除任务 |
+| `/api/v1/ops/reports/run` | POST | 立即生成一条运维简报 |
+| `/api/v1/ops/reports/latest` | GET | 获取最新一条运维简报 |
 | `/api/v1/export/download/{filename}` | GET | 导出文件下载 |
 | `/api/v1/health` | GET | 健康检查 |
+
+快速生成运维简报：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/ops/reports/run
+Invoke-RestMethod -Method Get -Uri http://localhost:8000/api/v1/ops/reports/latest
+```
+
+当前运维简报接口不要求外部账号签名。
 
 ---
 
@@ -413,23 +429,24 @@ LLM 通过 Tool Calling 自主决策调用以下 10 种工具：
 - `incremental`：基于 `.rag_state/*.json` 中记录的 SHA-256 指纹跳过未变更文件。
 - `full`：先重建目标集合，再重新导入全部文件。
 
-普通安装模式下，后端启动不会自动同步，按需在 PowerShell 执行：
+推荐直接在 PowerShell 使用包装脚本：
 
 ```powershell
-python scripts/sync_rag.py --target all --mode incremental
-python scripts/sync_rag.py --target docs --mode full
-python scripts/sync_rag.py --target sql --mode full
+.\scripts\sync.cmd
+.\scripts\sync.cmd full
+.\scripts\sync.cmd docs full
+.\scripts\sync.cmd sql full
+.\scripts\sync.cmd full local
+.\scripts\sync.cmd sql full local
 ```
 
-Docker 模式下，可直接在 PowerShell 执行：
+说明：
+- 参数顺序可以互换，脚本按关键字识别。
+- 默认 runner 是 `docker`，所以 `.\scripts\sync.cmd full` 等价于“全量同步全部目标，走 Docker 容器”。
+- 如果不是 Docker 模式，就在参数里加 `local`，例如 `.\scripts\sync.cmd full local`。
+- `local` runner 实际执行的是 `python scripts/sync.py ...`，`docker` runner 实际执行的是 `docker compose exec backend python scripts/sync_rag.py ...`。
 
-```powershell
-docker compose exec backend python scripts/sync_rag.py --target all --mode incremental
-docker compose exec backend python scripts/sync_rag.py --target docs --mode full
-docker compose exec backend python scripts/sync_rag.py --target sql --mode full
-```
-
-如果你更偏向 API 方式，也可以触发同步接口：
+如果你更偏向 API 方式，也可以触发同步接口；这些同步接口当前也不要求外部账号签名：
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/rag/sync -ContentType "application/json" -Body '{"mode":"incremental"}'
@@ -538,6 +555,7 @@ taskkill /PID <进程ID> /F      # 结束进程
 | `scripts/test_chat_api.py` | API 测试 |
 | `scripts/测试数据库连接.py` | 数据库连接测试 |
 | `scripts/诊断工具.py` | 诊断工具 |
+| `scripts/sync.cmd` | Windows 一键同步入口，默认走 Docker，可追加 `local` |
 | `scripts/sync_rag.py` | 统一同步文档和 SQL |
 | `scripts/sync_sql_samples.py` | SQL 样本同步 |
 | `scripts/sync_docs.py` | 文档同步 |
