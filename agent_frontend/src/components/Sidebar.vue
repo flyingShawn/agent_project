@@ -87,7 +87,14 @@ defineExpose({ loadConversations })
 <template>
   <div class="min-w-[288px] flex flex-col h-full">
     <div class="p-4 pb-2 flex items-center justify-between">
-      <h2 class="text-base font-semibold text-text-primary">{{ config.appName }}</h2>
+      <div class="flex min-w-0 items-center gap-2">
+        <img
+          src="/logo.png"
+          alt="logo"
+          class="h-7 w-7 shrink-0 rounded-md object-contain"
+        />
+        <h2 class="truncate text-base font-semibold text-text-primary">{{ config.appName }}</h2>
+      </div>
       <button
         @click="$emit('close')"
         class="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
