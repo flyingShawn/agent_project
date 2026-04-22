@@ -10,7 +10,6 @@ const userName = ref('admin')
 const showSidebar = ref(false)
 const showOpsInbox = ref(false)
 const unreadOpsCount = ref(0)
-const sidebarRef = ref(null)
 const chatBoxRef = ref(null)
 
 const {
@@ -79,8 +78,6 @@ onMounted(async () => {
       :class="showSidebar ? 'w-72' : 'w-0 border-r-0'"
     >
       <Sidebar
-        ref="sidebarRef"
-        @close="toggleSidebar"
         @new-conversation="handleNewConversation"
         @switch-conversation="handleSwitchConversation"
         @delete-conversation="handleDeleteConversation"
@@ -92,14 +89,16 @@ onMounted(async () => {
         <div class="flex items-center">
           <button
             @click="toggleSidebar"
-            class="p-2 -ml-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
-            :title="showSidebar ? '收起侧栏' : '历史会话'"
+            class="rounded-xl border transition-colors cursor-pointer"
+            :class="showSidebar
+              ? 'border-primary-200 bg-primary-50 px-2.5 py-2 text-primary-600'
+              : 'border-transparent px-2.5 py-2 text-text-tertiary hover:text-text-primary hover:bg-surface-hover'"
+            :title="showSidebar ? '收起历史侧栏' : '展开历史侧栏'"
           >
-            <svg v-if="!showSidebar" class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            <svg v-else class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2.5" stroke-width="1.5" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.5 5.5v13" />
+              <path stroke-linecap="round" stroke-width="1.8" d="M6.5 8.5h.01M6.5 12h.01M6.5 15.5h.01" />
             </svg>
           </button>
         </div>

@@ -86,24 +86,15 @@ defineExpose({ loadConversations })
 
 <template>
   <div class="min-w-[288px] flex flex-col h-full">
-    <div class="p-4 pb-2 flex items-center justify-between">
-      <div class="flex min-w-0 items-center gap-2">
+    <div class="p-4 pb-3">
+      <div class="flex min-w-0 items-center gap-3">
         <img
           src="/logo.png"
           alt="logo"
-          class="h-7 w-7 shrink-0 rounded-md object-contain"
+          class="h-9 w-9 shrink-0 rounded-lg object-contain"
         />
-        <h2 class="truncate text-base font-semibold text-text-primary">{{ config.appName }}</h2>
+        <h2 class="truncate text-lg font-semibold tracking-[0.01em] text-text-primary">{{ config.appName }}</h2>
       </div>
-      <button
-        @click="$emit('close')"
-        class="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
-        title="收起侧栏"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
     </div>
     <div class="px-3 pb-3">
       <button
