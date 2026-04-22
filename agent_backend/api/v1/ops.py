@@ -24,8 +24,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from agent_backend.api.external_identity import ExternalIdentity, require_external_identity
 from agent_backend.ops_reports import get_ops_report_manager
 
 router = APIRouter(prefix="/ops", tags=["ops"])
@@ -35,6 +36,7 @@ router = APIRouter(prefix="/ops", tags=["ops"])
 async def list_ops_reports(
     limit: int = Query(default=20, ge=1, le=100),
     unread_only: bool = Query(default=False),
+    current_user: ExternalIdentity = Depends(require_external_identity),
 ) -> dict[str, Any]:
     """列出运维简报，支持分页和未读筛选"""
     manager = get_ops_report_manager()
@@ -42,14 +44,19 @@ async def list_ops_reports(
 
 
 @router.get("/reports/latest")
-async def get_latest_ops_report() -> dict[str, Any]:
+async def get_latest_ops_report(
+    current_user: ExternalIdentity = Depends(require_external_identity),
+) -> dict[str, Any]:
     """获取最新一期运维简报"""
     manager = get_ops_report_manager()
     return await manager.get_latest_report()
 
 
 @router.get("/reports/{report_id}")
-async def get_ops_report(report_id: str) -> dict[str, Any]:
+async def get_ops_report(
+    report_id: str,
+    current_user: ExternalIdentity = Depends(require_external_identity),
+) -> dict[str, Any]:
     """获取指定ID的运维简报详情"""
     manager = get_ops_report_manager()
     report = await manager.get_report(report_id)
@@ -59,7 +66,9 @@ async def get_ops_report(report_id: str) -> dict[str, Any]:
 
 
 @router.post("/reports/run")
-async def run_ops_report_now() -> dict[str, Any]:
+async def run_ops_report_now(
+    current_user: ExternalIdentity = Depends(require_external_identity),
+) -> dict[str, Any]:
     """手动触发生成新一期运维简报"""
     manager = get_ops_report_manager()
     try:
@@ -69,7 +78,10 @@ async def run_ops_report_now() -> dict[str, Any]:
 
 
 @router.put("/reports/{report_id}/read")
-async def mark_ops_report_read(report_id: str) -> dict[str, Any]:
+async def mark_ops_report_read(
+    report_id: str,
+    current_user: ExternalIdentity = Depends(require_external_identity),
+) -> dict[str, Any]:
     """标记指定运维简报为已读"""
     manager = get_ops_report_manager()
     result = await manager.mark_report_read(report_id)

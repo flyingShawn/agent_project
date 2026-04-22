@@ -41,7 +41,7 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -49,6 +49,7 @@ from pydantic import BaseModel, Field
 from agent_backend.agent.graph import get_agent_graph
 from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.stream import stream_graph_response
+from agent_backend.api.external_identity import ExternalIdentity, require_external_identity
 from agent_backend.core.sse import sse_event
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import Conversation, Message
@@ -83,7 +84,11 @@ class EndChatResponse(BaseModel):
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
+async def chat(
+    req: ChatRequest,
+    request: Request,
+    current_user: ExternalIdentity = Depends(require_external_identity),
+) -> StreamingResponse:
     t_start = time.time()
     conn_manager = get_connection_manager()
     session_id = req.session_id or conn_manager.generate_session_id()
@@ -100,7 +105,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         "messages": [SystemMessage(content=SYSTEM_PROMPT)],
         "question": req.question,
         "session_id": session_id,
-        "lognum": req.lognum,
+        "lognum": current_user.user_id,
         "images_base64": req.images_base64,
         "sql_results": [],
         "rag_results": [],
@@ -112,6 +117,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     }
 
     if conversation_id:
+        await _ensure_conversation_owned(conversation_id, current_user.user_id)
         db_history = await _load_conversation_messages(conversation_id)
         for msg in db_history:
             if msg["role"] == "user":
@@ -145,7 +151,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             conv = Conversation(
                 id=conversation_id,
                 title=_generate_title(req.question),
-                user_id=req.lognum,
+                user_id=current_user.user_id,
                 created_at=now,
                 updated_at=now,
                 is_deleted=0,
@@ -253,7 +259,10 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 
 
 @router.post("/chat/end")
-async def end_chat(req: EndChatRequest) -> EndChatResponse:
+async def end_chat(
+    req: EndChatRequest,
+    current_user: ExternalIdentity = Depends(require_external_identity),
+) -> EndChatResponse:
     """
     结束对话API端点，关闭对应的数据库连接。
 
@@ -366,6 +375,21 @@ async def _update_conversation_timestamp(conversation_id: str):
                 await db.commit()
     except Exception as e:
         logger.error(f"\n更新会话时间戳失败: {e}")
+
+
+async def _ensure_conversation_owned(conversation_id: str, user_id: str) -> None:
+    """续聊前先校验会话归属，避免只靠 conversation_id 跨账号读取历史。"""
+    async with async_session() as db:
+        from sqlalchemy import select
+
+        stmt = select(Conversation.id).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+            Conversation.is_deleted == 0,
+        )
+        result = await db.execute(stmt)
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
 
 
 async def _load_conversation_messages(conversation_id: str) -> list[dict[str, str]]:

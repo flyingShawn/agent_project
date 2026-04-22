@@ -5,8 +5,15 @@ import OpsReportInbox from './components/OpsReportInbox.vue'
 import Sidebar from './components/Sidebar.vue'
 import config from './config'
 import { useConversations } from './composables/useConversations'
+import {
+  getExternalDisplayName,
+  getExternalUserId,
+  readExternalIdentityFromLocation,
+  setExternalIdentity,
+} from './utils/externalIdentity'
 
-const userName = ref('admin')
+const currentUserId = ref('admin')
+const currentUserLabel = ref('admin')
 const showSidebar = ref(false)
 const showOpsInbox = ref(false)
 const unreadOpsCount = ref(0)
@@ -50,11 +57,11 @@ function handleDeleteConversation() {
 }
 
 function handleConversationCreated() {
-  loadConversations(userName.value)
+  loadConversations(currentUserId.value)
 }
 
 function handleConversationUpdated() {
-  loadConversations(userName.value)
+  loadConversations(currentUserId.value)
 }
 
 function handleOpsUnreadChange(count) {
@@ -62,9 +69,10 @@ function handleOpsUnreadChange(count) {
 }
 
 onMounted(async () => {
-  const urlParams = new URLSearchParams(window.location.search)
-  userName.value = urlParams.get('user') || urlParams.get('lognum') || 'admin'
-  await loadConversations(userName.value)
+  const externalIdentity = setExternalIdentity(readExternalIdentityFromLocation())
+  currentUserId.value = externalIdentity?.userId || getExternalUserId()
+  currentUserLabel.value = externalIdentity?.displayName || getExternalDisplayName()
+  await loadConversations(currentUserId.value)
   if (conversations.value.length > 0) {
     showSidebar.value = true
   }
@@ -124,7 +132,7 @@ onMounted(async () => {
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span class="text-[11px] font-medium">{{ userName }}</span>
+            <span class="text-[11px] font-medium">{{ currentUserLabel }}</span>
           </div>
         </div>
       </header>
@@ -133,7 +141,7 @@ onMounted(async () => {
         <div class="w-full max-w-chat h-full">
           <ChatBox
             ref="chatBoxRef"
-            :user-name="userName"
+            :user-id="currentUserId"
             @conversation-created="handleConversationCreated"
             @conversation-updated="handleConversationUpdated"
           />

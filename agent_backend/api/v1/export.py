@@ -30,8 +30,10 @@ import logging
 import os
 import tempfile
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+
+from agent_backend.api.external_identity import ExternalIdentity, require_external_identity_from_query
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,10 @@ _EXPORT_DIR = os.path.join(tempfile.gettempdir(), "desk_agent_exports")
 
 
 @router.get("/export/download/{filename}")
-def download_export(filename: str) -> FileResponse:
+def download_export(
+    filename: str,
+    current_user: ExternalIdentity = Depends(require_external_identity_from_query),
+) -> FileResponse:
     """
     下载导出文件。
 
