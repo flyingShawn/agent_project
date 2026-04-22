@@ -89,16 +89,15 @@ onMounted(async () => {
         <div class="flex items-center">
           <button
             @click="toggleSidebar"
-            class="rounded-xl border transition-colors cursor-pointer"
+            class="rounded-xl p-2 transition-colors cursor-pointer"
             :class="showSidebar
-              ? 'border-primary-200 bg-primary-50 px-2.5 py-2 text-primary-600'
-              : 'border-transparent px-2.5 py-2 text-text-tertiary hover:text-text-primary hover:bg-surface-hover'"
+              ? 'bg-surface-muted text-text-primary'
+              : 'text-text-tertiary hover:text-text-primary hover:bg-surface-hover'"
             :title="showSidebar ? '收起历史侧栏' : '展开历史侧栏'"
           >
-            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2.5" stroke-width="1.5" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.5 5.5v13" />
-              <path stroke-linecap="round" stroke-width="1.8" d="M6.5 8.5h.01M6.5 12h.01M6.5 15.5h.01" />
+            <svg class="h-[24px] w-[24px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4.25" y="5" width="15.5" height="14" rx="2.75" stroke-width="1.5" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 5.75v12.5" />
             </svg>
           </button>
         </div>

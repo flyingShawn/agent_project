@@ -86,7 +86,7 @@ defineExpose({ loadConversations })
 
 <template>
   <div class="min-w-[288px] flex flex-col h-full">
-    <div class="p-4 pb-3">
+    <div class="px-4 pt-4 pb-4">
       <div class="flex min-w-0 items-center gap-3">
         <img
           src="/logo.png"
@@ -96,7 +96,7 @@ defineExpose({ loadConversations })
         <h2 class="truncate text-lg font-semibold tracking-[0.01em] text-text-primary">{{ config.appName }}</h2>
       </div>
     </div>
-    <div class="px-3 pb-3">
+    <div class="px-3 pb-6">
       <button
         @click="handleNewConversation"
         class="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-primary-500 hover:bg-primary-50 rounded-lg transition-colors cursor-pointer border border-primary-200 bg-primary-50/50"
@@ -107,10 +107,11 @@ defineExpose({ loadConversations })
         开启新会话
       </button>
     </div>
-    <div class="px-4 pb-2">
-      <p class="text-xs text-text-tertiary font-medium">历史会话</p>
+    <div class="px-4 pb-4">
+      <div class="h-px bg-[#eef2f6]"></div>
+      <p class="pt-4 text-[11px] font-medium tracking-[0.08em] text-text-tertiary">历史会话</p>
     </div>
-    <div class="flex-1 overflow-y-auto px-3 pb-3 no-scrollbar">
+    <div class="flex-1 overflow-y-auto px-3 pb-4 no-scrollbar">
       <div v-if="conversations.length === 0" class="text-center py-8 text-text-tertiary text-sm">
         <svg class="w-10 h-10 mx-auto mb-2 text-text-tertiary/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
