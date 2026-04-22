@@ -175,7 +175,7 @@ def init_node(state: AgentState) -> dict[str, Any]:
     """
     return {
         "tool_call_count": 0,
-        "max_tool_calls": state.get("max_tool_calls", 5),
+        "max_tool_calls": state.get("max_tool_calls", 10),
         "sql_results": [],
         "rag_results": [],
         "metadata_results": [],
@@ -362,7 +362,7 @@ def should_continue(state: AgentState) -> str:
     """根据最近一次消息和工具调用次数，决定图继续走 tools 还是 respond。"""
     last_message = state["messages"][-1]
     tool_call_count = state.get("tool_call_count", 0)
-    max_tool_calls = state.get("max_tool_calls", 5)
+    max_tool_calls = state.get("max_tool_calls", 10)
 
     if tool_call_count >= max_tool_calls:
         logger.info(f"\n[should_continue] 达到最大工具调用次数 {max_tool_calls}，进入 respond")
@@ -384,7 +384,7 @@ def respond_node(state: AgentState) -> dict[str, Any]:
     """
     last_message = state["messages"][-1]
     tool_call_count = state.get("tool_call_count", 0)
-    max_tool_calls = state.get("max_tool_calls", 5)
+    max_tool_calls = state.get("max_tool_calls", 10)
 
     if tool_call_count >= max_tool_calls and isinstance(last_message, AIMessage) and last_message.tool_calls:
         logger.info("\n[respond_node] 达到 max_tool_calls，强制生成最终总结回答")

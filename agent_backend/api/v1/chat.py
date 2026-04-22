@@ -106,7 +106,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         "rag_results": [],
         "metadata_results": [],
         "tool_call_count": 0,
-        "max_tool_calls": 5,
+        "max_tool_calls": 10,
         "data_tables": [],
         "references": [],
     }
