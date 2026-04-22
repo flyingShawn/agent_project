@@ -170,10 +170,10 @@ agent_project/
 │   │   │   └── conversations.js#   会话 CRUD API
 │   │   ├── composables/
 │   │   │   └── useConversations.js # 会话状态管理
-│   │   ├── config.js           #   运行时配置（三层覆盖）
+│   │   ├── config.js           #   前端配置读取与兜底
 │   │   ├── App.vue             #   根组件（Sidebar + ChatBox 布局）
 │   │   └── main.js             #   入口文件
-│   └── public/config.js        #   Docker 环境注入配置
+│   └── public/config.js        #   运行时配置占位文件（Docker 启动时覆盖）
 ├── data/desk-agent/            # 知识库数据
 │   ├── docs/                   #   文档知识库
 │   └── sql/                    #   SQL 样本库
@@ -305,9 +305,10 @@ agent_project/
 | `VITE_APP_INPUT_PLACEHOLDER` | `给智能助手发消息` | 输入框占位文字 |
 | `VITE_QUICK_OPTIONS` | `查看客户端在线状态,...` | 快捷选项（逗号分隔） |
 
-前端配置通过两种方式生效：
-- **本地开发**：修改 `agent_frontend/src/config.js`
-- **Docker 部署**：通过环境变量注入，`entrypoint.frontend.sh` 生成 `config.js`
+前端显示文案统一维护在仓库根目录 `.env` 的 `VITE_*` 配置项中：
+- **本地开发 / 本地构建**：`agent_frontend/vite.config.js` 通过 `envDir` 读取根目录 `.env`
+- **Docker 部署**：`docker-compose.yml` 从根目录 `.env` 读取同一批变量，`entrypoint.frontend.sh` 在容器启动时生成 `config.js`
+- `agent_frontend/public/config.js` 只是占位文件，不再手动维护业务文案
 
 ### schema_metadata.yaml
 

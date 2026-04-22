@@ -13,6 +13,7 @@ const defaultConfig = {
   ],
 }
 
+// Docker 部署会在容器启动时写入 /config.js，本地开发通常保持为空对象。
 const runtimeConfig = window.__APP_CONFIG__ || {}
 
 const parseQuickOptions = (val) => {
