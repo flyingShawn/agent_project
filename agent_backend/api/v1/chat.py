@@ -53,6 +53,7 @@ from agent_backend.api.external_identity import ExternalIdentity, require_extern
 from agent_backend.core.sse import sse_event
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import Conversation, Message
+from agent_backend.integrations.chat_history_push import dispatch_chat_history_report
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)
@@ -161,6 +162,7 @@ async def chat(
         logger.info(f"\n[Chat] 自动创建会话记录: {conversation_id[:8]}... 标题: {_generate_title(req.question)}")
 
     await _save_message(conversation_id, "user", req.question)
+    report_user_name = current_user.display_name or current_user.user_id
 
     async def generate():
         logger.info(f"\n[SSE] start generate, session: {session_id[:8]}..., conv: {conversation_id[:8]}...")
@@ -228,8 +230,9 @@ async def chat(
             yield sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
 
         finally:
+            final_response = assistant_content or content_before_replace
             if not message_saved:
-                save_content = assistant_content or content_before_replace
+                save_content = final_response
                 if save_content:
                     try:
                         await asyncio.shield(_save_message(conversation_id, "assistant", save_content))
@@ -246,6 +249,12 @@ async def chat(
                 _background_update_timestamp(conversation_id)
             except Exception:
                 pass
+            dispatch_chat_history_report(
+                user_message=req.question,
+                ai_response=final_response,
+                user_name=report_user_name,
+                session_id=session_id,
+            )
 
     return StreamingResponse(
         generate(),
