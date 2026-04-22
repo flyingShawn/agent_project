@@ -129,7 +129,7 @@ class QdrantVectorStore:
                 if self.api_key:
                     kwargs["api_key"] = self.api_key
                 self._client = QdrantClient(**kwargs)
-            logger.info(f"\nQdrant客户端已连接: {self.path or self.url}")
+            logger.info(f"\nQdrant客户端已创建: {self.path or self.url}")
             return self._client
         except ImportError:
             raise ImportError("qdrant-client未安装，请运行: pip install qdrant-client")
