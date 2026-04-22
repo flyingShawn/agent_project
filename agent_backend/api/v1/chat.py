@@ -171,6 +171,7 @@ async def chat(
         assistant_content = ""
         content_before_replace = ""
         charts_list = []
+        export_items = []
         message_saved = False
 
         try:
@@ -185,13 +186,17 @@ async def chat(
                     assistant_content = ""
                 elif event_type == "chart" and isinstance(event_data, dict):
                     charts_list.append(event_data)
+                elif event_type == "export" and isinstance(event_data, dict):
+                    export_items.append(event_data)
                 yield sse_chunk
 
-            if assistant_content:
+            report_response = assistant_content or content_before_replace
+            persisted_response = _build_persisted_assistant_content(report_response, export_items)
+            if persisted_response:
                 charts_json = json.dumps(charts_list, ensure_ascii=False) if charts_list else None
-                await _save_message(conversation_id, "assistant", assistant_content, charts=charts_json)
+                await _save_message(conversation_id, "assistant", persisted_response, charts=charts_json)
                 message_saved = True
-                logger.info(f"\n[Chat] saved assistant msg before done: {len(assistant_content)}chars")
+                logger.info(f"\n[Chat] saved assistant msg before done: {len(persisted_response)}chars")
 
             yield sse_event(
                 "done",
@@ -207,7 +212,10 @@ async def chat(
         except asyncio.CancelledError:
             logger.warning(f"\n[Chat] SSE cancelled (client disconnect), conv: {conversation_id[:8]}...")
             if not message_saved:
-                save_content = assistant_content or content_before_replace
+                save_content = _build_persisted_assistant_content(
+                    assistant_content or content_before_replace,
+                    export_items,
+                )
                 if save_content:
                     try:
                         await asyncio.shield(_save_message(conversation_id, "assistant", save_content))
@@ -230,9 +238,10 @@ async def chat(
             yield sse_event("error", {"error": "非常抱歉，查询失败，请稍后再试"})
 
         finally:
-            final_response = assistant_content or content_before_replace
+            report_response = assistant_content or content_before_replace
+            persisted_response = _build_persisted_assistant_content(report_response, export_items)
             if not message_saved:
-                save_content = final_response
+                save_content = persisted_response
                 if save_content:
                     try:
                         await asyncio.shield(_save_message(conversation_id, "assistant", save_content))
@@ -251,7 +260,7 @@ async def chat(
                 pass
             dispatch_chat_history_report(
                 user_message=req.question,
-                ai_response=final_response,
+                ai_response=report_response,
                 user_name=report_user_name,
                 session_id=session_id,
             )
@@ -342,6 +351,40 @@ def _background_update_timestamp(conversation_id: str):
         except Exception as e:
             logger.error(f"\n[Chat] background update timestamp failed: {e}")
     asyncio.create_task(_do_update())
+
+
+def _build_persisted_assistant_content(content: str, export_items: list[dict[str, Any]]) -> str:
+    """把导出链接补进持久化内容，确保历史记录重开后仍能看到下载入口。"""
+    if not export_items:
+        return content
+
+    export_text = "".join(_build_export_link_text(item) for item in export_items)
+    if not export_text:
+        return content
+    return f"{content}{export_text}"
+
+
+def _build_export_link_text(export_item: dict[str, Any]) -> str:
+    download_url = str(export_item.get("download_url") or "").strip()
+    filename = str(export_item.get("filename") or "").strip()
+    if not download_url or not filename:
+        return ""
+
+    if export_item.get("overflow_capped"):
+        export_count = _to_int(export_item.get("export_row_count"), 5000)
+        return f"\n\n数据量过大，当前已导出前{export_count}条，详情可查看具体表格：[{filename}]({download_url})"
+
+    if _to_int(export_item.get("row_count"), 0) > 20:
+        return f"\n\n当前查询数量过多，详情可查看具体表格：[{filename}]({download_url})"
+
+    return f"\n\n以下是表格数据，可进行下载：[{filename}]({download_url})"
+
+
+def _to_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 async def _save_message(conversation_id: str, role: str, content: str, intent: str | None = None, charts: str | None = None):

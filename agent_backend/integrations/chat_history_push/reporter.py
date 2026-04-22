@@ -68,6 +68,11 @@ async def _post_chat_history_report(
     payload: ChatHistoryPushPayload,
 ) -> None:
     timeout = httpx.Timeout(timeout_seconds)
+    logger.info(
+        "[chat_history_push] report start, session_id=%s, url=%s",
+        payload.sessionId,
+        report_url,
+    )
     try:
         async with httpx.AsyncClient(proxy=None, timeout=timeout) as client:
             response = await client.post(report_url, json=payload.model_dump())
