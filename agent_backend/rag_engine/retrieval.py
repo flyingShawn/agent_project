@@ -44,7 +44,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-from agent_backend.core.config import load_env_file, get_settings
+from agent_backend.core.config import load_env_file, get_settings, get_sql_log_full_prompt
 
 load_env_file()
 
@@ -102,6 +102,9 @@ class RetrievedChunk:
     score: float
     raw_vector_score: float
     metadata: dict[str, Any]
+    raw_bm25_score: float = 0.0
+    vector_score_norm: float = 0.0
+    bm25_score_norm: float = 0.0
 
 
 class BM25:
@@ -229,6 +232,8 @@ def hybrid_search(
     alpha: float = 0.7,
     min_score: float = 0.0,
     vector_min_score: float = 0.0,
+    log_scores: bool = False,
+    log_label: str = "[hybrid_search]",
 ) -> list[RetrievedChunk]:
     """
     混合检索主函数：融合向量检索与 BM25 关键词检索的加权结果。
@@ -270,6 +275,14 @@ def hybrid_search(
     )
 
     if not candidates:
+        if log_scores:
+            logger.info(
+                "\n%s query=%s | candidates=0 | vector_min=%.4f | min_score=%.4f",
+                log_label,
+                query_text,
+                vector_min_score,
+                min_score,
+            )
         return []
 
     pre_filter_count = len(candidates)
@@ -281,6 +294,14 @@ def hybrid_search(
         )
 
     if not candidates:
+        if log_scores:
+            logger.info(
+                "\n%s query=%s | candidates=0_after_vector_filter | vector_min=%.4f | min_score=%.4f",
+                log_label,
+                query_text,
+                vector_min_score,
+                min_score,
+            )
         return []
 
     documents = [c.payload.get("text", "") for c in candidates]
@@ -291,7 +312,7 @@ def hybrid_search(
     max_vector_score = max(c.score for c in candidates) if candidates else 1.0
     max_bm25_score = max(bm25_scores) if bm25_scores else 1.0
 
-    combined_results = []
+    combined_results: list[dict[str, Any]] = []
     for i, candidate in enumerate(candidates):
         vector_score_norm = candidate.score / max_vector_score if max_vector_score > 0 else 0.0
         bm25_score_norm = bm25_scores[i] / max_bm25_score if max_bm25_score > 0 else 0.0
@@ -299,16 +320,51 @@ def hybrid_search(
         combined_score = alpha * vector_score_norm + (1 - alpha) * bm25_score_norm
 
         combined_results.append(
-            (
-                combined_score,
-                candidate,
-            )
+            {
+                "combined_score": combined_score,
+                "candidate": candidate,
+                "raw_bm25_score": bm25_scores[i],
+                "vector_score_norm": vector_score_norm,
+                "bm25_score_norm": bm25_score_norm,
+            }
         )
 
-    combined_results.sort(key=lambda x: x[0], reverse=True)
+    combined_results.sort(key=lambda x: x["combined_score"], reverse=True)
+
+    if log_scores:
+        logger.info(
+            "\n%s query=%s | candidates=%s | top_k=%s | alpha=%.2f | vector_min=%.4f | min_score=%.4f",
+            log_label,
+            query_text,
+            len(combined_results),
+            top_k,
+            alpha,
+            vector_min_score,
+            min_score,
+        )
+        for rank, item in enumerate(combined_results, start=1):
+            payload = item["candidate"].payload or {}
+            source = payload.get("heading") or payload.get("source_path") or "unknown"
+            chunk_index = payload.get("chunk_index", "-")
+            logger.info(
+                "%s %s. source=%s | chunk_index=%s | raw_vector=%.4f | vector_norm=%.4f | bm25_raw=%.4f | bm25_norm=%.4f | combined=%.4f | in_top_k=%s | passed_min_score=%s",
+                log_label,
+                rank,
+                source,
+                chunk_index,
+                item["candidate"].score,
+                item["vector_score_norm"],
+                item["raw_bm25_score"],
+                item["bm25_score_norm"],
+                item["combined_score"],
+                "yes" if rank <= top_k else "no",
+                "yes" if item["combined_score"] >= min_score else "no",
+            )
 
     results = []
-    for score, candidate in combined_results[:top_k]:
+    for item in combined_results[:top_k]:
+        score = item["combined_score"]
+        candidate = item["candidate"]
         if score < min_score:
             continue
         payload = candidate.payload
@@ -319,6 +375,9 @@ def hybrid_search(
                 heading=payload.get("heading", ""),
                 score=score,
                 raw_vector_score=candidate.score,
+                raw_bm25_score=item["raw_bm25_score"],
+                vector_score_norm=item["vector_score_norm"],
+                bm25_score_norm=item["bm25_score_norm"],
                 metadata=payload,
             )
         )
@@ -412,4 +471,6 @@ def search_sql_samples(
         alpha=alpha,
         min_score=min_score,
         vector_min_score=vector_min_score,
+        log_scores=get_sql_log_full_prompt(),
+        log_label="[sql_query] [SQL样本得分]",
     )

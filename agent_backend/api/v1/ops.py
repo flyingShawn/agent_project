@@ -25,7 +25,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-
 from agent_backend.ops_reports import get_ops_report_manager
 
 router = APIRouter(prefix="/ops", tags=["ops"])
@@ -49,7 +48,9 @@ async def get_latest_ops_report() -> dict[str, Any]:
 
 
 @router.get("/reports/{report_id}")
-async def get_ops_report(report_id: str) -> dict[str, Any]:
+async def get_ops_report(
+    report_id: str,
+) -> dict[str, Any]:
     """获取指定ID的运维简报详情"""
     manager = get_ops_report_manager()
     report = await manager.get_report(report_id)
@@ -69,7 +70,9 @@ async def run_ops_report_now() -> dict[str, Any]:
 
 
 @router.put("/reports/{report_id}/read")
-async def mark_ops_report_read(report_id: str) -> dict[str, Any]:
+async def mark_ops_report_read(
+    report_id: str,
+) -> dict[str, Any]:
     """标记指定运维简报为已读"""
     manager = get_ops_report_manager()
     result = await manager.mark_report_read(report_id)

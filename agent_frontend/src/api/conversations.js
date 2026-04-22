@@ -1,7 +1,9 @@
+import { fetchWithExternalAuth } from '../utils/externalIdentity'
+
 const API_BASE = '/api/v1'
 
 export async function getConversations(userId = 'admin', limit = 50, offset = 0) {
-  const response = await fetch(
+  const response = await fetchWithExternalAuth(
     `${API_BASE}/conversations?user_id=${encodeURIComponent(userId)}&limit=${limit}&offset=${offset}`
   )
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
@@ -9,13 +11,13 @@ export async function getConversations(userId = 'admin', limit = 50, offset = 0)
 }
 
 export async function getConversation(id) {
-  const response = await fetch(`${API_BASE}/conversations/${id}`)
+  const response = await fetchWithExternalAuth(`${API_BASE}/conversations/${id}`)
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
   return response.json()
 }
 
 export async function createConversation(userId = 'admin') {
-  const response = await fetch(`${API_BASE}/conversations`, {
+  const response = await fetchWithExternalAuth(`${API_BASE}/conversations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId }),
@@ -25,7 +27,7 @@ export async function createConversation(userId = 'admin') {
 }
 
 export async function updateConversationTitle(id, title) {
-  const response = await fetch(`${API_BASE}/conversations/${id}/title`, {
+  const response = await fetchWithExternalAuth(`${API_BASE}/conversations/${id}/title`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -35,7 +37,7 @@ export async function updateConversationTitle(id, title) {
 }
 
 export async function deleteConversation(id) {
-  const response = await fetch(`${API_BASE}/conversations/${id}`, {
+  const response = await fetchWithExternalAuth(`${API_BASE}/conversations/${id}`, {
     method: 'DELETE',
   })
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)

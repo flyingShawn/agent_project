@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agent_backend.api.external_identity import ExternalIdentity, require_external_identity
 from agent_backend.db.chat_history import get_session
 from agent_backend.db.models import Conversation, Message
 
@@ -103,20 +104,20 @@ class DeleteResponse(BaseModel):
 
 @router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
-    user_id: str = "admin",
+    current_user: ExternalIdentity = Depends(require_external_identity),
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_session),
 ):
     count_stmt = select(func.count()).select_from(Conversation).where(
-        Conversation.user_id == user_id,
+        Conversation.user_id == current_user.user_id,
         Conversation.is_deleted == 0,
     )
     total = (await db.execute(count_stmt)).scalar() or 0
 
     stmt = (
         select(Conversation)
-        .where(Conversation.user_id == user_id, Conversation.is_deleted == 0)
+        .where(Conversation.user_id == current_user.user_id, Conversation.is_deleted == 0)
         .order_by(Conversation.updated_at.desc())
         .limit(limit)
         .offset(offset)
@@ -142,10 +143,12 @@ async def list_conversations(
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
 async def get_conversation(
     conversation_id: str,
+    current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),
 ):
     stmt = select(Conversation).where(
         Conversation.id == conversation_id,
+        Conversation.user_id == current_user.user_id,
         Conversation.is_deleted == 0,
     )
     result = await db.execute(stmt)
@@ -184,13 +187,14 @@ async def get_conversation(
 @router.post("/conversations", response_model=ConversationCreateResponse)
 async def create_conversation(
     req: ConversationCreateRequest,
+    current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),
 ):
     now = time.time()
     conv = Conversation(
         id=str(uuid.uuid4()),
         title="新对话",
-        user_id=req.user_id,
+        user_id=current_user.user_id,
         created_at=now,
         updated_at=now,
         is_deleted=0,
@@ -211,10 +215,12 @@ async def create_conversation(
 async def update_conversation_title(
     conversation_id: str,
     req: TitleUpdateRequest,
+    current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),
 ):
     stmt = select(Conversation).where(
         Conversation.id == conversation_id,
+        Conversation.user_id == current_user.user_id,
         Conversation.is_deleted == 0,
     )
     result = await db.execute(stmt)
@@ -233,10 +239,12 @@ async def update_conversation_title(
 @router.delete("/conversations/{conversation_id}", response_model=DeleteResponse)
 async def delete_conversation(
     conversation_id: str,
+    current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),
 ):
     stmt = select(Conversation).where(
         Conversation.id == conversation_id,
+        Conversation.user_id == current_user.user_id,
         Conversation.is_deleted == 0,
     )
     result = await db.execute(stmt)

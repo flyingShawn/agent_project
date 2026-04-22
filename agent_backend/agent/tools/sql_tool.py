@@ -187,6 +187,7 @@ def _log_sql_samples(sql_samples: list | None) -> None:
         logger.info("\n[sql_query] 【SQL样本】未命中，将回退到Schema信息直接生成SQL")
         return
 
+    log_score_details = get_sql_log_full_prompt()
     logger.info(f"\n[sql_query] 【SQL样本】命中 {len(sql_samples)} 个")
     for index, sample in enumerate(sql_samples, start=1):
         source = sample.heading or sample.source_path or "unknown"
@@ -195,16 +196,32 @@ def _log_sql_samples(sql_samples: list | None) -> None:
             chunk_index = sample.metadata.get("chunk_index", "")
         has_sql_block = "是" if "```sql" in sample.text.lower() else "否"
         text_len = len(sample.text or "")
-        logger.info(
-            "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | 摘要=%s",
-            index,
-            source,
-            chunk_index if chunk_index != "" else "-",
-            text_len,
-            has_sql_block,
-            sample.score,
-            _summarize_sample_text(sample.text),
-        )
+        if log_score_details:
+            logger.info(
+                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | raw_vector=%.4f | vector_norm=%.4f | bm25_raw=%.4f | bm25_norm=%.4f | 摘要=%s",
+                index,
+                source,
+                chunk_index if chunk_index != "" else "-",
+                text_len,
+                has_sql_block,
+                sample.score,
+                sample.raw_vector_score,
+                sample.vector_score_norm,
+                sample.raw_bm25_score,
+                sample.bm25_score_norm,
+                _summarize_sample_text(sample.text),
+            )
+        else:
+            logger.info(
+                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | 摘要=%s",
+                index,
+                source,
+                chunk_index if chunk_index != "" else "-",
+                text_len,
+                has_sql_block,
+                sample.score,
+                _summarize_sample_text(sample.text),
+            )
 
 
 def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:

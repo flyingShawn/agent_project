@@ -225,93 +225,96 @@ def ingest_directory(
         collection=collection,
         dim=dim,
     )
-    if mode == "full":
-        store.reset_collection()
-    else:
-        store.ensure_collection()
+    try:
+        if mode == "full":
+            store.reset_collection()
+        else:
+            store.ensure_collection()
 
-    files = _collect_files(docs_dir, settings.supported_extensions)
-    result.files_scanned = len(files)
-    logger.info(f"\n扫描到 {len(files)} 个文件 (目录: {docs_dir})")
+        files = _collect_files(docs_dir, settings.supported_extensions)
+        result.files_scanned = len(files)
+        logger.info(f"\n扫描到 {len(files)} 个文件 (目录: {docs_dir})")
 
-    for fp in files:
-        fp_str = str(fp)
+        for fp in files:
+            fp_str = str(fp)
 
-        if mode == "incremental" and not state_store.is_changed(fp_str):
-            logger.info(f"\n跳过未变更文件: {fp.name}")
-            result.files_skipped += 1
-            continue
+            if mode == "incremental" and not state_store.is_changed(fp_str):
+                logger.info(f"\n跳过未变更文件: {fp.name}")
+                result.files_skipped += 1
+                continue
 
-        logger.info(f"\n处理文件: {fp.name}")
-        markdown = _parse_file(fp)
-        if not markdown.strip():
-            logger.warning(f"\n文件内容为空，跳过: {fp.name}")
-            result.files_skipped += 1
-            continue
+            logger.info(f"\n处理文件: {fp.name}")
+            markdown = _parse_file(fp)
+            if not markdown.strip():
+                logger.warning(f"\n文件内容为空，跳过: {fp.name}")
+                result.files_skipped += 1
+                continue
 
-        chunks = chunk_markdown(
-            markdown,
-            max_chars=settings.chunk_max_chars,
-            overlap=settings.chunk_overlap,
-            source_path=fp.name,
+            chunks = chunk_markdown(
+                markdown,
+                max_chars=settings.chunk_max_chars,
+                overlap=settings.chunk_overlap,
+                source_path=fp.name,
+            )
+
+            if kb_type == "sql":
+                before_count = len(chunks)
+                chunks = [chunk for chunk in chunks if _is_valid_sql_chunk(chunk)]
+                if len(chunks) < before_count:
+                    logger.info(f"\nSQL样本块过滤: {fp.name} {before_count} -> {len(chunks)}")
+
+            if not chunks:
+                result.files_skipped += 1
+                continue
+
+            texts = [c.text for c in chunks]
+            try:
+                vectors = embedding_model.embed(texts)
+            except Exception as e:
+                err = f"向量化失败 {fp.name}: {e}"
+                logger.error(f"\n{err}")
+                result.errors.append(err)
+                continue
+
+            points = []
+            for chunk, vector in zip(chunks, vectors):
+                point_id = _stable_id(fp_str, chunk.chunk_index)
+                points.append(
+                    {
+                        "id": point_id,
+                        "vector": vector,
+                        "payload": {
+                            "text": chunk.text,
+                            "source_path": fp.name,
+                            "heading": chunk.heading,
+                            "chunk_index": chunk.chunk_index,
+                        },
+                    }
+                )
+
+            try:
+                store.upsert(points)
+                result.chunks_upserted += len(points)
+                result.files_processed += 1
+                state_store.update(fp_str)
+                logger.info(
+                    f"\n写入完成: {fp.name} -> {len(points)} 个向量点"
+                )
+            except Exception as e:
+                err = f"Qdrant写入失败 {fp.name}: {e}"
+                logger.error(f"\n{err}")
+                result.errors.append(err)
+
+        state_store.persist()
+        logger.info(
+            f"\n同步完成: 扫描={result.files_scanned}, "
+            f"跳过={result.files_skipped}, "
+            f"处理={result.files_processed}, "
+            f"写入={result.chunks_upserted}"
         )
-
-        if kb_type == "sql":
-            before_count = len(chunks)
-            chunks = [chunk for chunk in chunks if _is_valid_sql_chunk(chunk)]
-            if len(chunks) < before_count:
-                logger.info(f"\nSQL样本块过滤: {fp.name} {before_count} -> {len(chunks)}")
-
-        if not chunks:
-            result.files_skipped += 1
-            continue
-
-        texts = [c.text for c in chunks]
-        try:
-            vectors = embedding_model.embed(texts)
-        except Exception as e:
-            err = f"向量化失败 {fp.name}: {e}"
-            logger.error(f"\n{err}")
-            result.errors.append(err)
-            continue
-
-        points = []
-        for chunk, vector in zip(chunks, vectors):
-            point_id = _stable_id(fp_str, chunk.chunk_index)
-            points.append(
-                {
-                    "id": point_id,
-                    "vector": vector,
-                    "payload": {
-                        "text": chunk.text,
-                        "source_path": fp.name,
-                        "heading": chunk.heading,
-                        "chunk_index": chunk.chunk_index,
-                    },
-                }
-            )
-
-        try:
-            store.upsert(points)
-            result.chunks_upserted += len(points)
-            result.files_processed += 1
-            state_store.update(fp_str)
-            logger.info(
-                f"\n写入完成: {fp.name} -> {len(points)} 个向量点"
-            )
-        except Exception as e:
-            err = f"Qdrant写入失败 {fp.name}: {e}"
-            logger.error(f"\n{err}")
-            result.errors.append(err)
-
-    state_store.persist()
-    logger.info(
-        f"\n同步完成: 扫描={result.files_scanned}, "
-        f"跳过={result.files_skipped}, "
-        f"处理={result.files_processed}, "
-        f"写入={result.chunks_upserted}"
-    )
-    if result.errors:
-        logger.warning(f"\n错误数: {len(result.errors)}")
+        if result.errors:
+            logger.warning(f"\n错误数: {len(result.errors)}")
+    finally:
+        store.close()
 
     return result

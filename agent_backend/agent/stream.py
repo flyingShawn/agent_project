@@ -98,7 +98,7 @@ async def stream_graph_response(
     initial_state: dict,
 ) -> AsyncIterator[str]:
     """把 Graph 事件流转换成 SSE 输出，并在结束时补发附加结果。"""
-    logger.info(f"\n[stream] 开始流式输出 (astream_events v2), 超时: {AGENT_TIMEOUT_SECONDS}秒")
+    logger.info(f"\n[stream] 开始流式输出 (astream_events v2), 超时阈值: {AGENT_TIMEOUT_SECONDS}秒")
 
     references: list[str] = []
     chart_configs: list[dict] = []

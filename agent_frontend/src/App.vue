@@ -5,12 +5,18 @@ import OpsReportInbox from './components/OpsReportInbox.vue'
 import Sidebar from './components/Sidebar.vue'
 import config from './config'
 import { useConversations } from './composables/useConversations'
+import {
+  getExternalDisplayName,
+  getExternalUserId,
+  readExternalIdentityFromLocation,
+  setExternalIdentity,
+} from './utils/externalIdentity'
 
-const userName = ref('admin')
+const currentUserId = ref('admin')
+const currentUserLabel = ref('admin')
 const showSidebar = ref(false)
 const showOpsInbox = ref(false)
 const unreadOpsCount = ref(0)
-const sidebarRef = ref(null)
 const chatBoxRef = ref(null)
 
 const {
@@ -51,11 +57,11 @@ function handleDeleteConversation() {
 }
 
 function handleConversationCreated() {
-  loadConversations(userName.value)
+  loadConversations(currentUserId.value)
 }
 
 function handleConversationUpdated() {
-  loadConversations(userName.value)
+  loadConversations(currentUserId.value)
 }
 
 function handleOpsUnreadChange(count) {
@@ -63,9 +69,10 @@ function handleOpsUnreadChange(count) {
 }
 
 onMounted(async () => {
-  const urlParams = new URLSearchParams(window.location.search)
-  userName.value = urlParams.get('user') || urlParams.get('lognum') || 'admin'
-  await loadConversations(userName.value)
+  const externalIdentity = setExternalIdentity(readExternalIdentityFromLocation())
+  currentUserId.value = externalIdentity?.userId || getExternalUserId()
+  currentUserLabel.value = externalIdentity?.displayName || getExternalDisplayName()
+  await loadConversations(currentUserId.value)
   if (conversations.value.length > 0) {
     showSidebar.value = true
   }
@@ -79,8 +86,6 @@ onMounted(async () => {
       :class="showSidebar ? 'w-72' : 'w-0 border-r-0'"
     >
       <Sidebar
-        ref="sidebarRef"
-        @close="toggleSidebar"
         @new-conversation="handleNewConversation"
         @switch-conversation="handleSwitchConversation"
         @delete-conversation="handleDeleteConversation"
@@ -92,14 +97,15 @@ onMounted(async () => {
         <div class="flex items-center">
           <button
             @click="toggleSidebar"
-            class="p-2 -ml-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
-            :title="showSidebar ? '收起侧栏' : '历史会话'"
+            class="rounded-xl p-2 transition-colors cursor-pointer"
+            :class="showSidebar
+              ? 'bg-surface-muted text-text-primary'
+              : 'text-text-tertiary hover:text-text-primary hover:bg-surface-hover'"
+            :title="showSidebar ? '收起历史侧栏' : '展开历史侧栏'"
           >
-            <svg v-if="!showSidebar" class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            <svg v-else class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            <svg class="h-[24px] w-[24px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4.25" y="5" width="15.5" height="14" rx="2.75" stroke-width="1.5" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 5.75v12.5" />
             </svg>
           </button>
         </div>
@@ -126,7 +132,7 @@ onMounted(async () => {
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span class="text-[11px] font-medium">{{ userName }}</span>
+            <span class="text-[11px] font-medium">{{ currentUserLabel }}</span>
           </div>
         </div>
       </header>
@@ -135,7 +141,7 @@ onMounted(async () => {
         <div class="w-full max-w-chat h-full">
           <ChatBox
             ref="chatBoxRef"
-            :user-name="userName"
+            :user-id="currentUserId"
             @conversation-created="handleConversationCreated"
             @conversation-updated="handleConversationUpdated"
           />

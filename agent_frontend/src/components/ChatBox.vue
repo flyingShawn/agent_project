@@ -5,9 +5,10 @@ import ImageUploader from './ImageUploader.vue'
 import { sendChatMessage, abortCurrentRequest } from '../api/chat'
 import { useConversations } from '../composables/useConversations'
 import config from '../config'
+import { appendExternalAuthParams, fetchWithExternalAuth } from '../utils/externalIdentity'
 
 const props = defineProps({
-  userName: {
+  userId: {
     type: String,
     default: 'admin',
   },
@@ -38,7 +39,7 @@ const handleNewSession = () => {
 
 const loadConversation = (conversationData) => {
   if (currentSessionId.value) {
-    fetch('/api/v1/chat/end', {
+    fetchWithExternalAuth('/api/v1/chat/end', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: currentSessionId.value }),
@@ -135,7 +136,7 @@ const autoResize = () => {
 const resetSession = async () => {
   if (currentSessionId.value) {
     try {
-      await fetch('/api/v1/chat/end', {
+      await fetchWithExternalAuth('/api/v1/chat/end', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId.value }),
@@ -155,17 +156,18 @@ const stopGeneration = () => {
 
 const buildExportLinkText = (data) => {
   if (!data?.download_url || !data?.filename) return ''
+  const downloadUrl = appendExternalAuthParams(data.download_url)
 
   if (data.overflow_capped) {
     const exportCount = Number(data.export_row_count || 5000)
-    return `\n\n数据量过大，当前已导出前${exportCount}条，详情可查看具体表格：[${data.filename}](${data.download_url})`
+    return `\n\n数据量过大，当前已导出前${exportCount}条，详情可查看具体表格：[${data.filename}](${downloadUrl})`
   }
 
   if (Number(data.row_count || 0) > 20) {
-    return `\n\n当前查询数量过多，详情可查看具体表格：[${data.filename}](${data.download_url})`
+    return `\n\n当前查询数量过多，详情可查看具体表格：[${data.filename}](${downloadUrl})`
   }
 
-  return `\n\n以下是表格数据，可进行下载：[${data.filename}](${data.download_url})`
+  return `\n\n以下是表格数据，可进行下载：[${data.filename}](${downloadUrl})`
 }
 
 const sendMessage = async (overrideText) => {
@@ -219,7 +221,7 @@ const sendMessage = async (overrideText) => {
       question: text,
       history: [],
       images_base64: imagesToSend.map((img) => img.base64),
-      lognum: props.userName,
+      lognum: props.userId,
       mode: 'auto',
       session_id: currentSessionId.value,
       conversation_id: currentConversationId.value,
@@ -305,7 +307,7 @@ const handleKeydown = (event) => {
 onUnmounted(() => {
   pendingImages.value = []
   if (currentSessionId.value) {
-    fetch('/api/v1/chat/end', {
+    fetchWithExternalAuth('/api/v1/chat/end', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

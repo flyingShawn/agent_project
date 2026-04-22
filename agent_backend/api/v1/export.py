@@ -41,7 +41,9 @@ _EXPORT_DIR = os.path.join(tempfile.gettempdir(), "desk_agent_exports")
 
 
 @router.get("/export/download/{filename}")
-def download_export(filename: str) -> FileResponse:
+def download_export(
+    filename: str,
+) -> FileResponse:
     """
     下载导出文件。
 

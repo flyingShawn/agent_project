@@ -126,6 +126,10 @@ class MiscSettings(BaseSettings):
     tavily_api_key: str = ""
     web_search_max_results: int = 5
     sql_log_full_prompt: bool = True
+    external_entry_secret: str = ""
+    external_entry_ttl_seconds: int = 28800
+    third_party_chat_history_base_url: str = ""
+    third_party_chat_history_timeout_seconds: float = 3
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

@@ -1,3 +1,5 @@
+import { fetchWithExternalAuth } from '../utils/externalIdentity'
+
 const API_BASE = '/api/v1'
 
 let currentAbortController = null
@@ -23,7 +25,7 @@ export async function sendChatMessage({
   currentAbortController = controller
 
   try {
-    const response = await fetch(`${API_BASE}/chat`, {
+    const response = await fetchWithExternalAuth(`${API_BASE}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

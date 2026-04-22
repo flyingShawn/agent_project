@@ -28,6 +28,7 @@ services:
       # RAG文档知识库配置
       - RAG_DOCS_DIR=/data/docs
       - RAG_QDRANT_URL=http://qdrant:6333
+      - RAG_QDRANT_PATH=
       - RAG_QDRANT_COLLECTION=${RAG_QDRANT_COLLECTION:-desk_agent_docs}
       - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
       # RAG_HYBRID_ALPHA 当前代码未读取，文档检索未使用混合权重
@@ -69,8 +70,6 @@ services:
       - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/sql:ro
       # 挂载配置文件目录（schema_metadata.yaml等）
       - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
-      # 持久化向量数据库
-      - qdrant_data:/app/.qdrant_local
       # 持久化聊天历史数据库
       - chat_data:/app/data
     depends_on:
