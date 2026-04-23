@@ -14,6 +14,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - TZ=${TZ:-Asia/Shanghai}
       # 智能体名称
       - AGENT_NAME=${AGENT_NAME:-desk-agent}
 
@@ -102,6 +103,7 @@ services:
     ports:
       - "81:80"
     environment:
+      - TZ=${TZ:-Asia/Shanghai}
       - VITE_APP_NAME=${VITE_APP_NAME:-阳途智能助手}
       - VITE_APP_SUBTITLE=${VITE_APP_SUBTITLE:-阳途智能助手为您服务}
       - VITE_APP_WELCOME_TEXT=${VITE_APP_WELCOME_TEXT:-有什么我能帮您的呢？}

@@ -10,7 +10,8 @@ WORKDIR /app
 # PYTHONDONTWRITEBYTECODE: 防止Python生成.pyc文件
 # PYTHONUNBUFFERED: 让Python日志直接输出到控制台
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    TZ=Asia/Shanghai
 
 # 彻底清理并更换为清华Debian镜像源
 # RUN rm -f /etc/apt/sources.list && \
@@ -25,6 +26,9 @@ RUN rm -rf /etc/apt/sources.list.d/* && \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
