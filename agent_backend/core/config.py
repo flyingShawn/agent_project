@@ -44,7 +44,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import yaml
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
@@ -53,6 +53,19 @@ from agent_backend.core.schema_models import SchemaRoot
 logger = logging.getLogger(__name__)
 
 _env_loaded = False
+
+
+def _apply_dotenv_values(env_path: Path) -> list[str]:
+    """将 .env 中的键值写入进程环境，并在 Windows 下跳过会扰乱本地时区的 TZ。"""
+    skipped_keys: list[str] = []
+    for key, value in dotenv_values(env_path).items():
+        if value is None or key in os.environ:
+            continue
+        if os.name == "nt" and key.upper() == "TZ":
+            skipped_keys.append(key)
+            continue
+        os.environ[key] = value
+    return skipped_keys
 
 
 def load_env_file() -> None:
@@ -65,7 +78,7 @@ def load_env_file() -> None:
     加载逻辑：
         1. 检查_env_loaded标志，已加载则直接返回
         2. 定位项目根目录的.env文件（相对于本文件的上上上级目录）
-        3. 若.env文件存在则调用load_dotenv加载
+        3. 若.env文件存在则按当前平台规则写入进程环境
         4. 设置_env_loaded=True标记已加载
     """
     global _env_loaded
@@ -73,7 +86,9 @@ def load_env_file() -> None:
         return
     env_path = Path(__file__).parent.parent.parent / ".env"
     if env_path.exists():
-        load_dotenv(env_path)
+        skipped_keys = _apply_dotenv_values(env_path)
+        if skipped_keys:
+            logger.info("  Windows 跳过 TZ，避免本地时区错乱")
         logger.info(f"\n环境变量已加载: {env_path}")
     _env_loaded = True
 
