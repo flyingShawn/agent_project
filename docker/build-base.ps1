@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "  构建后端基础镜像 (agent-backend-base)" -ForegroundColor Cyan
