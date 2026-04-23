@@ -51,6 +51,8 @@ export async function sendChatMessage({
     let buffer = ''
 
     const processLines = (lines, currentEvent, currentData) => {
+      let shouldStop = false
+
       for (const line of lines) {
         if (line.startsWith('event: ')) {
           currentEvent = line.slice(7).trim()
@@ -68,15 +70,22 @@ export async function sendChatMessage({
           } catch (e) {
             onEvent(currentEvent, currentData)
           }
+          if (currentEvent === 'done' || currentEvent === 'error') {
+            shouldStop = true
+          }
           currentEvent = null
           currentData = null
+          if (shouldStop) {
+            break
+          }
         }
       }
-      return { currentEvent, currentData }
+      return { currentEvent, currentData, shouldStop }
     }
 
     let pendingEvent = null
     let pendingData = null
+    let stoppedByTerminalEvent = false
 
     while (true) {
       const { done, value } = await reader.read()
@@ -91,11 +100,26 @@ export async function sendChatMessage({
       const result = processLines(lines, pendingEvent, pendingData)
       pendingEvent = result.currentEvent
       pendingData = result.currentData
+      if (result.shouldStop) {
+        stoppedByTerminalEvent = true
+        break
+      }
     }
 
-    if (buffer.trim() || pendingEvent) {
+    if (!stoppedByTerminalEvent && (buffer.trim() || pendingEvent)) {
       const finalLines = buffer.split('\n')
-      processLines(finalLines, pendingEvent, pendingData)
+      const result = processLines(finalLines, pendingEvent, pendingData)
+      if (result.shouldStop) {
+        stoppedByTerminalEvent = true
+      }
+    }
+
+    if (stoppedByTerminalEvent) {
+      try {
+        await reader.cancel()
+      } catch (cancelError) {
+        console.warn('[Chat API] SSE reader cancel failed:', cancelError)
+      }
     }
   } catch (error) {
     if (error.name === 'AbortError') {
