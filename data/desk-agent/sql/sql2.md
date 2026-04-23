@@ -1,52 +1,48 @@
 SQL查询样本库
 
 本文件包含桌面管理系统的常见SQL查询样本，用于RAG检索增强SQL生成。
+---
+#### 查询客户端操作系统分类与数量（含 Win7/Win10/XP/麒麟/统信映射）
 
-#### 查询云桌面系统模板操作日志
+适用场景：统计当前终端 OS 分布，`p_windowsversion`字段表示具体操作系统， 包含 `windows 7` 包含 `windows 7`，`Windows 10` 包含 `windows 10`,`Windows xp`包含 `windows xp`， `麒麟(Kylin)`包含 `kylin`，`统信(UOS)`包含 `uos 、tongxin、统信`，安卓新版本包含`android`
 
-适用场景：管理端「云桌面系统日志」中查询模板制作、安装、升级、VDI 等操作记录；可按时间、部门、模板类型筛选。`cmt` 为管理员相关说明或标识。
-
-关键表：b_yunsystemlog, s_machine, s_group
+关键表：s_Machine, a_clientpara
 
 ```sql
-SELECT
-    a.id AS "记录ID",
-    b.name_c AS "设备名称",
-    b.ip_c AS "IP地址",
-    a.cmt AS "管理员备注",
-    c.groupname AS "部门名称",
-    a.content AS "事件内容",
-    CASE a.templatetype
-        WHEN 0 THEN '安装模板'
-        WHEN 1 THEN '制作模板'
-        WHEN 2 THEN '升级模板'
-        WHEN 3 THEN '更新模板'
-        WHEN 4 THEN '还原模式'
-        WHEN 5 THEN '删除模板'
-        WHEN 6 THEN '复制模板'
-        WHEN 7 THEN '修改模板'
-        WHEN 8 THEN 'VDI开机选项'
-    END AS "操作类型",
-    a.addtime AS "操作时间"
-FROM
-    b_yunsystemlog a
-    LEFT JOIN s_machine b ON a.mtid = b.id
-    LEFT JOIN s_group c ON c.id = b.groupid
-ORDER BY
-    a.addtime DESC
+WITH OS_CLASSIFY AS (
+    SELECT
+        m.ID,
+        CASE
+            WHEN LOWER(p.ParaValue) LIKE '%windows xp%' THEN 'Windows XP'
+            WHEN LOWER(p.ParaValue) LIKE '%windows 7%' THEN 'Windows 7'
+            WHEN LOWER(p.ParaValue) LIKE '%windows 10%' THEN 'Windows 10'
+            WHEN LOWER(p.ParaValue) LIKE '%windows 11%' THEN 'Windows 11'
+            WHEN LOWER(p.ParaValue) LIKE '%kylin%' THEN '麒麟(Kylin)'
+            WHEN LOWER(p.ParaValue) LIKE '%uos%' OR LOWER(p.ParaValue) LIKE '%tongxin%' OR LOWER(p.ParaValue) LIKE '%统信%' THEN '统信(UOS)'
+            WHEN LOWER(p.ParaValue) LIKE '%harmonyos%' THEN '鸿蒙'
+						WHEN LOWER(p.ParaValue) LIKE '%android%' THEN '安卓'
+            WHEN p.ParaValue is null THEN '未知'
+            ELSE p.ParaValue
+        END AS 操作系统分类
+    FROM s_Machine m
+    LEFT JOIN a_clientpara p ON p.MtID = m.ID AND p.ParaName = 'p_windowsversion'
+)
+SELECT 操作系统分类, COUNT(DISTINCT ID) AS 终端数量
+FROM OS_CLASSIFY
+GROUP BY 操作系统分类
+ORDER BY COUNT(DISTINCT ID) DESC;
 ```
 
 ---
 
-#### 查询上网/浏览器访问日志（单库）
+#### 查询上网/浏览器访问日志
 
-适用场景：审计中「上网记录」类查询。若启用按日分库（`peerlan5_yyyyMMdd`），程序会将多日 `a_netdb` 做 `union all`，此处为未分库时的通用形态。
+适用场景：审计中「上网记录」类查询。
 
 关键表：a_netdb, s_machine, s_user, s_group
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     b.name_c AS "设备名称",
     b.ip_c AS "IP地址",
     b.mac_c AS "MAC地址",
@@ -82,7 +78,6 @@ ORDER BY
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     a.username AS "登录账号",
     d.username AS "用户姓名",
     c.groupname AS "部门名称",
@@ -97,31 +92,6 @@ FROM
     LEFT OUTER JOIN s_user d ON d.usernum = a.username
 ```
 
----
-
-#### 查询 DLP 登录日志
-
-适用场景：数据防泄漏（DLP）客户端登录审计。
-
-关键表：ydlploginlog, s_machine, s_user, s_group
-
-```sql
-SELECT
-    a.id AS "记录ID",
-    c.username AS "用户名",
-    d.groupname AS "部门名称",
-    b.name_c AS "设备名称",
-    b.ip_c AS "IP地址",
-    a.logintime AS "登录时间"
-FROM
-    ydlploginlog a
-    LEFT OUTER JOIN s_machine b ON a.equipid = b.id
-    LEFT OUTER JOIN s_user c ON c.id = a.userid
-    LEFT OUTER JOIN s_group d ON b.groupid = d.id
-```
-
----
-
 #### 查询合规检测日志
 
 适用场景：客户端合规检查结果（是否合规及说明）。
@@ -130,7 +100,6 @@ FROM
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     a.logonuser AS "登录用户",
     c.username AS "用户名",
     d.groupname AS "部门名称",
@@ -156,7 +125,6 @@ FROM
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     c.username AS "用户名",
     d.groupname AS "部门名称",
     b.name_c AS "设备名称",
@@ -180,7 +148,6 @@ FROM
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     a.logonuser AS "登录用户",
     c.username AS "用户名",
     d.groupname AS "部门名称",
@@ -200,15 +167,14 @@ FROM
 
 ---
 
-#### 查询系统安全告警日志（全量部门，管理员视角）
+#### 查询系统安全告警日志
 
-适用场景：终端触发的系统安全类告警。非超级管理员时程序会按 `rolegroupmap_alert` 与管理员角色过滤部门，以下为不限定管理员的通用骨架。
+适用场景：终端触发的系统安全类告警。
 
 关键表：alertsystemdb, s_machine, s_group
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     d.groupname AS "部门名称",
     b.name_c AS "设备名称",
     b.ip_c AS "IP地址",
@@ -230,7 +196,6 @@ FROM
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     c.username AS "用户名",
     b.name_c AS "设备名称",
     b.ip_c AS "IP地址",
@@ -246,39 +211,6 @@ FROM
 
 ---
 
-#### 查询 UKEY 解锁日志
-
-适用场景：UKEY 解锁、远程解锁、OA 登录等方式记录。
-
-关键表：b_ukeyunlocklog, s_machine, s_user, s_group
-
-```sql
-SELECT
-    a.id AS "记录ID",
-    d.groupname AS "部门名称",
-    a.logonuser AS "登录用户",
-    c.username AS "用户名",
-    b.name_c AS "设备名称",
-    b.ip_c AS "IP地址",
-    a.logontime AS "解锁时间",
-    CASE a.logontype
-        WHEN 0 THEN 'UKEY解锁'
-        WHEN 1 THEN '远程解锁'
-        WHEN 2 THEN '超级管理员解锁'
-        WHEN 3 THEN 'OA登录'
-    END AS "解锁类型",
-    a.ukeyid AS "UKeyID",
-    a.yuid AS "YUID",
-    a.oaid AS "OAID"
-FROM
-    b_ukeyunlocklog a
-    LEFT OUTER JOIN s_machine b ON a.mtid = b.id
-    LEFT OUTER JOIN s_user c ON c.id = b.clientid
-    LEFT OUTER JOIN s_group d ON d.id = b.groupid
-```
-
----
-
 #### 查询远程开机操作日志
 
 适用场景：远程开机任务对客户端执行记录。
@@ -287,7 +219,6 @@ FROM
 
 ```sql
 SELECT
-    a.id AS "记录ID",
     c.username AS "用户名",
     b.name_c AS "设备名称",
     b.ip_c AS "IP地址",
@@ -367,7 +298,7 @@ ORDER BY
 
 #### 查询终端已安装杀毒软件明细
 
-适用场景：按部门、机器查看客户端上报的已安装软件列表；杀毒软件名称在界面中可能对 `OfficeScan` 等做展示别名（如 TrustOne）。`IsInstall = 1` 表示已安装。
+适用场景：按部门、机器查看客户端上报的已安装软件列表；
 
 关键表：a_sdinstallinfo, s_Machine, s_User, s_Group
 
@@ -401,7 +332,7 @@ WHERE
 
 #### 查询程序运行/软件进程审计日志
 
-适用场景：审计「程序日志」——进程路径、打开/关闭时间、产品名、厂商及是否策略禁止运行等。大数据量且按日分库时，表 `a_softdb` 可能位于 `peerlan5_yyyyMMdd` 库并由程序 `UNION ALL`。
+适用场景：审计「程序日志」——进程路径、打开/关闭时间、产品名、厂商及是否策略禁止运行等。
 
 关键表：a_softdb, s_Machine, s_User, s_Group
 
@@ -497,7 +428,7 @@ ORDER BY
 
 ---
 
-#### 查询系统安全报警（首页数据源）
+#### 查询系统安全报警
 
 适用场景：客户端上报的系统安全类告警。部分界面与首页汇总均使用 `alertsystemdb`（以实际库表命名为准）。
 
@@ -517,7 +448,7 @@ ORDER BY
 
 ---
 
-#### 查询程序运行类报警（alertsoftdb）
+#### 查询程序运行类报警
 
 适用场景：与策略不匹配的程序运行告警（与审计库 `a_softdb` 不同，此为报警汇总表）。
 
@@ -537,7 +468,7 @@ ORDER BY
 
 ---
 
-#### 查询违规上网报警（AlertNetDB）
+#### 查询违规上网报警
 
 适用场景：访问违规网址触发的告警。
 
@@ -557,7 +488,7 @@ ORDER BY
 
 ---
 
-#### 查询文件外发类报警（fileoperatedb）
+#### 查询文件外发类报警
 
 适用场景：浏览器/USB/IM/网盘等渠道外发文件的告警（`nType` 含义与客户端上报一致）。
 
@@ -591,29 +522,9 @@ ORDER BY
 
 ---
 
-####  *查询自动分配部门前的设备基础数据*
-
-适用场景：`dllmanage/MachineAutoGroup.cpp` 中“立即生效自动分组”前读取全量设备用于匹配 IP 段/机器名规则并改部门。
-
-关键表：s_Machine
-
-```sql
-SELECT
-    IP_C AS "IP地址",
-    Name_C AS "设备名称",
-    ID AS "设备ID",
-    mtcmt AS "设备备注",
-    mtpingpai AS "设备品牌",
-    GroupID AS "当前部门ID"
-FROM
-    s_Machine
-```
-
----
-
 #### 查询部门下用户列表（含可扩展注册字段）
 
-适用场景：`dllmanage/DepUserDlg.cpp` 用户管理列表查询。用于按部门展示用户账号、工号、联系方式、身份信息和 para1~para6 扩展字段。
+适用场景：用户管理列表查询。用于按部门展示用户账号、工号、联系方式、身份信息。
 
 关键表：s_User, s_Group
 
@@ -677,92 +588,10 @@ ORDER BY
 
 ---
 
-#### 按出厂日期筛查较老旧硬件资产（主板/整机生产信息偏旧）
 
-适用场景：硬件资产条件查询中按「出厂日期」判断老旧设备；主板生产日期早于「当前日期往前推 N 年」的阈值。`:years` 为年限数字（如 `5` 表示机龄约 5 年及以上），默认为5。仅取当前有效硬件快照 `IsNew = 1`。
+#### 按安装软件名统计终端台数
 
-关键表：A_ClientHardInfo2, s_Machine, s_User, s_Group
-
-MySQL：
-
-```sql
-SELECT
-    a.MtID AS "设备ID",
-    b.Name_C AS "计算机名",
-    d.DepPath AS "所属部门",
-    a.ManufactureDate AS "出厂日期",
-    a.Board AS "主板",
-    a.biosinfo AS "BIOS信息",
-    b.IP_C AS "IP地址"
-FROM
-    A_ClientHardInfo2 a
-    INNER JOIN s_Machine b ON a.MtID = b.ID
-    LEFT OUTER JOIN s_User c ON c.ID = b.ClientID
-    LEFT OUTER JOIN s_Group d ON d.ID = b.GroupID
-WHERE
-    a.IsNew = 1
-    AND a.ManufactureDate IS NOT NULL
-    AND a.ManufactureDate <= DATE_SUB(CURDATE(), INTERVAL :years YEAR)
-ORDER BY
-    a.ManufactureDate ASC,
-    a.MtID ASC
-```
-
-SQL Server：
-
-```sql
-SELECT
-    a.MtID AS "设备ID",
-    b.Name_C AS "计算机名",
-    d.DepPath AS "所属部门",
-    a.ManufactureDate AS "出厂日期",
-    a.Board AS "主板",
-    a.biosinfo AS "BIOS信息",
-    b.IP_C AS "IP地址"
-FROM
-    A_ClientHardInfo2 a
-    INNER JOIN s_Machine b ON a.MtID = b.ID
-    LEFT OUTER JOIN s_User c ON c.ID = b.ClientID
-    LEFT OUTER JOIN s_Group d ON d.ID = b.GroupID
-WHERE
-    a.IsNew = 1
-    AND a.ManufactureDate IS NOT NULL
-    AND a.ManufactureDate <= DATEADD(YEAR, -:years, CAST(GETDATE() AS DATE))
-ORDER BY
-    a.ManufactureDate ASC,
-    a.MtID ASC
-```
-
----
-
-#### 查询在线终端空闲状态（实时）
-
-适用场景：左侧部门树刷新在线列表时读取客户端上报的空闲标志；与 `LeftTree.cpp::OnRefreshDep`、`MainWinTh.cpp` 中 `OnlineInfo` 查询一致。`nIsIdle` 非 0 一般表示客户端处于空闲（具体含义以产品版本为准）。
-
-关键表：onlineinfo, s_Machine
-
-```sql
-SELECT
-    a.MtID AS "设备ID",
-    b.Name_C AS "设备名称",
-    b.IP_C AS "IP地址",
-    b.Mac_C AS "MAC地址",
-    a.ID AS "在线记录ID",
-    b.MtCmt AS "机器备注",
-    b.GroupID AS "部门ID",
-    a.nIsIdle AS "是否空闲"
-FROM
-    onlineinfo a
-    INNER JOIN s_Machine b ON a.MtID = b.ID
-ORDER BY
-    b.Name_C ASC
-```
-
----
-
-#### 按安装软件名统计终端台数（a_installsoft，与「软件统计」页同源）
-
-适用场景：`SoftCount.cpp`「安装软件名称 / 终端安装台数」统计：基于注册表同步的 `a_installsoft`，按软件名聚合。可选按部门名、软件名关键字筛选（与界面下拉、关键字一致）。
+适用场景：可选按部门名、软件名关键字筛选。
 
 关键表：a_installsoft, s_Machine, s_Group
 
@@ -786,7 +615,7 @@ ORDER BY
 
 ---
 
-#### 查询指定终端已安装软件列表（a_installsoft）
+#### 查询指定终端已安装软件列表
 
 适用场景：远程管理「卸载软件」等界面按机器读取已安装软件及卸载命令
 
@@ -805,7 +634,7 @@ ORDER BY
 
 ---
 
-#### 查询软件安装变更日志（c_soft_installinfo）
+#### 查询软件安装变更日志
 
 适用场景：审计报表中「软件安装日志」
 

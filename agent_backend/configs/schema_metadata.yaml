@@ -156,7 +156,7 @@ tables:
         semantic_key: machine.comment
       - name: MtPingPai
         type: varchar(100)
-        comment: 设备类型/品牌（Linux/ios/mac/harmony 等）
+        comment: 设备类型/品牌（Linux/ios/mac/harmony,但并没有windows，windows只能用这个为空+MtCmt为空判断）
         semantic_key: machine.platform
       - name: MtGetDate
         type: datetime

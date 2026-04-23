@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TZ=Asia/Shanghai
+
+RUN rm -rf /etc/apt/sources.list.d/* && \
+    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ trixie main' > /etc/apt/sources.list && \
+    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ trixie-updates main' >> /etc/apt/sources.list && \
+    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ trixie-security main' >> /etc/apt/sources.list
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+
+ENV HF_ENDPOINT=https://hf-mirror.com
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-zh-v1.5')"
+
+RUN mkdir -p /data/docs /app/data

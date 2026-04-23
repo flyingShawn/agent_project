@@ -192,6 +192,14 @@ class SqlQueryInput(BaseModel):
             "不要传 SELECT * FROM ... 这样的SQL。"
         )
     )
+    need_export: bool = Field(
+        default=False,
+        description=(
+            "是否需要将查询结果导出为Excel文件。"
+            "当用户明确要求'表格'、'导出'或'下载'时设置为True。"
+            "默认为False，此时仅当查询结果超过20行时系统才会自动导出。"
+        )
+    )
 
 
 def _build_markdown_table(rows: list[dict]) -> str:
@@ -313,7 +321,7 @@ def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:
 
 
 @tool(args_schema=SqlQueryInput)
-def sql_query(question: str) -> str:
+def sql_query(question: str, need_export: bool = False) -> str:
     """
     查询桌面管理系统的数据库。
     当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员、
@@ -325,12 +333,14 @@ def sql_query(question: str) -> str:
 
     参数：
         question: 用户的自然语言问题，用于生成SQL查询，不是SQL语句
+        need_export: 是否需要导出为Excel。当用户明确要求'表格'、'导出'或'下载'时设为True。
+                     默认False，此时仅当查询结果超过20行才会自动导出。
 
     返回：
         str: JSON格式字符串，包含sql/rows/row_count/columns/data_table字段；
              校验失败时包含error/hint字段
     """
-    logger.info(f"\n[sql_query] 开始处理: {question}")
+    logger.info(f"\n[sql_query] 开始处理: {question} (need_export={need_export})")
 
     try:
         runtime = get_schema_runtime()
@@ -464,7 +474,7 @@ def sql_query(question: str) -> str:
             ),
         }
 
-        if len(exec_result) > 1 and columns:
+        if (need_export or len(exec_result) > PREVIEW_ROWS) and columns:
             try:
                 from agent_backend.agent.tools.export_tool import export_data
                 export_json = json.dumps(

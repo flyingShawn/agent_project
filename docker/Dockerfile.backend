@@ -1,65 +1,13 @@
-# 后端Dockerfile - 用于构建Python FastAPI应用镜像
+FROM agent-backend-base:latest
 
-# 使用Python 3.11作为基础镜像（稳定且性能好）
-FROM python:3.11-slim
-
-# 设置工作目录
 WORKDIR /app
 
-# 设置环境变量
-# PYTHONDONTWRITEBYTECODE: 防止Python生成.pyc文件
-# PYTHONUNBUFFERED: 让Python日志直接输出到控制台
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    TZ=Asia/Shanghai
-
-# 彻底清理并更换为清华Debian镜像源
-# RUN rm -f /etc/apt/sources.list && \
-RUN rm -rf /etc/apt/sources.list.d/* && \
-    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ trixie main' > /etc/apt/sources.list && \
-    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ trixie-updates main' >> /etc/apt/sources.list && \
-    echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ trixie-security main' >> /etc/apt/sources.list
-
-# 安装系统依赖
-# build-essential: 编译Python扩展所需的工具链
-# git: 用于获取提交信息
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    git \
-    tzdata \
-    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
-    && echo $TZ > /etc/timezone \
-    && rm -rf /var/lib/apt/lists/*
-
-# 复制依赖文件
-COPY requirements.txt .
-
-# 安装Python依赖
-# --no-cache-dir: 不缓存下载的包，减小镜像大小
-# 使用国内镜像源加速安装
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
-
-ENV HF_ENDPOINT=https://hf-mirror.com
-RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-zh-v1.5')"
-
-# 复制项目代码（不包括configs，configs通过volume挂载）
 COPY agent_backend ./agent_backend
 COPY scripts ./scripts
 
-# 创建数据目录（用于存储文档和向量数据库）
-RUN mkdir -p /data/docs /app/data
-
-# 暴露端口（FastAPI默认端口）
 EXPOSE 8000
 
-# 健康检查
-# 每30秒检查一次服务是否健康
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 
-# 启动命令
-# --host 0.0.0.0: 允许外部访问
-# --port 8000: 监听8000端口
-# --workers 1: 单进程模式（适合容器化部署）
-# 先执行RAG索引，再启动服务
 CMD ["sh", "-c", "python scripts/sync_rag.py --target sql --sql-dir /data/sql --mode full && uvicorn agent_backend.main:app --host 0.0.0.0 --port 8000 --workers 1"]
