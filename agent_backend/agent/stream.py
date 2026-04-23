@@ -83,6 +83,37 @@ def _extract_text_content(output: Any) -> str:
     return ""
 
 
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _pick_best_export_result(export_results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """多次导出时只保留最有代表性的一份，避免前端重复追加表格提示。"""
+    best_item: dict[str, Any] | None = None
+    best_score: tuple[int, int] | None = None
+
+    for item in export_results:
+        if not isinstance(item, dict):
+            continue
+        if not item.get("download_url") or not item.get("filename"):
+            continue
+
+        row_count = max(
+            _to_int(item.get("row_count")),
+            _to_int(item.get("export_row_count")),
+        )
+        priority = 2 if item.get("overflow_capped") else 1 if row_count > 20 else 0
+        score = (priority, row_count)
+        if best_score is None or score > best_score:
+            best_item = item
+            best_score = score
+
+    return best_item
+
+
 async def _aiter_with_timeout(aiter: AsyncIterator, timeout: float) -> AsyncIterator:
     """为异步事件流增加总超时限制，避免单次请求无限挂起。"""
     deadline = asyncio.get_event_loop().time() + timeout
@@ -244,14 +275,14 @@ async def stream_graph_response(
     for chart in chart_configs:
         yield sse_event("chart", chart)
 
-    seen_urls: set[str] = set()
-    for export_item in export_results:
-        url = export_item.get("download_url", "")
-        if url and url in seen_urls:
-            logger.info(f"\n[stream] 跳过重复导出链接: {url}")
-            continue
-        if url:
-            seen_urls.add(url)
-        yield sse_event("export", export_item)
+    best_export_item = _pick_best_export_result(export_results)
+    if best_export_item:
+        if len(export_results) > 1:
+            logger.info(
+                "\n[stream] 合并 %s 个导出结果，只保留最合适的一条: %s",
+                len(export_results),
+                best_export_item.get("filename", ""),
+            )
+        yield sse_event("export", best_export_item)
 
     logger.info("\n[stream] 流式输出完成")
