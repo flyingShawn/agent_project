@@ -306,9 +306,10 @@ def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:
         bundle.synonym_count,
         bundle.sample_count,
     )
-
-    if get_sql_log_full_prompt():
-        logger.info("\n[sql_query] 【完整Prompt】\n%s", bundle.prompt)
+ 
+    # 日志太长，先不要用了
+    # if get_sql_log_full_prompt():
+    #    logger.info("\n[sql_query] 【完整Prompt】\n%s", bundle.prompt)
 
 
 @tool(args_schema=SqlQueryInput)

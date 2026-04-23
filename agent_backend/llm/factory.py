@@ -50,6 +50,7 @@ def get_llm(
     返回：
         配置完成的ChatOpenAI实例
     """
+    logger.info("\nLLM初始化---------------begin---------------")
     settings = get_settings()
     llm_cfg = settings.llm
 
@@ -57,7 +58,9 @@ def get_llm(
     api_key = llm_cfg.llm_api_key or "ollama"
     model = llm_cfg.chat_model
 
+    logger.info("\nget_llm-----http_client")
     http_client = httpx.Client(proxy=None, timeout=httpx.Timeout(300.0, connect=10.0))
+    logger.info("\nget_llm-----http_async_client")
     http_async_client = httpx.AsyncClient(proxy=None, timeout=httpx.Timeout(300.0, connect=10.0))
 
     kwargs: dict = {
