@@ -44,10 +44,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent_backend.rag_engine.chunking import Chunk, chunk_markdown
+from agent_backend.rag_engine.chunking import chunk_markdown
 from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore
 from agent_backend.rag_engine.settings import RagIngestSettings
+from agent_backend.rag_engine.sql_samples import parse_sql_sample_sections
 from agent_backend.rag_engine.state import IngestStateStore
 
 logger = logging.getLogger(__name__)
@@ -69,37 +70,6 @@ class IngestResult:
     files_processed: int = 0
     chunks_upserted: int = 0
     errors: list[str] = field(default_factory=list)
-
-
-def _is_valid_sql_chunk(chunk: Chunk) -> bool:
-    """
-    判断分块是否包含有效的SQL样本内容。
-
-    过滤规则：
-        - 文本长度不足20字符的块视为无效
-        - 包含 ```sql 或 SELECT 关键字的块视为有效SQL
-        - 包含"关键表"标记的块视为有效
-        - 包含"适用场景"且长度>=40的块视为有效
-
-    参数：
-        chunk: 待判断的文档分块
-
-    返回：
-        True 表示有效SQL样本块，False 表示无效
-    """
-    text = chunk.text.strip()
-    if len(text) < 20:
-        return False
-
-    lower_text = text.lower()
-    if "```sql" in lower_text or "select" in lower_text:
-        return True
-    if "关键表：" in text or "关键表:" in text:
-        return True
-    if "适用场景：" in text and len(text) >= 40:
-        return True
-    return False
-
 
 def _collect_files(docs_dir: str, extensions: list[str]) -> list[Path]:
     """
@@ -250,24 +220,27 @@ def ingest_directory(
                 result.files_skipped += 1
                 continue
 
-            chunks = chunk_markdown(
-                markdown,
-                max_chars=settings.chunk_max_chars,
-                overlap=settings.chunk_overlap,
-                source_path=fp.name,
-            )
-
             if kb_type == "sql":
-                before_count = len(chunks)
-                chunks = [chunk for chunk in chunks if _is_valid_sql_chunk(chunk)]
-                if len(chunks) < before_count:
-                    logger.info(f"\nSQL样本块过滤: {fp.name} {before_count} -> {len(chunks)}")
+                sql_sections = parse_sql_sample_sections(markdown, source_path=fp.name)
+                if not sql_sections:
+                    result.files_skipped += 1
+                    continue
 
-            if not chunks:
-                result.files_skipped += 1
-                continue
+                # SQL 样本检索只保留标题+适用场景，避免关键表和 SQL 代码稀释语义。
+                texts = [section.search_text for section in sql_sections]
+            else:
+                chunks = chunk_markdown(
+                    markdown,
+                    max_chars=settings.chunk_max_chars,
+                    overlap=settings.chunk_overlap,
+                    source_path=fp.name,
+                )
 
-            texts = [c.text for c in chunks]
+                if not chunks:
+                    result.files_skipped += 1
+                    continue
+
+                texts = [c.text for c in chunks]
             try:
                 vectors = embedding_model.embed(texts)
             except Exception as e:
@@ -277,20 +250,37 @@ def ingest_directory(
                 continue
 
             points = []
-            for chunk, vector in zip(chunks, vectors):
-                point_id = _stable_id(fp_str, chunk.chunk_index)
-                points.append(
-                    {
-                        "id": point_id,
-                        "vector": vector,
-                        "payload": {
-                            "text": chunk.text,
-                            "source_path": fp.name,
-                            "heading": chunk.heading,
-                            "chunk_index": chunk.chunk_index,
-                        },
-                    }
-                )
+            if kb_type == "sql":
+                for section, vector in zip(sql_sections, vectors):
+                    point_id = _stable_id(fp_str, section.chunk_index)
+                    points.append(
+                        {
+                            "id": point_id,
+                            "vector": vector,
+                            "payload": {
+                                "text": section.search_text,
+                                "source_path": fp.name,
+                                "heading": section.heading,
+                                "chunk_index": section.chunk_index,
+                                "key_tables": section.key_tables,
+                            },
+                        }
+                    )
+            else:
+                for chunk, vector in zip(chunks, vectors):
+                    point_id = _stable_id(fp_str, chunk.chunk_index)
+                    points.append(
+                        {
+                            "id": point_id,
+                            "vector": vector,
+                            "payload": {
+                                "text": chunk.text,
+                                "source_path": fp.name,
+                                "heading": chunk.heading,
+                                "chunk_index": chunk.chunk_index,
+                            },
+                        }
+                    )
 
             try:
                 store.upsert(points)

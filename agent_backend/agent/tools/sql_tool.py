@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from langchain_core.tools import tool
@@ -104,14 +104,21 @@ def _sanitize_rows(rows: list[dict]) -> list[dict]:
 
 def _build_summary_hint(
     *,
+    question: str,
+    sql: str = "",
+    rows: list[dict],
     row_count: int,
     preview_row_count: int,
     has_more: bool,
     overflow_capped: bool,
 ) -> str:
     """稳定约束最终总结口径，避免模型把预览结果误当成全量数据。"""
-    if row_count == 0:
-        return "查询结果为空，请告知用户没有找到匹配的数据，并建议可能的原因。"
+    if _is_empty_sql_result(question=question, sql=sql, rows=rows, row_count=row_count):
+        return (
+            "这次暂未查询到符合条件的相关数据，请用友好、自然的语气直接告诉用户当前没有查到结果。"
+            " 如有必要，可顺带提示可能原因，例如时间范围内暂无记录或筛选条件较严。"
+            " 不要继续调用 sql_query。"
+        )
     if overflow_capped:
         return (
             f"本次查询结果过多，当前只返回前 {preview_row_count} 条预览，"
@@ -124,6 +131,48 @@ def _build_summary_hint(
             "回答时先说明总量，再展示预览数据表格，之后概括预览数据，不要把预览条数说成全部结果。"
         )
     return f"本次查询共 {row_count} 条，可直接基于全部结果回答。"
+
+
+def _to_decimal(value: Any) -> Decimal | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return Decimal(text)
+        except InvalidOperation:
+            return None
+    return None
+
+
+def _is_empty_sql_result(*, question: str = "", sql: str = "", rows: list[dict], row_count: int) -> bool:
+    """把空明细和单值为 0 的统计结果统一视为“未查到数据”。"""
+    if row_count == 0:
+        return True
+    if len(rows) != 1:
+        return False
+
+    first_row = rows[0]
+    if len(first_row) != 1:
+        return False
+
+    column_name = str(next(iter(first_row.keys()))).lower()
+    count_like_tokens = ("count", "数量", "总数", "数目", "记录数", "条数")
+    if (
+        not any(token in column_name for token in count_like_tokens)
+        and not any(token in question.lower() for token in count_like_tokens)
+        and "COUNT(" not in sql.upper()
+    ):
+        return False
+
+    numeric_value = _to_decimal(next(iter(first_row.values())))
+    return numeric_value == 0 if numeric_value is not None else False
 
 
 def _append_export_failure_hint(summary_hint: str, export_error: str) -> str:
@@ -141,6 +190,14 @@ class SqlQueryInput(BaseModel):
             "用户的自然语言问题，不是SQL语句。"
             "例如：查看客户端在线状态。"
             "不要传 SELECT * FROM ... 这样的SQL。"
+        )
+    )
+    need_export: bool = Field(
+        default=False,
+        description=(
+            "是否需要将查询结果导出为Excel文件。"
+            "当用户明确要求'表格'、'导出'或'下载'时设置为True。"
+            "默认为False，此时仅当查询结果超过20行时系统才会自动导出。"
         )
     )
 
@@ -192,18 +249,19 @@ def _log_sql_samples(sql_samples: list | None) -> None:
     for index, sample in enumerate(sql_samples, start=1):
         source = sample.heading or sample.source_path or "unknown"
         chunk_index = ""
+        key_tables = []
         if isinstance(sample.metadata, dict):
             chunk_index = sample.metadata.get("chunk_index", "")
-        has_sql_block = "是" if "```sql" in sample.text.lower() else "否"
+            key_tables = sample.metadata.get("key_tables", []) or []
         text_len = len(sample.text or "")
         if log_score_details:
             logger.info(
-                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | raw_vector=%.4f | vector_norm=%.4f | bm25_raw=%.4f | bm25_norm=%.4f | 摘要=%s",
+                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | key_tables=%s | score=%.4f | raw_vector=%.4f | vector_norm=%.4f | bm25_raw=%.4f | bm25_norm=%.4f | 摘要=%s",
                 index,
                 source,
                 chunk_index if chunk_index != "" else "-",
                 text_len,
-                has_sql_block,
+                ",".join(key_tables) if key_tables else "-",
                 sample.score,
                 sample.raw_vector_score,
                 sample.vector_score_norm,
@@ -213,12 +271,12 @@ def _log_sql_samples(sql_samples: list | None) -> None:
             )
         else:
             logger.info(
-                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | 摘要=%s",
+                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | key_tables=%s | score=%.4f | 摘要=%s",
                 index,
                 source,
                 chunk_index if chunk_index != "" else "-",
                 text_len,
-                has_sql_block,
+                ",".join(key_tables) if key_tables else "-",
                 sample.score,
                 _summarize_sample_text(sample.text),
             )
@@ -256,13 +314,14 @@ def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:
         bundle.synonym_count,
         bundle.sample_count,
     )
-
-    if get_sql_log_full_prompt():
-        logger.info("\n[sql_query] 【完整Prompt】\n%s", bundle.prompt)
+ 
+    # 日志太长，先不要用了
+    # if get_sql_log_full_prompt():
+    #    logger.info("\n[sql_query] 【完整Prompt】\n%s", bundle.prompt)
 
 
 @tool(args_schema=SqlQueryInput)
-def sql_query(question: str) -> str:
+def sql_query(question: str, need_export: bool = False) -> str:
     """
     查询桌面管理系统的数据库。
     当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员、
@@ -274,12 +333,14 @@ def sql_query(question: str) -> str:
 
     参数：
         question: 用户的自然语言问题，用于生成SQL查询，不是SQL语句
+        need_export: 是否需要导出为Excel。当用户明确要求'表格'、'导出'或'下载'时设为True。
+                     默认False，此时仅当查询结果超过20行才会自动导出。
 
     返回：
         str: JSON格式字符串，包含sql/rows/row_count/columns/data_table字段；
              校验失败时包含error/hint字段
     """
-    logger.info(f"\n[sql_query] 开始处理: {question}")
+    logger.info(f"\n[sql_query] 开始处理: {question} (need_export={need_export})")
 
     try:
         runtime = get_schema_runtime()
@@ -356,9 +417,14 @@ def sql_query(question: str) -> str:
                 "export_row_count": 0,
                 "has_more": False,
                 "overflow_capped": False,
+                "result_state": "empty",
                 "columns": [],
                 "data_table": "",
-                "summary_hint": "查询结果为空，请告知用户没有找到匹配的数据，并建议可能的原因",
+                "summary_hint": (
+                    "这次暂未查询到符合条件的相关数据，请用友好、自然的语气直接告诉用户当前没有查到结果。"
+                    " 如有必要，可顺带提示可能原因，例如时间范围内暂无记录或筛选条件较严。"
+                    " 不要继续调用 sql_query。"
+                ),
             }, ensure_ascii=False)
 
         columns = list(exec_result[0].keys())
@@ -371,6 +437,7 @@ def sql_query(question: str) -> str:
         preview_row_count = len(preview_rows)
         export_row_count = len(export_rows)
         has_more = overflow_capped or row_count > preview_row_count
+        result_state = "empty" if _is_empty_sql_result(question=question, sql=sql, rows=preview_rows, row_count=row_count) else "data"
 
         # 请不要删除基础注释，旧方法留作纪念的
         # if len(exec_result) == 1 and len(exec_result[0]) == 1:
@@ -393,9 +460,13 @@ def sql_query(question: str) -> str:
             "export_row_count": export_row_count,
             "has_more": has_more,
             "overflow_capped": overflow_capped,
+            "result_state": result_state,
             "columns": columns,
             "data_table": data_table,
             "summary_hint": _build_summary_hint(
+                question=question,
+                sql=sql,
+                rows=preview_rows,
                 row_count=row_count,
                 preview_row_count=preview_row_count,
                 has_more=has_more,
@@ -403,7 +474,7 @@ def sql_query(question: str) -> str:
             ),
         }
 
-        if len(exec_result) > 1 and columns:
+        if (need_export or len(exec_result) > PREVIEW_ROWS) and columns:
             try:
                 from agent_backend.agent.tools.export_tool import export_data
                 export_json = json.dumps(

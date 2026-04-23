@@ -160,9 +160,48 @@ SELECT
 	department AS "所属部门",
 	lasttime AS "最近远程时间",
 	mtid AS "远程设备ID",
-	managerid AS "管理机ID"
+	managerid AS "管理员账号"
 FROM
 	a_remoteinfo
+```
+
+***
+
+#### 查询设备远程记录数量TOP榜
+
+适用场景：当用户询问最近三天哪些设备被远程最多、想看设备远程记录数量 Top 榜时使用。
+
+说明：该写法与当前系统简报“远程协助 Top20”的统计口径一致：先从 AdminLog 提取远程事件，再按设备/IP 聚合计数，并补充设备名称与所属部门。
+
+关键表：AdminLog, s\_machine, s\_group
+
+```sql
+SELECT
+    COALESCE(g.DepPath, '') AS "所属部门",
+    COALESCE(m.Name_C, r.machine_name) AS "设备名称",
+    r.ip AS "IP地址",
+    COUNT(*) AS "远程记录数量",
+    MAX(r.add_date) AS "最近远程时间"
+FROM (
+    SELECT
+        SUBSTRING_INDEX(SUBSTRING_INDEX(a.doinfo, '][', 1), ':[', -1) AS machine_name,
+        SUBSTRING_INDEX(SUBSTRING_INDEX(a.doinfo, '[', -1), ']', 1) AS ip,
+        a.AddDate AS add_date
+    FROM AdminLog a
+    WHERE a.AddDate >= :start_time
+        AND a.AddDate <= :end_time
+        AND a.doinfo LIKE '开始远程协助---机器:[%][%]'
+) r
+LEFT OUTER JOIN s_machine m ON m.IP_C = r.ip
+LEFT OUTER JOIN s_group g ON m.Groupid = g.ID
+GROUP BY
+    COALESCE(g.DepPath, ''),
+    COALESCE(m.Name_C, r.machine_name),
+    r.ip
+ORDER BY
+    COUNT(*) DESC,
+    MAX(r.add_date) DESC
+LIMIT :top_n
 ```
 
 ***
