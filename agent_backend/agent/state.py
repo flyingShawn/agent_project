@@ -61,5 +61,7 @@ class AgentState(TypedDict, total=False):
     web_search_results: list[dict]
     tool_call_count: int
     max_tool_calls: int
+    force_finalize_after_sql: bool
+    force_finalize_reason: str
     data_tables: list[str]
     references: list[str]

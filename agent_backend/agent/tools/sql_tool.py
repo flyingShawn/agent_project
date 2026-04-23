@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from langchain_core.tools import tool
@@ -104,14 +104,21 @@ def _sanitize_rows(rows: list[dict]) -> list[dict]:
 
 def _build_summary_hint(
     *,
+    question: str,
+    sql: str = "",
+    rows: list[dict],
     row_count: int,
     preview_row_count: int,
     has_more: bool,
     overflow_capped: bool,
 ) -> str:
     """稳定约束最终总结口径，避免模型把预览结果误当成全量数据。"""
-    if row_count == 0:
-        return "查询结果为空，请告知用户没有找到匹配的数据，并建议可能的原因。"
+    if _is_empty_sql_result(question=question, sql=sql, rows=rows, row_count=row_count):
+        return (
+            "这次暂未查询到符合条件的相关数据，请用友好、自然的语气直接告诉用户当前没有查到结果。"
+            " 如有必要，可顺带提示可能原因，例如时间范围内暂无记录或筛选条件较严。"
+            " 不要继续调用 sql_query。"
+        )
     if overflow_capped:
         return (
             f"本次查询结果过多，当前只返回前 {preview_row_count} 条预览，"
@@ -124,6 +131,48 @@ def _build_summary_hint(
             "回答时先说明总量，再展示预览数据表格，之后概括预览数据，不要把预览条数说成全部结果。"
         )
     return f"本次查询共 {row_count} 条，可直接基于全部结果回答。"
+
+
+def _to_decimal(value: Any) -> Decimal | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return Decimal(text)
+        except InvalidOperation:
+            return None
+    return None
+
+
+def _is_empty_sql_result(*, question: str = "", sql: str = "", rows: list[dict], row_count: int) -> bool:
+    """把空明细和单值为 0 的统计结果统一视为“未查到数据”。"""
+    if row_count == 0:
+        return True
+    if len(rows) != 1:
+        return False
+
+    first_row = rows[0]
+    if len(first_row) != 1:
+        return False
+
+    column_name = str(next(iter(first_row.keys()))).lower()
+    count_like_tokens = ("count", "数量", "总数", "数目", "记录数", "条数")
+    if (
+        not any(token in column_name for token in count_like_tokens)
+        and not any(token in question.lower() for token in count_like_tokens)
+        and "COUNT(" not in sql.upper()
+    ):
+        return False
+
+    numeric_value = _to_decimal(next(iter(first_row.values())))
+    return numeric_value == 0 if numeric_value is not None else False
 
 
 def _append_export_failure_hint(summary_hint: str, export_error: str) -> str:
@@ -357,9 +406,14 @@ def sql_query(question: str) -> str:
                 "export_row_count": 0,
                 "has_more": False,
                 "overflow_capped": False,
+                "result_state": "empty",
                 "columns": [],
                 "data_table": "",
-                "summary_hint": "查询结果为空，请告知用户没有找到匹配的数据，并建议可能的原因",
+                "summary_hint": (
+                    "这次暂未查询到符合条件的相关数据，请用友好、自然的语气直接告诉用户当前没有查到结果。"
+                    " 如有必要，可顺带提示可能原因，例如时间范围内暂无记录或筛选条件较严。"
+                    " 不要继续调用 sql_query。"
+                ),
             }, ensure_ascii=False)
 
         columns = list(exec_result[0].keys())
@@ -372,6 +426,7 @@ def sql_query(question: str) -> str:
         preview_row_count = len(preview_rows)
         export_row_count = len(export_rows)
         has_more = overflow_capped or row_count > preview_row_count
+        result_state = "empty" if _is_empty_sql_result(question=question, sql=sql, rows=preview_rows, row_count=row_count) else "data"
 
         # 请不要删除基础注释，旧方法留作纪念的
         # if len(exec_result) == 1 and len(exec_result[0]) == 1:
@@ -394,9 +449,13 @@ def sql_query(question: str) -> str:
             "export_row_count": export_row_count,
             "has_more": has_more,
             "overflow_capped": overflow_capped,
+            "result_state": result_state,
             "columns": columns,
             "data_table": data_table,
             "summary_hint": _build_summary_hint(
+                question=question,
+                sql=sql,
+                rows=preview_rows,
                 row_count=row_count,
                 preview_row_count=preview_row_count,
                 has_more=has_more,

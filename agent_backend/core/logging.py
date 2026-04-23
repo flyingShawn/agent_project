@@ -31,8 +31,18 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import sys
+
+
+def _shorten_request_id(request_id: str) -> str:
+    """返回用于日志展示的短 request_id，避免日志列过长。"""
+    if not request_id or request_id == "-":
+        return "-"
+    if "-" in request_id:
+        return request_id.split("-", 1)[0]
+    return request_id[:8]
 
 
 class ColorFormatter(logging.Formatter):
@@ -57,6 +67,13 @@ class ColorFormatter(logging.Formatter):
         "CRITICAL": "\033[35m",
     }
     _RESET = "\033[0m"
+
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        """显式使用进程本地时区格式化日志时间，避免被外部 UTC 配置影响。"""
+        dt = datetime.fromtimestamp(record.created).astimezone()
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.isoformat(timespec="seconds")
 
     def format(self, record: logging.LogRecord) -> str:
         """
@@ -97,6 +114,7 @@ class RequestIdFilter(logging.Filter):
         """
         from agent_backend.core.request_id import _request_id_ctx
         record.request_id = _request_id_ctx.get("-")
+        record.request_id_short = _shorten_request_id(record.request_id)
         return True
 
 
@@ -124,7 +142,7 @@ def configure_logging() -> None:
         open(sys.stdout.fileno(), mode='w', encoding='utf-8', errors='replace', closefd=False)
     )
     handler.setLevel(logging.INFO)
-    fmt = "%(asctime)s | %(levelname)-8s | %(request_id)s | %(name)s | %(message)s"
+    fmt = "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(request_id_short)s | %(name)s | %(message)s"
     formatter = ColorFormatter(fmt, datefmt="%Y-%m-%d %H:%M:%S")
     handler.setFormatter(formatter)
     handler.addFilter(RequestIdFilter())

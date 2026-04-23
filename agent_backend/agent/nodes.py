@@ -42,6 +42,14 @@ MAX_TOOL_CALLS_FALLBACK_MESSAGE = (
     "抱歉，我已经达到本次信息收集上限，但暂时还没找到足够可靠的结果。"
     "建议你换个角度再问，或者缩小查询范围后重试。"
 )
+EMPTY_SQL_FINALIZE_SYSTEM_PROMPT = (
+    "上一轮 sql_query 已明确没有查到符合条件的数据，或统计结果为 0。"
+    "请直接基于已有结果给出最终回答："
+    "1. 用友好、自然的中文告诉用户暂未查询到相关数据；"
+    "2. 如有必要，可补充 1 到 2 个常见原因，例如时间范围内暂无记录或筛选条件较严；"
+    "3. 不要再次调用任何工具；"
+    "4. 不要输出 SQL 或技术实现细节。"
+)
 
 
 def _format_log_content(content: Any) -> str:
@@ -72,7 +80,7 @@ def _format_messages_for_llm_log(messages: list[Any]) -> str:
     for index, message in enumerate(messages, start=1):
         role = _message_role_for_log(message)
         block = [f"--- message {index} [{role}] ---"]
-        
+
         # 对于系统消息，只显示标记，不显示内容
         if role != "system":
             content = _format_log_content(getattr(message, "content", message))
@@ -164,6 +172,11 @@ def _has_meaningful_content(message: Any) -> bool:
     return False
 
 
+def _should_force_finalize_after_sql(parsed: Any) -> bool:
+    """空明细或统计值为 0 时直接收口，避免同一轮对话反复重查。"""
+    return isinstance(parsed, dict) and not parsed.get("error") and parsed.get("result_state") == "empty"
+
+
 def init_node(state: AgentState) -> dict[str, Any]:
     """
     初始化图运行过程中会累计的状态字段。
@@ -184,6 +197,8 @@ def init_node(state: AgentState) -> dict[str, Any]:
         "chart_configs": [],
         "export_results": [],
         "web_search_results": [],
+        "force_finalize_after_sql": False,
+        "force_finalize_reason": "",
         "data_tables": [],
         "references": [],
     }
@@ -193,14 +208,23 @@ def agent_node(state: AgentState) -> dict[str, Any]:
     """调用绑定工具的 LLM，让模型决定直接回答还是发起工具调用。"""
     t0 = time.time()
     llm = get_llm()
-    llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
     messages = list(state["messages"])
     logger.info(
         f"\n[agent_node] 调用LLM, 消息数: {len(messages)}, 已调用工具: {state.get('tool_call_count', 0)}"
     )
 
-    response = llm_with_tools.invoke(messages)
+    final_messages = messages
+    if state.get("force_finalize_after_sql"):
+        logger.info("\n[agent_node] 检测到空结果终态，改为直接生成最终回答")
+        finalize_prompt = EMPTY_SQL_FINALIZE_SYSTEM_PROMPT
+        if state.get("force_finalize_reason"):
+            finalize_prompt = f"{EMPTY_SQL_FINALIZE_SYSTEM_PROMPT}\n补充提示：{state['force_finalize_reason']}"
+        final_messages = messages + [SystemMessage(content=finalize_prompt)]
+        response = llm.invoke(final_messages)
+    else:
+        llm_with_tools = llm.bind_tools(ALL_TOOLS)
+        response = llm_with_tools.invoke(messages)
 
     elapsed = time.time() - t0
     if getattr(response, "tool_calls", None):
@@ -211,7 +235,7 @@ def agent_node(state: AgentState) -> dict[str, Any]:
 
     return {
         "messages": [response],
-        "last_llm_input_messages": messages,
+        "last_llm_input_messages": final_messages,
     }
 
 
@@ -235,6 +259,8 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
     new_chart_configs = list(state.get("chart_configs", []))
     new_export_results = list(state.get("export_results", []))
     new_web_search_results = list(state.get("web_search_results", []))
+    force_finalize_after_sql = bool(state.get("force_finalize_after_sql", False))
+    force_finalize_reason = state.get("force_finalize_reason", "")
 
     tool_map = {tool.name: tool for tool in ALL_TOOLS}
 
@@ -267,6 +293,9 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
                     if parsed.get("data_table"):
                         new_data_tables.append(parsed["data_table"])
                     new_sql_results.append(parsed)
+                    if _should_force_finalize_after_sql(parsed):
+                        force_finalize_after_sql = True
+                        force_finalize_reason = parsed.get("summary_hint", "")
                     if "download_url" in parsed:
                         new_export_results.append(
                             {
@@ -355,6 +384,8 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
         "chart_configs": new_chart_configs,
         "export_results": new_export_results,
         "web_search_results": new_web_search_results,
+        "force_finalize_after_sql": force_finalize_after_sql,
+        "force_finalize_reason": force_finalize_reason,
     }
 
 
