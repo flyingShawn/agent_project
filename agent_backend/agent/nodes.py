@@ -62,6 +62,13 @@ def _format_log_content(content: Any) -> str:
         return str(content)
 
 
+def _compact_log_content(content: str, head: int = 20, tail: int = 100) -> str:
+    """长日志内容只保留首尾，避免整段上下文刷屏。"""
+    if len(content) <= head + tail:
+        return content
+    return f"{content[:head]}\n...\n{content[-tail:]}"
+
+
 def _message_role_for_log(message: Any) -> str:
     """把 LangChain 消息类型映射成更直观的日志角色名。"""
     message_type = getattr(message, "type", "") or message.__class__.__name__
@@ -84,7 +91,7 @@ def _format_messages_for_llm_log(messages: list[Any]) -> str:
         # 对于系统消息，只显示标记，不显示内容
         if role != "system":
             content = _format_log_content(getattr(message, "content", message))
-            block.append(content)
+            block.append(_compact_log_content(content))
 
         tool_calls = getattr(message, "tool_calls", None)
         if tool_calls:
