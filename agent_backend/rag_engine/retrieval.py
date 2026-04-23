@@ -267,11 +267,14 @@ def hybrid_search(
     """
     query_vector = embedding_model.embed([query_text])[0]
 
+    # 诊断日志打开时，先取未按阈值裁掉的原始候选，便于排查“为何零命中”。
+    score_threshold = None if log_scores else (vector_min_score if vector_min_score > 0 else None)
+
     candidates = store.search(
         query_vector=query_vector,
         limit=candidate_k,
         with_payload=True,
-        score_threshold=vector_min_score if vector_min_score > 0 else None,
+        score_threshold=score_threshold,
     )
 
     if not candidates:
@@ -286,6 +289,30 @@ def hybrid_search(
         return []
 
     pre_filter_count = len(candidates)
+    if log_scores:
+        logger.info(
+            "\n%s query=%s | raw_candidates=%s | top_k=%s | alpha=%.2f | vector_min=%.4f | min_score=%.4f",
+            log_label,
+            query_text,
+            pre_filter_count,
+            top_k,
+            alpha,
+            vector_min_score,
+            min_score,
+        )
+        for rank, candidate in enumerate(candidates, start=1):
+            payload = candidate.payload or {}
+            source = payload.get("heading") or payload.get("source_path") or "unknown"
+            chunk_index = payload.get("chunk_index", "-")
+            logger.info(
+                "%s raw %s. source=%s | chunk_index=%s | raw_vector=%.4f | passed_vector_min=%s",
+                log_label,
+                rank,
+                source,
+                chunk_index,
+                candidate.score,
+                "yes" if candidate.score >= vector_min_score else "no",
+            )
     candidates = [c for c in candidates if c.score >= vector_min_score]
     if len(candidates) < pre_filter_count:
         logger.info(
@@ -333,7 +360,7 @@ def hybrid_search(
 
     if log_scores:
         logger.info(
-            "\n%s query=%s | candidates=%s | top_k=%s | alpha=%.2f | vector_min=%.4f | min_score=%.4f",
+            "\n%s query=%s | candidates_after_vector_filter=%s | top_k=%s | alpha=%.2f | vector_min=%.4f | min_score=%.4f",
             log_label,
             query_text,
             len(combined_results),

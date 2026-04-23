@@ -192,18 +192,19 @@ def _log_sql_samples(sql_samples: list | None) -> None:
     for index, sample in enumerate(sql_samples, start=1):
         source = sample.heading or sample.source_path or "unknown"
         chunk_index = ""
+        key_tables = []
         if isinstance(sample.metadata, dict):
             chunk_index = sample.metadata.get("chunk_index", "")
-        has_sql_block = "是" if "```sql" in sample.text.lower() else "否"
+            key_tables = sample.metadata.get("key_tables", []) or []
         text_len = len(sample.text or "")
         if log_score_details:
             logger.info(
-                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | raw_vector=%.4f | vector_norm=%.4f | bm25_raw=%.4f | bm25_norm=%.4f | 摘要=%s",
+                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | key_tables=%s | score=%.4f | raw_vector=%.4f | vector_norm=%.4f | bm25_raw=%.4f | bm25_norm=%.4f | 摘要=%s",
                 index,
                 source,
                 chunk_index if chunk_index != "" else "-",
                 text_len,
-                has_sql_block,
+                ",".join(key_tables) if key_tables else "-",
                 sample.score,
                 sample.raw_vector_score,
                 sample.vector_score_norm,
@@ -213,12 +214,12 @@ def _log_sql_samples(sql_samples: list | None) -> None:
             )
         else:
             logger.info(
-                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | has_sql_block=%s | score=%.4f | 摘要=%s",
+                "[sql_query] 【SQL样本】%s. 来源=%s | chunk_index=%s | text_len=%s | key_tables=%s | score=%.4f | 摘要=%s",
                 index,
                 source,
                 chunk_index if chunk_index != "" else "-",
                 text_len,
-                has_sql_block,
+                ",".join(key_tables) if key_tables else "-",
                 sample.score,
                 _summarize_sample_text(sample.text),
             )

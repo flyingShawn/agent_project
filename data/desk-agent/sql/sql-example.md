@@ -160,7 +160,7 @@ SELECT
 	department AS "所属部门",
 	lasttime AS "最近远程时间",
 	mtid AS "远程设备ID",
-	managerid AS "管理机ID"
+	managerid AS "管理员账号"
 FROM
 	a_remoteinfo
 ```

@@ -43,9 +43,9 @@ from agent_backend.core.config import (
     get_sql_prompt_instructions,
     get_sql_system_prompt,
 )
-from agent_backend.rag_engine.chunking import chunk_markdown
 from agent_backend.rag_engine.retrieval import RetrievedChunk
 from agent_backend.rag_engine.settings import RagIngestSettings
+from agent_backend.rag_engine.sql_samples import parse_sql_sample_sections
 
 SQL_SYSTEM_PROMPT = get_sql_system_prompt()
 
@@ -128,6 +128,12 @@ def _extract_tables_from_samples(samples: list[RetrievedChunk]) -> set[str]:
     """
     tables = set()
     for sample in samples:
+        metadata = sample.metadata or {}
+        for table_name in metadata.get("key_tables", []) or []:
+            normalized_table_name = _normalize_identifier(table_name)
+            if normalized_table_name:
+                tables.add(normalized_table_name)
+
         text = _normalize_sql_text(sample.text)
         for line in text.split("\n"):
             stripped = line.strip()
@@ -276,11 +282,10 @@ def _load_sql_sections(source_path: str) -> dict[str, str]:
         return {}
 
     markdown = file_path.read_text(encoding="utf-8", errors="replace")
-    sections: dict[str, str] = {}
-    for chunk in chunk_markdown(markdown, source_path=file_path.name, split_paragraphs=False):
-        if chunk.heading and chunk.text:
-            sections[chunk.heading] = chunk.text
-    return sections
+    return {
+        section.heading: section.full_text
+        for section in parse_sql_sample_sections(markdown, source_path=file_path.name)
+    }
 
 
 def _prepare_sql_samples(sql_samples: list[RetrievedChunk]) -> list[RetrievedChunk]:
@@ -308,6 +313,9 @@ def _prepare_sql_samples(sql_samples: list[RetrievedChunk]) -> list[RetrievedChu
                 score=sample.score,
                 raw_vector_score=sample.raw_vector_score,
                 metadata=metadata,
+                raw_bm25_score=sample.raw_bm25_score,
+                vector_score_norm=sample.vector_score_norm,
+                bm25_score_norm=sample.bm25_score_norm,
             )
         )
 
