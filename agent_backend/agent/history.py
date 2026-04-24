@@ -5,9 +5,9 @@
     管理对话历史的压缩和过滤，解决长会话中历史消息对当前回答的干扰问题。
 
 核心策略：
-    1. 滑动窗口：只保留最近N轮完整对话，超出部分压缩
-    2. 历史压缩：长assistant消息截断为摘要，保留主题但移除详细数据
-    3. 话题感知：检测话题切换时进一步压缩历史，减少不相关上下文干扰
+    1. 滑动窗口：只保留最近N轮对话，超出部分直接丢弃
+    2. 历史压缩：窗口内长assistant消息截断为摘要，移除详细数据
+    3. 话题感知：检测话题切换时缩小窗口+强制压缩，减少不相关上下文干扰
 
 在系统架构中的定位：
     位于Agent编排层，被chat.py在构建initial_state前调用，
@@ -114,9 +114,9 @@ def manage_history(
 
     策略：
     1. 按轮次分组（user+assistant为一轮）
-    2. 最近 max_rounds 轮保留，超出部分压缩
-    3. 长assistant消息（>compress_threshold）截断为摘要
-    4. 检测话题切换时，对历史进一步压缩（强制压缩所有旧assistant消息）
+    2. 超出窗口的轮次直接丢弃（不再保留压缩版本）
+    3. 窗口内：最近2轮保持原样，更早的轮次压缩长assistant消息
+    4. 话题切换时：窗口减半，窗口内所有assistant消息强制压缩
     """
     if not history:
         return history
@@ -142,24 +142,10 @@ def manage_history(
 
     effective_max_rounds = max(2, max_rounds // 2) if is_topic_shift else max_rounds
 
-    if total_rounds <= effective_max_rounds:
-        keep_rounds = rounds
-        compress_rounds: list[list[dict[str, str]]] = []
-    else:
-        compress_rounds = rounds[:total_rounds - effective_max_rounds]
-        keep_rounds = rounds[total_rounds - effective_max_rounds:]
+    dropped_rounds = max(0, total_rounds - effective_max_rounds)
+    keep_rounds = rounds[dropped_rounds:] if dropped_rounds > 0 else rounds
 
     result: list[dict[str, str]] = []
-
-    for round_msgs in compress_rounds:
-        for msg in round_msgs:
-            if msg["role"] == "assistant":
-                compressed = _compress_assistant_message(
-                    msg["content"], max_chars=150, force=is_topic_shift
-                )
-                result.append({"role": "assistant", "content": compressed})
-            else:
-                result.append(msg)
 
     for i, round_msgs in enumerate(keep_rounds):
         is_recent = i >= len(keep_rounds) - 2
@@ -187,8 +173,9 @@ def manage_history(
 
     logger.info(
         f"\n[history] 历史管理: 原始{total_rounds}轮/{len(history)}条 → "
-        f"处理后{len(result)}条, 话题切换={'是' if is_topic_shift else '否'}, "
-        f"保留窗口={effective_max_rounds}轮"
+        f"丢弃{dropped_rounds}轮, 保留{len(keep_rounds)}轮/{len(result)}条, "
+        f"话题切换={'是' if is_topic_shift else '否'}, "
+        f"窗口={effective_max_rounds}轮"
     )
 
     return result
