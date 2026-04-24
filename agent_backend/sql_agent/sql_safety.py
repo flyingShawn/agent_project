@@ -3,7 +3,7 @@ SQL安全校验模块
 
 文件功能：
     提供SQL语句的安全校验功能，确保仅允许SELECT查询，
-    禁止危险关键字、多语句执行、注释注入和敏感列查询。
+    禁止危险关键字、多语句执行和敏感列查询。
 
 在系统架构中的定位：
     位于SQL Agent模块，是SQL生成和执行流程中的安全防线。
@@ -15,13 +15,12 @@ SQL安全校验模块
     - sql_agent/service.py的generate_secure_sql流程中调用
 
 核心函数：
-    - validate_sql_basic: SQL基础校验，检查SELECT-only/危险关键字/多语句/注释
+    - validate_sql_basic: SQL基础校验，检查SELECT-only/危险关键字/多语句
     - enforce_deny_select_columns: 敏感列校验，禁止查询密码等敏感字段
 
 专有技术说明：
     - 使用正则表达式匹配危险关键字（INSERT/UPDATE/DELETE/DROP等13种）
     - 多语句检测通过分号后跟非空白字符的模式识别
-    - 注释检测覆盖SQL单行注释(--)和多行注释(/* */)
     - 敏感列校验使用大小写不敏感匹配
 
 安全注意事项：
@@ -58,7 +57,6 @@ def validate_sql_basic(sql: str) -> str:
         2. 必须以SELECT开头（仅允许SELECT查询）
         3. 不能包含危险关键字（INSERT/UPDATE/DELETE/DROP等13种）
         4. 不能包含多语句（分号后跟非空白字符）
-        5. 不能包含SQL注释（-- 或 /* */）
 
     参数：
         sql: 待校验的SQL字符串
@@ -72,7 +70,6 @@ def validate_sql_basic(sql: str) -> str:
             - sql_not_select: 非SELECT语句
             - sql_dangerous_keyword: 包含危险关键字
             - sql_multi_statement: 包含多语句
-            - sql_comment_detected: 包含注释
     """
     sql = sql.strip()
     if not sql:
@@ -96,13 +93,6 @@ def validate_sql_basic(sql: str) -> str:
         raise AppError(
             code="sql_multi_statement",
             message="禁止多语句执行",
-            http_status=400,
-        )
-
-    if re.search(r"--|/\*", sql):
-        raise AppError(
-            code="sql_comment_detected",
-            message="SQL中不允许包含注释",
             http_status=400,
         )
 

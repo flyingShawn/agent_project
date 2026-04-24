@@ -18,6 +18,7 @@ const showSidebar = ref(false)
 const showOpsInbox = ref(false)
 const unreadOpsCount = ref(0)
 const chatBoxRef = ref(null)
+const AUTO_OPEN_SIDEBAR_MIN_WIDTH = 1280
 
 const {
   currentTitle,
@@ -73,7 +74,7 @@ onMounted(async () => {
   currentUserId.value = externalIdentity?.userId || getExternalUserId()
   currentUserLabel.value = externalIdentity?.displayName || getExternalDisplayName()
   await loadConversations(currentUserId.value)
-  if (conversations.value.length > 0) {
+  if (window.innerWidth >= AUTO_OPEN_SIDEBAR_MIN_WIDTH && conversations.value.length > 0) {
     showSidebar.value = true
   }
 })
