@@ -10,7 +10,6 @@ python-multipart>=0.0.9
 qdrant-client>=1.17
 fastembed>=0.3
 docling>=2.0
-playwright>=1.40
 python-dotenv>=1.0
 langgraph>=0.2,<0.3
 langchain-openai>=0.3

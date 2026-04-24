@@ -66,6 +66,31 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
+SQL_HINT_KEYWORDS = [
+    "记录", "日志", "统计", "数量", "查询", "列表", "明细",
+    "在线", "设备", "告警", "远程", "操作", "开关机", "登录",
+    "多少", "几个", "排名", "TOP", "趋势", "占比", "分布",
+    "列举", "展示",
+]
+
+
+def _likely_needs_sql(question: str) -> bool:
+    return any(kw in question for kw in SQL_HINT_KEYWORDS)
+
+
+def _build_time_context() -> str:
+    from datetime import datetime
+    now = datetime.now()
+    weekday_map = {
+        0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四",
+        4: "星期五", 5: "星期六", 6: "星期日",
+    }
+    return (
+        f"当前日期：{now.strftime('%Y-%m-%d')}\n"
+        f"当前时间：{now.strftime('%H:%M:%S')}\n"
+        f"星期：{weekday_map[now.weekday()]}"
+    )
+
 
 class ChatRequest(BaseModel):
     """聊天请求模型，与前端API契约保持兼容"""
@@ -108,8 +133,30 @@ async def chat(
         f"历史: {len(req.history)} | 图片: {len(req.images_base64) if req.images_base64 else 0}"
     )
 
+    time_context = _build_time_context()
+    enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n【当前时间】\n{time_context}"
+
+    pre_sql_context = None
+    if _likely_needs_sql(req.question):
+        try:
+            from agent_backend.rag_engine.retrieval import search_sql_samples
+            from agent_backend.core.config import get_schema_runtime
+            from agent_backend.sql_agent.prompt_builder import build_sql_prompt_bundle
+
+            runtime = get_schema_runtime()
+            sql_samples = search_sql_samples(req.question)
+            if sql_samples:
+                prompt_bundle = build_sql_prompt_bundle(runtime, req.question, sql_samples=sql_samples)
+                pre_sql_context = {
+                    "sql_samples": sql_samples,
+                    "prompt_bundle": prompt_bundle,
+                }
+                logger.info(f"\n[Chat] SQL预检索命中 {len(sql_samples)} 个样本")
+        except Exception as e:
+            logger.warning(f"\n[Chat] SQL预检索失败: {e}")
+
     initial_state = {
-        "messages": [SystemMessage(content=SYSTEM_PROMPT)],
+        "messages": [SystemMessage(content=enhanced_system_prompt)],
         "question": req.question,
         "session_id": session_id,
         "lognum": current_user.user_id,
@@ -121,6 +168,7 @@ async def chat(
         "max_tool_calls": 10,
         "data_tables": [],
         "references": [],
+        "pre_sql_context": pre_sql_context,
     }
 
     if conversation_id:

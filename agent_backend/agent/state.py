@@ -65,3 +65,4 @@ class AgentState(TypedDict, total=False):
     force_finalize_reason: str
     data_tables: list[str]
     references: list[str]
+    pre_sql_context: dict | None

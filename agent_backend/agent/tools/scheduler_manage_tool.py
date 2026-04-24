@@ -95,23 +95,15 @@ def manage_scheduled_task(
 ) -> str:
     """
     管理已有的定时任务。支持查看任务列表、暂停、恢复、删除、更新任务。
-    当用户要求"查看定时任务"、"暂停任务"、"删除任务"等管理操作时使用此工具。
 
     参数：
-        action: 操作类型
+        action: 操作类型（list/pause/resume/delete/update）
         task_id: 任务ID（pause/resume/delete/update时必填）
         sql_template: 新SQL模板（update时可选）
         description: 任务描述（update时可选，LLM据此生成新SQL）
 
     返回：
         str: JSON格式的操作结果
-
-    操作说明：
-        - list: 返回所有活跃任务的列表和总数
-        - pause/resume/delete: 返回操作后的任务状态
-        - update: 需提供 sql_template 或 description 之一
-          - 提供 sql_template: 直接更新SQL
-          - 提供 description: 调用LLM生成新SQL后更新
     """
     logger.info(f"\n[manage_scheduled_task] action={action}, task_id={task_id}")
     scheduler = get_scheduler_manager()

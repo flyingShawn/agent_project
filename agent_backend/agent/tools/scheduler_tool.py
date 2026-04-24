@@ -113,7 +113,6 @@ def schedule_task(
 ) -> str:
     """
     创建定时任务。当用户要求"每隔N分钟/小时"、"定时"、"定期"执行某个查询或统计时使用此工具。
-    例如："每隔30分钟记录在线客户端数量"、"每天统计告警数量"。
 
     参数：
         task_name: 任务名称
@@ -124,14 +123,6 @@ def schedule_task(
 
     返回：
         str: JSON格式的创建结果，包含 task_id, task_name, status, sql_template
-             失败时包含 error 字段
-
-    执行流程：
-        1. 校验必须提供 interval_seconds 或 cron_expr 之一
-        2. 若未提供 sql_template，调用 LLM + RAG样本自动生成SQL
-        3. SQL安全校验（validate_sql_basic + 敏感列校验）
-        4. SQL试执行验证（max_rows=1，确保SQL可执行）
-        5. 调用 SchedulerManager.add_task() 创建任务
     """
     logger.info(f"\n[schedule_task] 创建任务: {task_name}, 描述: {description}")
 
