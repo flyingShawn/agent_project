@@ -145,6 +145,9 @@ class MiscSettings(BaseSettings):
     external_entry_ttl_seconds: int = 28800
     third_party_chat_history_base_url: str = ""
     third_party_chat_history_timeout_seconds: float = 3
+    chat_max_history_rounds: int = 6
+    chat_history_compress_threshold: int = 500
+    chat_topic_shift_threshold: float = 0.15
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
@@ -294,6 +297,21 @@ def get_sql_prompt_instructions() -> str:
 def get_sql_log_full_prompt() -> bool:
     load_env_file()
     return bool(get_settings().misc.sql_log_full_prompt)
+
+
+def get_chat_max_history_rounds() -> int:
+    load_env_file()
+    return get_settings().misc.chat_max_history_rounds
+
+
+def get_chat_history_compress_threshold() -> int:
+    load_env_file()
+    return get_settings().misc.chat_history_compress_threshold
+
+
+def get_chat_topic_shift_threshold() -> float:
+    load_env_file()
+    return get_settings().misc.chat_topic_shift_threshold
 
 
 def reload_prompts() -> dict:
