@@ -4,10 +4,11 @@
 文件功能：
     管理对话历史的压缩和过滤，解决长会话中历史消息对当前回答的干扰问题。
 
-核心策略：
-    1. 滑动窗口：只保留最近N轮对话，超出部分直接丢弃
-    2. 历史压缩：窗口内长assistant消息截断为摘要，移除详细数据
-    3. 话题感知：检测话题切换时缩小窗口+强制压缩，减少不相关上下文干扰
+核心策略（混合策略，根据话题相关性区分处理）：
+    1. 话题切换 + 超出窗口 → 丢弃（旧数据是纯噪声）
+    2. 同话题 + 超出窗口 → 压缩保留（上下文仍有价值，只去掉数据细节）
+    3. 话题切换 + 窗口内 → 强制压缩（保留话题感知，去掉数据防干扰）
+    4. 同话题 + 窗口内 → 保留原样（完整上下文支持追问）
 
 在系统架构中的定位：
     位于Agent编排层，被chat.py在构建initial_state前调用，
@@ -26,12 +27,10 @@ logger = logging.getLogger(__name__)
 
 _STOP_WORDS = {
     "的", "了", "是", "在", "有", "和", "等", "进行", "当前", "最近",
-    "查询", "统计", "多少", "哪些", "什么", "如何", "怎么", "请", "帮",
+    "多少", "哪些", "什么", "如何", "怎么", "请", "帮",
     "我", "你", "给", "看", "下", "一", "个", "这", "那", "要", "能",
     "可以", "需要", "想", "问", "说", "做", "用", "到", "去", "来",
-    "中", "里", "上", "前", "后", "时", "天", "年", "月", "日",
-    "数量", "记录", "信息", "情况", "数据", "列出", "显示", "查看",
-    "分析", "对比", "比较", "汇总", "总结", "报告",
+    "中", "里", "上", "前", "后", "时",
 }
 
 
@@ -54,7 +53,25 @@ def _compute_topic_similarity(q1: str, q2: str) -> float:
         return 0.0
     intersection = kw1 & kw2
     union = kw1 | kw2
-    return len(intersection) / len(union)
+    jaccard = len(intersection) / len(union)
+
+    c1 = re.sub(r'[，。！？、；：\u201c\u201d\u2018\u2019\uff08\uff09\u3010\u3011\s\d]', '', q1)
+    c2 = re.sub(r'[，。！？、；：\u201c\u201d\u2018\u2019\uff08\uff09\u3010\u3011\s\d]', '', q2)
+    shared_substr_len = 0
+    for length in range(min(len(c1), len(c2)), 1, -1):
+        for start in range(len(c1) - length + 1):
+            if c1[start:start + length] in c2:
+                shared_substr_len = length
+                break
+        if shared_substr_len > 0:
+            break
+
+    if shared_substr_len >= 4:
+        jaccard = max(jaccard, 0.25)
+    elif shared_substr_len >= 3:
+        jaccard = max(jaccard, 0.15)
+
+    return jaccard
 
 
 def _compress_assistant_message(content: str, max_chars: int = 200, force: bool = False) -> str:
@@ -112,11 +129,11 @@ def manage_history(
     """
     管理对话历史，返回经过压缩和过滤的消息列表。
 
-    策略：
-    1. 按轮次分组（user+assistant为一轮）
-    2. 超出窗口的轮次直接丢弃（不再保留压缩版本）
-    3. 窗口内：最近2轮保持原样，更早的轮次压缩长assistant消息
-    4. 话题切换时：窗口减半，窗口内所有assistant消息强制压缩
+    混合策略（根据话题相关性区分处理）：
+    - 话题切换 + 超出窗口 → 丢弃（旧数据是纯噪声）
+    - 同话题 + 超出窗口 → 压缩保留（上下文仍有价值，只去掉数据细节）
+    - 话题切换 + 窗口内 → 强制压缩（保留话题感知，去掉数据防干扰）
+    - 同话题 + 窗口内 → 保留原样（完整上下文支持追问）
     """
     if not history:
         return history
@@ -142,10 +159,25 @@ def manage_history(
 
     effective_max_rounds = max(2, max_rounds // 2) if is_topic_shift else max_rounds
 
-    dropped_rounds = max(0, total_rounds - effective_max_rounds)
-    keep_rounds = rounds[dropped_rounds:] if dropped_rounds > 0 else rounds
+    overflow_count = max(0, total_rounds - effective_max_rounds)
+    overflow_rounds = rounds[:overflow_count] if overflow_count > 0 else []
+    keep_rounds = rounds[overflow_count:] if overflow_count > 0 else rounds
 
     result: list[dict[str, str]] = []
+
+    if is_topic_shift:
+        for round_msgs in overflow_rounds:
+            pass
+    else:
+        for round_msgs in overflow_rounds:
+            for msg in round_msgs:
+                if msg["role"] == "assistant":
+                    compressed = _compress_assistant_message(
+                        msg["content"], max_chars=150, force=True
+                    )
+                    result.append({"role": "assistant", "content": compressed})
+                else:
+                    result.append(msg)
 
     for i, round_msgs in enumerate(keep_rounds):
         is_recent = i >= len(keep_rounds) - 2
@@ -171,9 +203,12 @@ def manage_history(
             else:
                 result.append(msg)
 
+    discarded = overflow_count if is_topic_shift else 0
+    compressed_rounds = overflow_count if not is_topic_shift and overflow_count > 0 else 0
     logger.info(
         f"\n[history] 历史管理: 原始{total_rounds}轮/{len(history)}条 → "
-        f"丢弃{dropped_rounds}轮, 保留{len(keep_rounds)}轮/{len(result)}条, "
+        f"丢弃{discarded}轮, 压缩{compressed_rounds}轮, "
+        f"保留{len(keep_rounds)}轮/{len(result)}条, "
         f"话题切换={'是' if is_topic_shift else '否'}, "
         f"窗口={effective_max_rounds}轮"
     )
