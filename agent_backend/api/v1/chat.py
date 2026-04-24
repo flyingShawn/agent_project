@@ -47,9 +47,15 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from agent_backend.agent.graph import get_agent_graph
+from agent_backend.agent.history import manage_history
 from agent_backend.agent.prompts import SYSTEM_PROMPT
 from agent_backend.agent.stream import stream_graph_response
 from agent_backend.api.external_identity import ExternalIdentity, require_external_identity
+from agent_backend.core.config import (
+    get_chat_history_compress_threshold,
+    get_chat_max_history_rounds,
+    get_chat_topic_shift_threshold,
+)
 from agent_backend.core.sse import sse_event
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import Conversation, Message
@@ -120,7 +126,14 @@ async def chat(
     if conversation_id:
         await _ensure_conversation_owned(conversation_id, current_user.user_id)
         db_history = await _load_conversation_messages(conversation_id)
-        for msg in db_history:
+        managed_history = manage_history(
+            history=db_history,
+            current_question=req.question,
+            max_rounds=get_chat_max_history_rounds(),
+            compress_threshold=get_chat_history_compress_threshold(),
+            topic_shift_threshold=get_chat_topic_shift_threshold(),
+        )
+        for msg in managed_history:
             if msg["role"] == "user":
                 initial_state["messages"].append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
