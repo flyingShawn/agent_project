@@ -72,22 +72,8 @@ def _month_range(dt: datetime) -> tuple[str, str]:
 @tool(args_schema=TimeToolInput)
 def get_current_time() -> str:
     """
-    获取当前日期和时间信息。
-    当用户问题涉及"今天"、"昨天"、"本月"、"本周"、"最近N天"、"今年"等时间相关表述时，
-    必须先调用此工具获取准确时间，再基于返回结果生成SQL查询或回答问题。
-
-    返回：
-        str: JSON格式字符串，包含以下字段：
-            - current_date: 当前日期 (YYYY-MM-DD)
-            - current_datetime: 当前日期时间 (YYYY-MM-DD HH:MM:SS)
-            - day_of_week: 星期几（中文）
-            - today/yesterday/tomorrow: 相对日期
-            - today_start/today_end: 今日起止时间
-            - this_week_start/this_week_end: 本周起止日期
-            - this_month_start/this_month_end: 本月起止日期
-            - last_month_start/last_month_end: 上月起止日期
-            - this_year_start/this_year_end: 本年起止日期
-            - recent_7/30/90_days_start: 最近N天起始日期
+    获取当前日期和时间信息。系统提示词中已提供当前日期，通常无需调用此工具。
+    仅在需要更精确的时间范围（如今日起止时间戳）时使用。
     """
     logger.info(f"\n[get_current_time] 获取当前时间")
 

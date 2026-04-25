@@ -9,6 +9,7 @@ FastAPI 应用入口文件
     - 应用工厂模式（create_app）便于测试和多种部署配置
     - 统一初始化日志、CORS、请求ID、异常处理等横切关注点
     - 应用关闭时自动清理数据库连接池资源
+    - 启动时预加载LLM、Schema、Embedding、Qdrant等组件，消除首次请求冷启动
 
 启动流程：
     1. 启动命令: uvicorn agent_backend.main:app --reload
@@ -20,11 +21,11 @@ FastAPI 应用入口文件
        - add_middleware(RequestIdMiddleware) → 添加请求ID中间件
        - register_exception_handlers() → 注册异常处理器
        - include_router() → 挂载 API 路由
-       - on_event("shutdown") → 注册关闭事件处理
     4. 应用启动完成，开始监听 HTTP 请求
 
 包含的主要函数：
     - create_app(): 应用工厂，创建并配置 FastAPI 实例
+    - _preload_components(): 启动时预加载组件
 
 相关联的调用文件：
     - agent_backend/api/routes.py: API 路由配置
@@ -52,40 +53,75 @@ from agent_backend.sql_agent.connection_manager import get_connection_manager
 
 load_env_file()
 
+logger = logging.getLogger(__name__)
+
+
+def _preload_components() -> None:
+    log = logging.getLogger(__name__)
+    log.info("\n[Preload] 开始预加载组件...")
+
+    try:
+        get_settings()
+        log.info("\n[Preload] ✅ Settings 已加载")
+    except Exception as e:
+        log.warning(f"\n[Preload] ⚠️ Settings 加载失败: {e}")
+
+    try:
+        from agent_backend.core.config import get_schema_runtime
+        get_schema_runtime()
+        log.info("\n[Preload] ✅ Schema 元数据已加载")
+    except Exception as e:
+        log.warning(f"\n[Preload] ⚠️ Schema 元数据加载失败: {e}")
+
+    try:
+        from agent_backend.agent.graph import get_agent_graph
+        get_agent_graph()
+        log.info("\n[Preload] ✅ Agent Graph 已构建")
+    except Exception as e:
+        log.warning(f"\n[Preload] ⚠️ Agent Graph 构建失败: {e}")
+
+    try:
+        from agent_backend.rag_engine.retrieval import get_or_create_embedding, get_or_create_store, get_sql_rag_settings
+        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha = get_sql_rag_settings()
+        embedding_model = get_or_create_embedding(embedding_model_name)
+        dim = embedding_model.dimension
+        get_or_create_store(
+            url=qdrant_url, path=qdrant_path, api_key=qdrant_api_key,
+            collection=collection, dim=dim,
+        )
+        log.info("\n[Preload] ✅ Embedding 模型 + Qdrant 连接已就绪")
+    except Exception as e:
+        log.warning(f"\n[Preload] ⚠️ Embedding/Qdrant 预加载失败: {e}")
+
+    try:
+        from agent_backend.llm.factory import get_llm, get_sql_llm
+        get_llm()
+        get_sql_llm()
+        log.info("\n[Preload] ✅ LLM 实例已缓存")
+    except Exception as e:
+        log.warning(f"\n[Preload] ⚠️ LLM 实例预加载失败: {e}")
+
+    log.info("\n[Preload] 预加载完成")
+
 
 def create_app() -> FastAPI:
-    """
-    创建并配置 FastAPI 应用实例（应用工厂模式）。
-
-    初始化步骤：
-        1. configure_logging() → 配置统一日志格式和 request_id 注入
-        2. FastAPI() → 创建应用实例
-        3. CORSMiddleware → 添加跨域中间件（允许所有来源）
-        4. RequestIdMiddleware → 添加请求 ID 中间件（链路追踪）
-        5. register_exception_handlers() → 注册 AppError 和兜底异常处理器
-        6. include_router() → 挂载 /api/v1 下所有路由
-        7. on_event("shutdown") → 注册关闭事件，清理数据库连接
-
-    返回：
-        FastAPI: 可直接交给 Uvicorn 启动的应用对象
-
-    安全注意事项：
-        - CORS 配置允许所有来源（allow_origins=["*"]），生产环境应限制为前端域名
-    """
     configure_logging()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await init_db()
+        _preload_components()
         ops_report_manager = get_ops_report_manager()
         await ops_report_manager.start()
-        logging.getLogger(__name__).info("\n[Startup] 应用启动完成，运维简报调度器已启动")
+        logger.info("\n[Startup] 应用启动完成，运维简报调度器已启动")
         yield
-        logging.getLogger(__name__).info("\n[Shutdown] 应用正在关闭，清理资源...")
+        logger.info("\n[Shutdown] 应用正在关闭，清理资源...")
         await ops_report_manager.shutdown()
         conn_manager = get_connection_manager()
         conn_manager.shutdown()
-        logging.getLogger(__name__).info("\n[Shutdown] 应用关闭完成")
+        from agent_backend.llm.factory import reset_llm_cache
+        reset_llm_cache()
+        logger.info("\n[Shutdown] 应用关闭完成")
 
     app = FastAPI(title="desk-agent-backend", lifespan=lifespan)
 
@@ -105,4 +141,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

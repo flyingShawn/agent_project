@@ -268,6 +268,8 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
     new_web_search_results = list(state.get("web_search_results", []))
     force_finalize_after_sql = bool(state.get("force_finalize_after_sql", False))
     force_finalize_reason = state.get("force_finalize_reason", "")
+    pre_sql_context = state.get("pre_sql_context")
+    pre_sql_context_consumed = False
 
     tool_map = {tool.name: tool for tool in ALL_TOOLS}
 
@@ -285,7 +287,16 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
                 result = json.dumps({"error": f"未知工具: {tool_name}"}, ensure_ascii=False)
             elif tool_name == "sql_query":
                 arg_error = _build_sql_query_arg_error(tool_args)
-                result = arg_error if arg_error is not None else selected_tool.invoke(tool_args)
+                if arg_error is not None:
+                    result = arg_error
+                elif pre_sql_context and not pre_sql_context_consumed:
+                    enhanced_args = dict(tool_args)
+                    enhanced_args["pre_sql_context"] = pre_sql_context
+                    result = selected_tool.invoke(enhanced_args)
+                    pre_sql_context_consumed = True
+                    logger.info("\n[tool_result_node] sql_query 使用预检索上下文，跳过RAG检索")
+                else:
+                    result = selected_tool.invoke(tool_args)
             else:
                 result = selected_tool.invoke(tool_args)
 
@@ -393,6 +404,7 @@ def tool_result_node(state: AgentState) -> dict[str, Any]:
         "web_search_results": new_web_search_results,
         "force_finalize_after_sql": force_finalize_after_sql,
         "force_finalize_reason": force_finalize_reason,
+        "pre_sql_context": None if pre_sql_context_consumed else pre_sql_context,
     }
 
 

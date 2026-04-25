@@ -29,27 +29,37 @@ from agent_backend.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_llm_cache: dict[str, ChatOpenAI] = {}
+
+
+def reset_llm_cache() -> None:
+    global _llm_cache
+    for llm in _llm_cache.values():
+        try:
+            if llm.http_client:
+                llm.http_client.close()
+            if llm.http_async_client:
+                import asyncio
+                try:
+                    asyncio.get_event_loop().run_until_complete(llm.http_async_client.aclose())
+                except RuntimeError:
+                    pass
+        except Exception:
+            pass
+    _llm_cache = {}
+    logger.info("\nLLM实例缓存已清除")
+
 
 def get_llm(
     *,
     streaming: bool = True,
     temperature: float = 0.3,
 ) -> ChatOpenAI:
-    """
-    获取ChatOpenAI LLM实例。
+    cache_key = f"{streaming}_{temperature}"
+    if cache_key in _llm_cache:
+        logger.info("\nLLM实例缓存命中: key=%s", cache_key)
+        return _llm_cache[cache_key]
 
-    根据配置中的base_url自动适配不同厂商的特殊参数：
-        - 阿里云通义千问: 禁用思考模式（enable_thinking=False）
-        - DeepSeek: 禁用思考模式（thinking.type=disabled）
-        - 其他: 关闭推理努力度（reasoning_effort=none）
-
-    参数：
-        streaming: 是否启用流式输出，默认True
-        temperature: 生成温度，默认0.3
-
-    返回：
-        配置完成的ChatOpenAI实例
-    """
     logger.info("\nLLM初始化---------------begin---------------")
     settings = get_settings()
     llm_cfg = settings.llm
@@ -86,7 +96,9 @@ def get_llm(
         base_url, model, streaming, kwargs.get("extra_body"),
     )
 
-    return ChatOpenAI(**kwargs)
+    llm = ChatOpenAI(**kwargs)
+    _llm_cache[cache_key] = llm
+    return llm
 
 
 def get_sql_llm() -> ChatOpenAI:

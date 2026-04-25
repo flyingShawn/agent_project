@@ -321,20 +321,16 @@ def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:
 
 
 @tool(args_schema=SqlQueryInput)
-def sql_query(question: str, need_export: bool = False) -> str:
+def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | None = None) -> str:
     """
     查询桌面管理系统的数据库。
-    当用户问题涉及设备数量统计、设备信息查询、在线率、告警记录、部门人员、
-    操作记录、远程操作记录、登录日志、任何"记录"或"日志"类查询等
-    需要从数据库获取数据时使用此工具。
     只接受自然语言问题，不接受SQL语句本身。
-    正确示例：{"question": "查看客户端在线状态"}
-    错误示例：{"sql": "SELECT * FROM onlineinfo"}
 
     参数：
         question: 用户的自然语言问题，用于生成SQL查询，不是SQL语句
         need_export: 是否需要导出为Excel。当用户明确要求'表格'、'导出'或'下载'时设为True。
                      默认False，此时仅当查询结果超过20行才会自动导出。
+        pre_sql_context: 预检索上下文（由系统内部注入，不暴露给LLM），包含sql_samples和prompt_bundle
 
     返回：
         str: JSON格式字符串，包含sql/rows/row_count/columns/data_table字段；
@@ -346,14 +342,20 @@ def sql_query(question: str, need_export: bool = False) -> str:
         runtime = get_schema_runtime()
         security = runtime.raw.security
 
-        sql_samples = None
-        try:
-            sql_samples = search_sql_samples(question)
-            _log_sql_samples(sql_samples)
-        except Exception as e:
-            logger.warning(f"\n[sql_query] SQL样本检索失败: {e}")
+        if pre_sql_context and pre_sql_context.get("sql_samples") and pre_sql_context.get("prompt_bundle"):
+            sql_samples = pre_sql_context["sql_samples"]
+            prompt_bundle = pre_sql_context["prompt_bundle"]
+            logger.info(f"\n[sql_query] 使用预检索上下文，跳过RAG检索（样本数: {len(sql_samples)}）")
+        else:
+            sql_samples = None
+            try:
+                sql_samples = search_sql_samples(question)
+                _log_sql_samples(sql_samples)
+            except Exception as e:
+                logger.warning(f"\n[sql_query] SQL样本检索失败: {e}")
 
-        prompt_bundle = build_sql_prompt_bundle(runtime, question, sql_samples=sql_samples)
+            prompt_bundle = build_sql_prompt_bundle(runtime, question, sql_samples=sql_samples)
+
         _log_prompt_bundle(prompt_bundle)
         prompt = prompt_bundle.prompt
 

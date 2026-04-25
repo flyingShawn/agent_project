@@ -228,7 +228,7 @@ FROM
 
 适用场景：需要查询最近管理员相关操作日志是使用。管理员id去manageinfo表联查可获取管理机机器名
 
-关键表：adminlog
+关键表：adminlog，manageinfo
 
 ```sql
 SELECT
