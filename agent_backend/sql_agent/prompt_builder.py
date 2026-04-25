@@ -38,6 +38,7 @@ from functools import lru_cache
 from pathlib import Path
 import re
 import logging
+from datetime import datetime
 
 from agent_backend.core.config import (
     SchemaRuntime,
@@ -454,6 +455,7 @@ def build_sql_prompt_bundle(
 
     prompt_parts.extend([
         "",
+        f"当前日期：{datetime.now().strftime('%Y-%m-%d')} 星期{'一二三四五六日'[datetime.now().weekday()]}",
         f"用户问题：{question}",
         "SQL：",
     ])
