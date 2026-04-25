@@ -62,7 +62,7 @@ def _format_log_content(content: Any) -> str:
         return str(content)
 
 
-def _compact_log_content(content: str, head: int = 20, tail: int = 100) -> str:
+def _compact_log_content(content: str, head: int = 20, tail: int = 200) -> str:
     """长日志内容只保留首尾，避免整段上下文刷屏。"""
     if len(content) <= head + tail:
         return content
@@ -92,6 +92,10 @@ def _format_messages_for_llm_log(messages: list[Any]) -> str:
         if role != "system":
             content = _format_log_content(getattr(message, "content", message))
             block.append(_compact_log_content(content))
+        else:
+            content = _format_log_content(getattr(message, "content", message))
+            block.append(_compact_log_content(content, head=50, tail=800))
+
 
         tool_calls = getattr(message, "tool_calls", None)
         if tool_calls:

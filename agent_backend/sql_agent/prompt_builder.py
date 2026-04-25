@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 import re
+import logging
 
 from agent_backend.core.config import (
     SchemaRuntime,
@@ -59,7 +60,7 @@ _RESERVED_ALIAS_TOKENS = {
     "INNER", "OUTER", "FULL", "JOIN", "UNION",
 }
 
-
+logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class SqlPromptBundle:
     prompt: str
@@ -458,6 +459,9 @@ def build_sql_prompt_bundle(
     ])
 
     prompt = re.sub(r"\n{3,}", "\n\n", "\n".join(prompt_parts)).strip() + "\n"
+
+    #打印出当前内容
+    logger.warning(f"\n SQL Prompt: {prompt}")
     return SqlPromptBundle(
         prompt=prompt,
         selected_tables=selected_tables,

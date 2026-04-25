@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -320,6 +320,66 @@ def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:
     #    logger.info("\n[sql_query] 【完整Prompt】\n%s", bundle.prompt)
 
 
+def _resolve_time_references(text: str) -> str:
+    """将问题中的相对时间词替换为具体日期，确保SQL生成LLM能写出正确的WHERE条件。
+
+    例如："查询今日远程操作记录" → "查询2026-04-26远程操作记录"
+    """
+    now = datetime.now()
+    today = now.date()
+
+    replacements: list[tuple[str, str]] = [
+        ("今天", today.strftime("%Y-%m-%d")),
+        ("今日", today.strftime("%Y-%m-%d")),
+        ("昨天", (today - timedelta(days=1)).strftime("%Y-%m-%d")),
+        ("昨日", (today - timedelta(days=1)).strftime("%Y-%m-%d")),
+        ("前天", (today - timedelta(days=2)).strftime("%Y-%m-%d")),
+    ]
+
+    if now.month > 1:
+        lm_year, lm_month = now.year, now.month - 1
+    else:
+        lm_year, lm_month = now.year - 1, 12
+    last_month_start = date(lm_year, lm_month, 1)
+    if lm_month == 12:
+        last_month_end = date(lm_year, lm_month, 31)
+    else:
+        last_month_end = date(lm_year, lm_month + 1, 1) - timedelta(days=1)
+
+    this_month_start = date(now.year, now.month, 1)
+    if now.month == 12:
+        this_month_end = date(now.year, 12, 31)
+    else:
+        this_month_end = date(now.year, now.month + 1, 1) - timedelta(days=1)
+
+    monday_offset = now.weekday()
+    this_week_monday = today - timedelta(days=monday_offset)
+    this_week_sunday = this_week_monday + timedelta(days=6)
+
+    replacements.extend([
+        ("本周", f"{this_week_monday.strftime('%Y-%m-%d')}至{this_week_sunday.strftime('%Y-%m-%d')}"),
+        ("这周", f"{this_week_monday.strftime('%Y-%m-%d')}至{this_week_sunday.strftime('%Y-%m-%d')}"),
+        ("本月", f"{this_month_start.strftime('%Y-%m-%d')}至{this_month_end.strftime('%Y-%m-%d')}"),
+        ("这个月", f"{this_month_start.strftime('%Y-%m-%d')}至{this_month_end.strftime('%Y-%m-%d')}"),
+        ("上月", f"{last_month_start.strftime('%Y-%m-%d')}至{last_month_end.strftime('%Y-%m-%d')}"),
+        ("上个月", f"{last_month_start.strftime('%Y-%m-%d')}至{last_month_end.strftime('%Y-%m-%d')}"),
+        ("今年", f"{now.year}-01-01至{now.year}-12-31"),
+    ])
+
+    import re
+    for pattern in [r"最近(\d+)天", r"近(\d+)天"]:
+        def _replace_recent(m: re.Match) -> str:
+            n = int(m.group(1))
+            start = (today - timedelta(days=n - 1)).strftime("%Y-%m-%d")
+            return f"{start}至{today.strftime('%Y-%m-%d')}"
+        text = re.sub(pattern, _replace_recent, text)
+
+    for word, replacement in replacements:
+        text = text.replace(word, replacement)
+
+    return text
+
+
 @tool(args_schema=SqlQueryInput)
 def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | None = None) -> str:
     """
@@ -337,6 +397,11 @@ def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | 
              校验失败时包含error/hint字段
     """
     logger.info(f"\n[sql_query] 开始处理: {question} (need_export={need_export})")
+
+    resolved_question = _resolve_time_references(question)
+    if resolved_question != question:
+        logger.info(f"\n[sql_query] 时间解析: '{question}' → '{resolved_question}'")
+        question = resolved_question
 
     try:
         runtime = get_schema_runtime()
