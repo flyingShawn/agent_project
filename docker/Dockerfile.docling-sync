@@ -1,0 +1,8 @@
+FROM agent-docling-sync-base:latest
+
+WORKDIR /app
+
+COPY agent_backend ./agent_backend
+COPY scripts ./scripts
+
+CMD ["python", "scripts/sync_rag.py", "--target", "all", "--mode", "incremental"]

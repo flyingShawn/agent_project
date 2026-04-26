@@ -1,12 +1,14 @@
 FROM python:3.11-slim
 
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
+
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai
 
-COPY requirements.txt .
+COPY requirements-docling.txt .
 
 RUN rm -rf /etc/apt/sources.list.d/* && \
     echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ trixie main' > /etc/apt/sources.list && \
@@ -19,6 +21,7 @@ RUN rm -rf /etc/apt/sources.list.d/* && \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt \
+    && pip install --no-cache-dir torch --extra-index-url ${TORCH_INDEX} \
+    && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements-docling.txt \
     && python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-zh-v1.5')" \
-    && mkdir -p /data/docs /app/data
+    && mkdir -p /data/docs /data/sql /app/data
