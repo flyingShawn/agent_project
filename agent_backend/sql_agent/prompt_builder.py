@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 import re
+import logging
+from datetime import datetime
 
 from agent_backend.core.config import (
     SchemaRuntime,
@@ -59,7 +61,7 @@ _RESERVED_ALIAS_TOKENS = {
     "INNER", "OUTER", "FULL", "JOIN", "UNION",
 }
 
-
+logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class SqlPromptBundle:
     prompt: str
@@ -453,11 +455,15 @@ def build_sql_prompt_bundle(
 
     prompt_parts.extend([
         "",
+        f"当前日期：{datetime.now().strftime('%Y-%m-%d')} 星期{'一二三四五六日'[datetime.now().weekday()]}",
         f"用户问题：{question}",
         "SQL：",
     ])
 
     prompt = re.sub(r"\n{3,}", "\n\n", "\n".join(prompt_parts)).strip() + "\n"
+
+    #打印出当前内容
+    logger.warning(f"\n SQL Prompt: {prompt}")
     return SqlPromptBundle(
         prompt=prompt,
         selected_tables=selected_tables,
