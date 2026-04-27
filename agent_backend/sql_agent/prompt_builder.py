@@ -463,7 +463,7 @@ def build_sql_prompt_bundle(
     prompt = re.sub(r"\n{3,}", "\n\n", "\n".join(prompt_parts)).strip() + "\n"
 
     #打印出当前内容
-    logger.warning(f"\n SQL Prompt: {prompt}")
+   # logger.warning(f"\n SQL Prompt: {prompt}")
     return SqlPromptBundle(
         prompt=prompt,
         selected_tables=selected_tables,

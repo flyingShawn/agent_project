@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -119,14 +120,31 @@ def _parse_file(file_path: Path) -> str:
             result = converter.convert(str(file_path))
             return result.document.export_to_markdown()
         except ImportError:
-            logger.warning(f"\ndocling未安装，跳过文件: {file_path}")
-            return ""
+            pass
         except Exception as e:
             logger.warning(f"\nDocling解析失败 {file_path}: {e}")
+
+        docling_url = os.environ.get("DOCLING_SERVE_URL")
+        if docling_url:
             try:
-                return file_path.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                return ""
+                import httpx
+
+                with open(file_path, "rb") as f:
+                    resp = httpx.post(
+                        f"{docling_url}/v1/convert/file",
+                        files={"files": f},
+                        data={"options": '{"to_formats":["md"]}'},
+                        timeout=300,
+                    )
+                    resp.raise_for_status()
+                    md_content = resp.json().get("document", {}).get("md_content", "")
+                    if md_content:
+                        return md_content
+            except Exception as e:
+                logger.warning(f"\nDocling-serve调用失败 {file_path}: {e}")
+
+        logger.warning(f"\ndocling不可用，跳过文件: {file_path}")
+        return ""
 
     logger.warning(f"\n不支持的文件格式: {file_path}")
     return ""

@@ -44,6 +44,10 @@ function Show-Usage {
     Write-Host ""
     Write-Host "Defaults:" -ForegroundColor Cyan
     Write-Host "  mode=incremental, target=all, runner=docker"
+    Write-Host ""
+    Write-Host "Note:" -ForegroundColor Cyan
+    Write-Host "  Docker mode docs sync now uses docling-sync container (supports Office/PDF)."
+    Write-Host "  Docker mode sql sync still uses backend container."
 }
 
 foreach ($arg in $CliArgs) {
@@ -77,15 +81,42 @@ try {
             throw "docker command not found. Install/start Docker Desktop or use local runner."
         }
 
-        Write-Host "Ensuring qdrant and backend containers are running..." -ForegroundColor Cyan
-        & docker compose up -d qdrant backend
-        if ($LASTEXITCODE -ne 0) {
-            throw "docker compose up -d qdrant backend failed."
+        # Determine which containers to use based on target
+        # docs  -> docling-sync (has docling for Office/PDF parsing)
+        # sql   -> backend (no docling needed)
+        # all   -> both
+        $needsDocling = $target -in @("docs", "all")
+        $needsBackend = $target -in @("sql", "all")
+
+        if ($needsDocling) {
+            Write-Host "Ensuring qdrant container is running..." -ForegroundColor Cyan
+            & docker compose up -d qdrant
+            if ($LASTEXITCODE -ne 0) {
+                throw "docker compose up -d qdrant failed."
+            }
+
+            Write-Host "Building and running docling-sync container for docs sync..." -ForegroundColor Cyan
+            & docker compose --profile docling up docling-sync --build
+            if ($LASTEXITCODE -ne 0) {
+                throw "docling-sync failed."
+            }
         }
 
-        Write-Host "Running sync inside backend container..." -ForegroundColor Cyan
-        & docker compose exec backend python scripts/sync_rag.py --target $target --mode $mode
-        exit $LASTEXITCODE
+        if ($needsBackend) {
+            Write-Host "Ensuring qdrant and backend containers are running..." -ForegroundColor Cyan
+            & docker compose up -d qdrant backend
+            if ($LASTEXITCODE -ne 0) {
+                throw "docker compose up -d qdrant backend failed."
+            }
+
+            Write-Host "Running SQL sync inside backend container..." -ForegroundColor Cyan
+            & docker compose exec backend python scripts/sync_rag.py --target sql --mode $mode
+            if ($LASTEXITCODE -ne 0) {
+                throw "SQL sync failed."
+            }
+        }
+
+        exit 0
     }
 
     if (-not (Get-Command python -ErrorAction SilentlyContinue)) {

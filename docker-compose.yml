@@ -125,6 +125,35 @@ services:
       retries: 3
       start_period: 5s
 
+  # ==================== 文档同步服务（按需启动） ====================
+  # 日常不启动，仅同步文档知识库时使用：
+  #   docker compose --profile docling up docling-sync
+  docling-sync:
+    image: agent-docling-sync:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.docling-sync
+    profiles: ["docling"]
+    container_name: agent-docling-sync
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - RAG_DOCS_DIR=/data/docs
+      - RAG_SQL_DIR=/data/sql
+      - RAG_QDRANT_URL=http://qdrant:6333
+      - RAG_QDRANT_PATH=
+      - RAG_QDRANT_API_KEY=${RAG_QDRANT_API_KEY:-}
+      - RAG_QDRANT_COLLECTION=${RAG_QDRANT_COLLECTION:-desk_agent_docs}
+      - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
+      - RAG_SQL_QDRANT_COLLECTION=${RAG_SQL_QDRANT_COLLECTION:-desk_agent_sql}
+    volumes:
+      - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/docs:ro
+      - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/sql:ro
+      - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
+    depends_on:
+      - qdrant
+    networks:
+      - app-network
+
   # ==================== Qdrant向量数据库 ====================
   qdrant:
     image: qdrant/qdrant:v1.17.0
