@@ -124,6 +124,27 @@ curl http://localhost:6333/
 
 ### 更新配置或文档
 
+推荐使用项目自带的 `sync.cmd` 脚本（支持 Office/PDF 解析）：
+
+```powershell
+# 同步所有（文档 + SQL 样本）
+.\scripts\sync.cmd
+
+# 全量重建
+.\scripts\sync.cmd full
+
+# 仅同步文档知识库（自动使用 docling-sync 容器，支持 Office/PDF）
+.\scripts\sync.cmd docs
+
+# 仅同步 SQL 样本库
+.\scripts\sync.cmd sql
+
+# 本地环境运行（需安装 docling）
+.\scripts\sync.cmd docs full local
+```
+
+也可直接调用 API 触发同步（仅支持 md/txt，不处理 Office/PDF）：
+
 ```bash
 # 更新 RAG 文档后，触发重新索引
 curl -X POST http://localhost:8000/api/v1/rag/sync \
