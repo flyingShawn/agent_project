@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "  构建文档同步基础镜像 (agent-docling-sync-base)" -ForegroundColor Cyan
