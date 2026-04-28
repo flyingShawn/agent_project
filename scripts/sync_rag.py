@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +18,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent_backend.rag_engine.ingest import ingest_directory
 from agent_backend.rag_engine.settings import RagIngestSettings
 from agent_backend.rag_engine.state import IngestStateStore
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _ensure_docling_available() -> bool:
+    try:
+        from docling.document_converter import DocumentConverter  # noqa: F401
+    except Exception as e:
+        print(f"docling不可用: {e}")
+        print("请先重建文档同步基础镜像：powershell -ExecutionPolicy Bypass -File docker/build-docling-sync.ps1")
+        return False
+    return True
 
 
 def _run_sync(
@@ -80,6 +95,10 @@ def main() -> int:
 
     settings = RagIngestSettings()
     exit_code = 0
+
+    if args.target in ("docs", "all") and _truthy_env("RAG_REQUIRE_DOCLING"):
+        if not _ensure_docling_available():
+            return 1
 
     if args.target in ("docs", "all"):
         exit_code = max(

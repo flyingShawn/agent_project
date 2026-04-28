@@ -46,7 +46,7 @@ bash docker/build-docling-sync.sh
 bash docker/build-docling-sync.sh --gpu
 
 # 第二步：启动文档同步（完成后容器自动退出）
-docker compose --profile docling up docling-sync --build
+.\scripts\sync.cmd docs
 ```
 
 ### 日常开发（仅代码变更）

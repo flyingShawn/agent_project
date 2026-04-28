@@ -5,4 +5,4 @@ WORKDIR /app
 COPY agent_backend ./agent_backend
 COPY scripts ./scripts
 
-CMD ["python", "scripts/sync_rag.py", "--target", "all", "--mode", "incremental"]
+CMD ["sh", "-c", "python scripts/sync_rag.py --target ${SYNC_TARGET:-all} --mode ${SYNC_MODE:-incremental}"]

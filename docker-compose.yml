@@ -127,7 +127,7 @@ services:
 
   # ==================== 文档同步服务（按需启动） ====================
   # 日常不启动，仅同步文档知识库时使用：
-  #   docker compose --profile docling up docling-sync
+  #   .\scripts\sync.cmd docs
   docling-sync:
     image: agent-docling-sync:latest
     build:
@@ -145,6 +145,9 @@ services:
       - RAG_QDRANT_COLLECTION=${RAG_QDRANT_COLLECTION:-desk_agent_docs}
       - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
       - RAG_SQL_QDRANT_COLLECTION=${RAG_SQL_QDRANT_COLLECTION:-desk_agent_sql}
+      - SYNC_TARGET=${SYNC_TARGET:-all}
+      - SYNC_MODE=${SYNC_MODE:-incremental}
+      - RAG_REQUIRE_DOCLING=${RAG_REQUIRE_DOCLING:-1}
     volumes:
       - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/docs:ro
       - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/sql:ro
