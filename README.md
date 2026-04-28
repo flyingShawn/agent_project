@@ -81,14 +81,14 @@ docker\deploy.bat
 或手动执行：
 
 ```bash
-docker compose build
-docker compose up -d
+powershell -ExecutionPolicy Bypass -File docker/build-base.ps1
+docker compose up -d --build
 ```
 
 同步说明：
 - 普通安装模式不会在后端启动时自动同步文档或 SQL，需要你手动执行脚本或调用同步 API。
 - Docker 模式会在 `backend` 容器启动前自动执行一次 SQL 样本库全量同步，当前命令是 `python scripts/sync_rag.py --target sql --sql-dir /data/sql --mode full`。
-- Docker 模式不会在容器启动时自动同步文档知识库，文档仍需手动同步。
+- Docker 模式不会在容器启动时自动同步文档知识库，文档请用 `.\scripts\sync.cmd docs`，首次使用前先执行 `powershell -ExecutionPolicy Bypass -File docker/build-docling-sync.ps1`。
 - 运维简报接口和 RAG 同步接口当前都不要求外部账号签名。
 
 部署后访问地址：
@@ -432,6 +432,9 @@ LLM 通过 Tool Calling 自主决策调用以下 10 种工具：
 推荐直接在 PowerShell 使用包装脚本：
 
 ```powershell
+# 首次同步 Office/PDF 前先构建文档同步基础镜像
+powershell -ExecutionPolicy Bypass -File docker/build-docling-sync.ps1
+
 .\scripts\sync.cmd
 .\scripts\sync.cmd full
 .\scripts\sync.cmd docs full
@@ -442,11 +445,11 @@ LLM 通过 Tool Calling 自主决策调用以下 10 种工具：
 
 说明：
 - 参数顺序可以互换，脚本按关键字识别。
-- 默认 runner 是 `docker`，所以 `.\scripts\sync.cmd full` 等价于“全量同步全部目标，走 Docker 容器”。
+- 默认 runner 是 `docker`，所以 `.\scripts\sync.cmd full` 等价于“全量同步全部目标，文档走 docling-sync 容器，SQL 走 backend 容器”。
 - 如果不是 Docker 模式，就在参数里加 `local`，例如 `.\scripts\sync.cmd full local`。
-- `local` runner 实际执行的是 `python scripts/sync.py ...`，`docker` runner 实际执行的是 `docker compose exec backend python scripts/sync_rag.py ...`。
+- `local` runner 实际执行的是 `python scripts/sync.py ...`；`docker` runner 下文档同步使用 `docling-sync`，SQL 同步使用 `backend`。
 
-如果你更偏向 API 方式，也可以触发同步接口；这些同步接口当前也不要求外部账号签名：
+如果你更偏向 API 方式，也可以触发同步接口；这些同步接口当前也不要求外部账号签名。注意：Docker 主 API 镜像不包含 docling，`/rag/sync` 只适合 md/txt 文档，Office/PDF 请使用 `.\scripts\sync.cmd docs`。
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/rag/sync -ContentType "application/json" -Body '{"mode":"incremental"}'
@@ -537,7 +540,7 @@ taskkill /PID <进程ID> /F      # 结束进程
 
 **RAG 检索无结果**
 - 确认文档已放入 `data/desk-agent/docs/` 目录
-- 调用 `/api/v1/rag/sync` 触发文档同步
+- Docker 部署用 `.\scripts\sync.cmd docs` 触发文档同步；如果提示 `docling不可用`，先运行 `powershell -ExecutionPolicy Bypass -File docker/build-docling-sync.ps1`
 - 检查 Qdrant 控制台 http://localhost:6333/dashboard 是否有向量数据
 
 **定时任务不执行**

@@ -89,11 +89,11 @@ CHAT_DB_PATH=/app/data/chat_history.db
 ### 4.2 构建并启动
 
 ```bash
-# 构建镜像
-docker compose build
+# 首次先构建主 API 基础镜像
+powershell -ExecutionPolicy Bypass -File docker/build-base.ps1
 
-# 启动所有服务
-docker compose up -d
+# 构建并启动服务
+docker compose up -d --build
 
 # 查看服务状态
 docker compose ps
@@ -127,6 +127,9 @@ curl http://localhost:6333/
 推荐使用项目自带的 `sync.cmd` 脚本（支持 Office/PDF 解析）：
 
 ```powershell
+# 首次同步 Office/PDF 前先构建文档同步基础镜像
+powershell -ExecutionPolicy Bypass -File docker/build-docling-sync.ps1
+
 # 同步所有（文档 + SQL 样本）
 .\scripts\sync.cmd
 
@@ -302,10 +305,8 @@ docker compose exec backend ls -la /data/docs/
 # 检查向量数据库是否有数据
 curl http://localhost:6333/collections
 
-# 触发文档同步
-curl -X POST http://localhost:8000/api/v1/rag/sync \
-  -H "Content-Type: application/json" \
-  -d '{"mode": "incremental"}'
+# 触发文档同步（Office/PDF 需要 docling-sync 镜像）
+.\scripts\sync.cmd docs
 ```
 
 ### 定时任务不执行

@@ -95,10 +95,29 @@ try {
                 throw "docker compose up -d qdrant failed."
             }
 
+            $previousSyncTarget = $env:SYNC_TARGET
+            $previousSyncMode = $env:SYNC_MODE
+            $previousRequireDocling = $env:RAG_REQUIRE_DOCLING
+            $env:SYNC_TARGET = "docs"
+            $env:SYNC_MODE = $mode
+            $env:RAG_REQUIRE_DOCLING = "1"
+
             Write-Host "Building and running docling-sync container for docs sync..." -ForegroundColor Cyan
-            & docker compose --profile docling up docling-sync --build
-            if ($LASTEXITCODE -ne 0) {
-                throw "docling-sync failed."
+            try {
+                & docker compose --profile docling up docling-sync --build --force-recreate
+                if ($LASTEXITCODE -ne 0) {
+                    throw "docling-sync failed."
+                }
+
+                $doclingExitCode = (& docker inspect agent-docling-sync --format "{{.State.ExitCode}}").Trim()
+                if ($doclingExitCode -ne "0") {
+                    throw "docling-sync exited with code $doclingExitCode. If docling import failed, rebuild it with: powershell -ExecutionPolicy Bypass -File docker/build-docling-sync.ps1"
+                }
+            }
+            finally {
+                if ($null -eq $previousSyncTarget) { Remove-Item Env:SYNC_TARGET -ErrorAction SilentlyContinue } else { $env:SYNC_TARGET = $previousSyncTarget }
+                if ($null -eq $previousSyncMode) { Remove-Item Env:SYNC_MODE -ErrorAction SilentlyContinue } else { $env:SYNC_MODE = $previousSyncMode }
+                if ($null -eq $previousRequireDocling) { Remove-Item Env:RAG_REQUIRE_DOCLING -ErrorAction SilentlyContinue } else { $env:RAG_REQUIRE_DOCLING = $previousRequireDocling }
             }
         }
 
