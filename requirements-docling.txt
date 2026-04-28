@@ -1,2 +1,3 @@
 -r requirements.txt
+# torch 和 torchvision 在 Dockerfile.docling-sync.base 中按官方兼容矩阵成对安装。
 docling>=2.0

@@ -16,6 +16,7 @@ $modeLabel = if ($args -contains "--gpu") { "GPU (CUDA 12.6)" } else { "CPU" }
 
 Write-Host "构建模式: $modeLabel" -ForegroundColor Yellow
 Write-Host "TORCH_INDEX: $torchIndex" -ForegroundColor Yellow
+Write-Host "Torch/Torchvision: 2.9.0 / 0.24.0" -ForegroundColor Yellow
 Write-Host "开始构建文档同步基础镜像（包含 docling + torch + fastembed 模型）..." -ForegroundColor Yellow
 Write-Host "此过程耗时较长，请耐心等待（约 10-20 分钟）" -ForegroundColor Yellow
 Write-Host ""

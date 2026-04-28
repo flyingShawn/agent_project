@@ -81,7 +81,7 @@ bash docker/build-base.sh
 以下情况**必须**重建：
 
 1. **`requirements-docling.txt` 发生变更** — docling 版本更新
-2. **torch 版本切换** — 从 CPU 切换到 GPU 或反之
+2. **torch/torchvision 版本切换** — 这两个包必须成对匹配，从 CPU 切换到 GPU 或反之也需要重建
 
 重建命令：
 
