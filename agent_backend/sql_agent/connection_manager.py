@@ -12,7 +12,6 @@
 
 主要使用场景：
     - 用户提问时，executor 获取对应会话的数据库连接执行SQL
-    - 定时任务执行时，使用 __scheduler__ 会话ID的连接
     - 对话结束时，通过 close_connection() 释放连接
 
 核心类与函数：
@@ -149,16 +148,6 @@ class ConnectionManager:
         return str(uuid.uuid4())
     
     def get_or_create_connection(self, session_id: str, database_url: str) -> Any:
-        """
-        获取或创建数据库连接
-        
-        参数：
-            session_id: 会话ID
-            database_url: 数据库连接URL
-        
-        返回：
-            数据库连接对象
-        """
         from sqlalchemy import create_engine
         
         with self._lock:
@@ -200,7 +189,19 @@ class ConnectionManager:
             except Exception as e:
                 logger.error(f"❌ 创建数据库连接失败: {e}")
                 raise
-    
+
+    def get_or_create_connection_for_agent(self, agent_type: str, session_id: str) -> Any:
+        composite_session_id = f"{agent_type}:{session_id}"
+        from agent_backend.agent.registry import get_registry
+        registry = get_registry()
+        database_url = registry.get_database_url(agent_type)
+        if not database_url:
+            from agent_backend.core.config import get_database_url as _get_default_url
+            database_url = _get_default_url()
+        if not database_url:
+            raise ValueError(f"未配置数据库连接: {agent_type}")
+        return self.get_or_create_connection(composite_session_id, database_url)
+
     def mark_connection_invalid(self, session_id: str) -> None:
         """
         标记连接为无效（供外部调用，当检测到连接异常时）

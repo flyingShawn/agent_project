@@ -67,9 +67,16 @@ def _preload_components() -> None:
         log.warning(f"\n[Preload] ⚠️ Settings 加载失败: {e}")
 
     try:
+        from agent_backend.agent.registry import get_registry
+        registry = get_registry()
+        log.info(f"\n[Preload] ✅ AgentRegistry 已加载 ({len(registry.get_enabled_agents())} 个智能体)")
+    except Exception as e:
+        log.warning(f"\n[Preload] ⚠️ AgentRegistry 加载失败: {e}")
+
+    try:
         from agent_backend.core.config import get_schema_runtime
         get_schema_runtime()
-        log.info("\n[Preload] ✅ Schema 元数据已加载")
+        log.info("\n[Preload] ✅ Schema 元数据已加载（默认）")
     except Exception as e:
         log.warning(f"\n[Preload] ⚠️ Schema 元数据加载失败: {e}")
 

@@ -7,12 +7,11 @@ SQL 生成提示词构建模块
     注入同义词映射和参考样本，引导 LLM 生成准确合规的 SQL。
 
 在系统架构中的定位：
-    位于 SQL Agent 的提示词层，被 sql_agent/executor.py 和
-    agent/tools/scheduler_tool.py 调用，为 LLM 生成 SQL 提供上下文。
+    位于 SQL Agent 的提示词层，被 sql_agent/executor.py 调用，
+    为 LLM 生成 SQL 提供上下文。
 
 主要使用场景：
     - 用户提问时，构建 SQL 生成提示词
-    - 定时任务创建时，为自动生成的 SQL 构建提示词
 
 核心函数：
     - build_sql_prompt(): 构建完整的 SQL 生成提示词
@@ -29,7 +28,6 @@ SQL 生成提示词构建模块
     - agent_backend/core/config.py: SchemaRuntime 运行时配置
     - agent_backend/rag_engine/retrieval.py: RetrievedChunk RAG 检索结果
     - agent_backend/sql_agent/executor.py: SQL 执行器（调用方）
-    - agent_backend/agent/tools/scheduler_tool.py: 定时任务工具（调用方）
 """
 from __future__ import annotations
 
@@ -45,11 +43,18 @@ from agent_backend.core.config import (
     get_sql_prompt_instructions,
     get_sql_system_prompt,
 )
+from agent_backend.core.context import current_agent_type
 from agent_backend.rag_engine.retrieval import RetrievedChunk
 from agent_backend.rag_engine.settings import RagIngestSettings
 from agent_backend.rag_engine.sql_samples import parse_sql_sample_sections
 
-SQL_SYSTEM_PROMPT = get_sql_system_prompt()
+SQL_SYSTEM_PROMPT_DEFAULT = get_sql_system_prompt()
+
+
+def _get_sql_system_prompt_for_current_agent() -> str:
+    from agent_backend.core.context import current_agent_type
+    agent_type = current_agent_type.get()
+    return get_sql_system_prompt(agent_type)
 
 _COLUMN_REF_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b")
 _TABLE_ALIAS_RE = re.compile(
@@ -430,7 +435,7 @@ def build_sql_prompt_bundle(
             shot_parts.append(f"示例{i}（来源：{sample.heading or sample.source_path}）：\n{sample.text}")
         shot_block = "\n\n".join(shot_parts)
 
-    instructions_text = get_sql_prompt_instructions().strip()
+    instructions_text = get_sql_prompt_instructions(current_agent_type.get()).strip()
     if quote:
         instructions_text += f"\n数据库标识符引用符是 {quote}，仅在必要时使用。"
 

@@ -34,6 +34,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from agent_backend.core.config import get_schema_runtime
+from agent_backend.core.context import current_agent_type
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class MetadataQueryInput(BaseModel):
 @tool(args_schema=MetadataQueryInput)
 def metadata_query(table_name: str | None = None) -> str:
     """
-    查询桌面管理系统的数据库表结构信息。
+    查询业务数据库的表结构信息。
     当需要了解某个表的字段定义、表间关系、字段含义等元数据时使用此工具。
     通常在生成SQL前辅助理解数据库结构。
 
@@ -58,8 +59,10 @@ def metadata_query(table_name: str | None = None) -> str:
     """
     logger.info(f"\n[metadata_query] 查询元数据: table_name={table_name}")
 
+    agent_type = current_agent_type.get()
+
     try:
-        runtime = get_schema_runtime()
+        runtime = get_schema_runtime(agent_type)
 
         if table_name:
             table_data = runtime.tree.get(table_name)

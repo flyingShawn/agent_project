@@ -1,6 +1,6 @@
 import { fetchWithExternalAuth } from '../utils/externalIdentity'
 
-const API_BASE = '/api/v1/ops'
+const API_BASE = '/api/v1'
 
 async function parseJsonResponse(response) {
   if (!response.ok) {
@@ -9,38 +9,42 @@ async function parseJsonResponse(response) {
       const payload = await response.json()
       detail = payload.detail || detail
     } catch (_) {
-      // ignore
     }
     throw new Error(detail)
   }
   return response.json()
 }
 
-export async function listOpsReports({ limit = 20, unreadOnly = false } = {}) {
-  const response = await fetchWithExternalAuth(`${API_BASE}/reports?limit=${limit}&unread_only=${unreadOnly}`)
+export async function listOpsReports(agentType, { limit = 20, unreadOnly = false } = {}) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/ops/reports?limit=${limit}&unread_only=${unreadOnly}`)
   return parseJsonResponse(response)
 }
 
-export async function getLatestOpsReport() {
-  const response = await fetchWithExternalAuth(`${API_BASE}/reports/latest`)
+export async function getLatestOpsReport(agentType) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/ops/reports/latest`)
   return parseJsonResponse(response)
 }
 
-export async function getOpsReport(reportId) {
-  const response = await fetchWithExternalAuth(`${API_BASE}/reports/${reportId}`)
+export async function getOpsReport(agentType, reportId) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/ops/reports/${reportId}`)
   return parseJsonResponse(response)
 }
 
-export async function markOpsReportRead(reportId) {
-  const response = await fetchWithExternalAuth(`${API_BASE}/reports/${reportId}/read`, {
+export async function markOpsReportRead(agentType, reportId) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/ops/reports/${reportId}/read`, {
     method: 'PUT',
   })
   return parseJsonResponse(response)
 }
 
-export async function runOpsReportNow() {
-  const response = await fetchWithExternalAuth(`${API_BASE}/reports/run`, {
+export async function runOpsReportNow(agentType) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/ops/reports/run`, {
     method: 'POST',
   })
+  return parseJsonResponse(response)
+}
+
+export async function fetchAgents() {
+  const response = await fetchWithExternalAuth(`${API_BASE}/agents`)
   return parseJsonResponse(response)
 }

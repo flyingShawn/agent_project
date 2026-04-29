@@ -1,0 +1,34 @@
+version: "0.1"
+db_type: "mysql"
+
+naming:
+  identifier_quote: "`"
+  case_insensitive_identifiers: true
+
+security:
+  restricted_tables: []
+  deny_select_columns: []
+
+permissions: []
+
+synonyms:
+  工单:
+    - ticket
+    - work_order
+  问题:
+    - ticket
+    - issue
+  故障:
+    - ticket
+    - fault
+  解决方案:
+    - solution
+    - resolution
+  处理人:
+    - assignee
+    - handler
+  创建人:
+    - creator
+    - reporter
+
+tables: []

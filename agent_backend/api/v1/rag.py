@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["rag"])
+router = APIRouter(prefix="/{agent_type}/rag", tags=["rag"])
 
 _jobs: dict[str, dict[str, Any]] = {}
 
@@ -86,8 +86,8 @@ def _run_ingest(job_id: str, kb_type: str, mode: str) -> None:
         logger.error(f"\n同步任务失败 [{job_id}]: {e}")
 
 
-@router.post("/rag/sync", response_model=SyncResponse)
-def sync_docs(req: SyncRequest) -> SyncResponse:
+@router.post("/sync", response_model=SyncResponse)
+def sync_docs(agent_type: str, req: SyncRequest) -> SyncResponse:
     mode = req.mode if req.mode in ("full", "incremental") else "incremental"
     job_id = str(uuid.uuid4())[:8]
 
@@ -104,8 +104,8 @@ def sync_docs(req: SyncRequest) -> SyncResponse:
     )
 
 
-@router.post("/rag/sync-sql", response_model=SyncResponse)
-def sync_sql_samples(req: SyncRequest) -> SyncResponse:
+@router.post("/sync-sql", response_model=SyncResponse)
+def sync_sql_samples(agent_type: str, req: SyncRequest) -> SyncResponse:
     mode = req.mode if req.mode in ("full", "incremental") else "incremental"
     job_id = str(uuid.uuid4())[:8]
 
@@ -122,8 +122,8 @@ def sync_sql_samples(req: SyncRequest) -> SyncResponse:
     )
 
 
-@router.get("/rag/sync/{job_id}")
-def get_sync_status(job_id: str) -> dict:
+@router.get("/sync/{job_id}")
+def get_sync_status(agent_type: str, job_id: str) -> dict:
     job = _jobs.get(job_id)
     if not job:
         return {"job_id": job_id, "status": "not_found"}

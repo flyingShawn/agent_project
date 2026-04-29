@@ -49,6 +49,7 @@ class AgentState(TypedDict, total=False):
     last_llm_input_messages: list
     question: str
     session_id: str
+    agent_type: str
     lognum: str
     images_base64: list[str] | None
     sql_results: list[dict]

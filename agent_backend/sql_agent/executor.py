@@ -296,3 +296,29 @@ def execute_sql(
         http_status=502,
         details={"reason": str(last_exception)},
     ) from last_exception
+
+
+def execute_sql_for_agent(
+    *,
+    agent_type: str,
+    sql: str,
+    params: dict[str, Any] | None = None,
+    max_rows: int | None = None,
+    max_retries: int = 2,
+    retry_delay: float = 1.0,
+    session_id: str | None = None,
+) -> list[dict[str, Any]]:
+    from agent_backend.agent.registry import get_registry
+    registry = get_registry()
+    database_url = registry.get_database_url(agent_type)
+    if not database_url:
+        database_url = get_database_url()
+    return execute_sql(
+        sql=sql,
+        params=params or {},
+        database_url=database_url,
+        max_rows=max_rows,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+        session_id=session_id,
+    )

@@ -10,4 +10,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 
-CMD ["sh", "-c", "python scripts/sync_rag.py --target sql --sql-dir /data/sql --mode full && uvicorn agent_backend.main:app --host 0.0.0.0 --port 8000 --workers 1"]
+CMD ["sh", "-c", "python scripts/sync_rag.py --target sql --sql-dir /data/desk-agent/sql --mode full && python scripts/sync_rag.py --target sql --sql-dir /data/ticket-agent/sql --mode full; uvicorn agent_backend.main:app --host 0.0.0.0 --port 8000 --workers 1"]

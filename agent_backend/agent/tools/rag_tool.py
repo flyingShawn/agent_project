@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 from agent_backend.rag_engine.embedding import EmbeddingModel
 from agent_backend.rag_engine.qdrant_store import QdrantVectorStore
 from agent_backend.rag_engine.retrieval import get_rag_settings, hybrid_search, get_or_create_embedding, get_or_create_store
+from agent_backend.core.context import current_agent_type
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class RagSearchInput(BaseModel):
 @tool(args_schema=RagSearchInput)
 def rag_search(question: str) -> str:
     """
-    从桌面管理系统知识库中检索文档。
+    从知识库中检索文档。
     当用户问题涉及操作方法、配置步骤、故障排查、使用指南、权限设置等
     需要参考文档的问题时使用此工具。
 
@@ -63,8 +64,10 @@ def rag_search(question: str) -> str:
     """
     logger.info(f"\n[rag_search] 开始检索: {question}")
 
+    agent_type = current_agent_type.get()
+
     try:
-        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score, candidate_k, alpha = get_rag_settings()
+        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, vector_min_score, candidate_k, alpha = get_rag_settings(agent_type)
 
         embedding_model = get_or_create_embedding(embedding_model_name)
 

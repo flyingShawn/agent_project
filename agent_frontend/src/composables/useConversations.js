@@ -15,18 +15,18 @@ const currentTitle = computed(() => {
 })
 
 export function useConversations() {
-  async function loadConversations(userId = 'admin') {
+  async function loadConversations(userId = 'admin', agentType = 'desk-agent') {
     try {
-      const data = await fetchConversations(userId)
+      const data = await fetchConversations(agentType, userId)
       conversations.value = data.items || []
     } catch (e) {
       console.error('[useConversations] 加载会话列表失败:', e)
     }
   }
 
-  async function switchConversation(id) {
+  async function switchConversation(agentType, id) {
     try {
-      const data = await fetchConversation(id)
+      const data = await fetchConversation(agentType, id)
       currentConversationId.value = id
       return data
     } catch (e) {
@@ -35,9 +35,9 @@ export function useConversations() {
     }
   }
 
-  async function renameConversation(id, title) {
+  async function renameConversation(agentType, id, title) {
     try {
-      const result = await updateConversationTitle(id, title)
+      const result = await updateConversationTitle(agentType, id, title)
       if (result.success) {
         const conv = conversations.value.find((c) => c.id === id)
         if (conv) {
@@ -51,9 +51,9 @@ export function useConversations() {
     }
   }
 
-  async function removeConversation(id) {
+  async function removeConversation(agentType, id) {
     try {
-      const result = await deleteConversationApi(id)
+      const result = await deleteConversationApi(agentType, id)
       if (result.success) {
         conversations.value = conversations.value.filter((c) => c.id !== id)
         if (currentConversationId.value === id) {

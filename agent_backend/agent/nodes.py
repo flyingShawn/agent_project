@@ -34,6 +34,7 @@ from agent_backend.agent.state import AgentState
 from agent_backend.agent.tools import ALL_TOOLS
 from agent_backend.agent.tools.sql_tool import _SqlJsonEncoder
 from agent_backend.core.config import get_summary_prompt
+from agent_backend.core.context import current_agent_type
 from agent_backend.llm.factory import get_llm
 
 logger = logging.getLogger(__name__)
@@ -445,7 +446,7 @@ def respond_node(state: AgentState) -> dict[str, Any]:
     if tool_call_count >= max_tool_calls and isinstance(last_message, AIMessage) and last_message.tool_calls:
         logger.info("\n[respond_node] 达到 max_tool_calls，强制生成最终总结回答")
         llm = get_llm()
-        summary_prompt = SystemMessage(content=get_summary_prompt())
+        summary_prompt = SystemMessage(content=get_summary_prompt(current_agent_type.get()))
         system_messages = [message for message in state["messages"] if isinstance(message, SystemMessage)]
         non_system_messages = [
             message for message in state["messages"] if not isinstance(message, SystemMessage)

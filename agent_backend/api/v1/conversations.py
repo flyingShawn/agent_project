@@ -102,8 +102,9 @@ class DeleteResponse(BaseModel):
     success: bool
 
 
-@router.get("/conversations", response_model=ConversationListResponse)
+@router.get("/{agent_type}/conversations", response_model=ConversationListResponse)
 async def list_conversations(
+    agent_type: str,
     current_user: ExternalIdentity = Depends(require_external_identity),
     limit: int = 50,
     offset: int = 0,
@@ -112,12 +113,17 @@ async def list_conversations(
     count_stmt = select(func.count()).select_from(Conversation).where(
         Conversation.user_id == current_user.user_id,
         Conversation.is_deleted == 0,
+        Conversation.agent_type == agent_type,
     )
     total = (await db.execute(count_stmt)).scalar() or 0
 
     stmt = (
         select(Conversation)
-        .where(Conversation.user_id == current_user.user_id, Conversation.is_deleted == 0)
+        .where(
+            Conversation.user_id == current_user.user_id,
+            Conversation.is_deleted == 0,
+            Conversation.agent_type == agent_type,
+        )
         .order_by(Conversation.updated_at.desc())
         .limit(limit)
         .offset(offset)
@@ -140,8 +146,9 @@ async def list_conversations(
     )
 
 
-@router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
+@router.get("/{agent_type}/conversations/{conversation_id}", response_model=ConversationDetailResponse)
 async def get_conversation(
+    agent_type: str,
     conversation_id: str,
     current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),
@@ -184,8 +191,9 @@ async def get_conversation(
     )
 
 
-@router.post("/conversations", response_model=ConversationCreateResponse)
+@router.post("/{agent_type}/conversations", response_model=ConversationCreateResponse)
 async def create_conversation(
+    agent_type: str,
     req: ConversationCreateRequest,
     current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),
@@ -195,6 +203,7 @@ async def create_conversation(
         id=str(uuid.uuid4()),
         title="新对话",
         user_id=current_user.user_id,
+        agent_type=agent_type,
         created_at=now,
         updated_at=now,
         is_deleted=0,
@@ -211,8 +220,9 @@ async def create_conversation(
     )
 
 
-@router.put("/conversations/{conversation_id}/title", response_model=TitleUpdateResponse)
+@router.put("/{agent_type}/conversations/{conversation_id}/title", response_model=TitleUpdateResponse)
 async def update_conversation_title(
+    agent_type: str,
     conversation_id: str,
     req: TitleUpdateRequest,
     current_user: ExternalIdentity = Depends(require_external_identity),
@@ -236,8 +246,9 @@ async def update_conversation_title(
     return TitleUpdateResponse(success=True, title=conv.title)
 
 
-@router.delete("/conversations/{conversation_id}", response_model=DeleteResponse)
+@router.delete("/{agent_type}/conversations/{conversation_id}", response_model=DeleteResponse)
 async def delete_conversation(
+    agent_type: str,
     conversation_id: str,
     current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),

@@ -13,6 +13,7 @@ export function abortCurrentRequest() {
 
 export async function sendChatMessage({
   question,
+  agentType = 'desk-agent',
   history = [],
   images_base64 = null,
   lognum = 'admin',
@@ -25,7 +26,7 @@ export async function sendChatMessage({
   currentAbortController = controller
 
   try {
-    const response = await fetchWithExternalAuth(`${API_BASE}/chat`, {
+    const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

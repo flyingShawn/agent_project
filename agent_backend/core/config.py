@@ -188,7 +188,17 @@ def get_settings() -> AppSettings:
     return _settings_instance
 
 
-def get_database_url() -> str | None:
+def get_database_url(agent_type: str | None = None) -> str | None:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                url = registry.get_database_url(agent_type)
+                if url:
+                    return url
+        except Exception:
+            pass
     load_env_file()
     return get_settings().build_database_url()
 
@@ -198,8 +208,8 @@ def get_max_rows() -> int:
     return get_settings().database.sql_max_rows
 
 
-_SCHEMA_YAML_PATH = Path(__file__).parent.parent / "configs" / "schema_metadata.yaml"
-_PROMPTS_YAML_PATH = Path(__file__).parent.parent / "configs" / "prompts.yaml"
+_SCHEMA_YAML_PATH = Path(__file__).parent.parent / "configs" / "desk-agent" / "schema_metadata.yaml"
+_PROMPTS_YAML_PATH = Path(__file__).parent.parent / "configs" / "desk-agent" / "prompts.yaml"
 
 _DEFAULT_SYSTEM_PROMPT = """你是一个专业的桌面管理系统AI助手，拥有以下工具能力：\n\n（默认提示词，请配置 configs/prompts.yaml）"""
 _DEFAULT_SQL_SYSTEM_PROMPT = "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"
@@ -272,24 +282,58 @@ def _load_prompts_yaml() -> dict:
     return data or {}
 
 
-def get_system_prompt() -> str:
+def get_system_prompt(agent_type: str | None = None) -> str:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                return registry.get_system_prompt(agent_type)
+        except Exception:
+            pass
     data = _load_prompts_yaml()
     prompt = data.get("system_prompt") or _DEFAULT_SYSTEM_PROMPT
     return f"{prompt}\n\n{_SQL_QUERY_RESULT_GUIDANCE}"
 
 
-def get_sql_system_prompt() -> str:
+def get_sql_system_prompt(agent_type: str | None = None) -> str:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                return registry.get_sql_system_prompt(agent_type)
+        except Exception:
+            pass
     data = _load_prompts_yaml()
     return data.get("sql_system_prompt") or _DEFAULT_SQL_SYSTEM_PROMPT
 
 
-def get_summary_prompt() -> str:
+def get_summary_prompt(agent_type: str | None = None) -> str:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                return registry.get_summary_prompt(agent_type)
+        except Exception:
+            pass
     data = _load_prompts_yaml()
     prompt = data.get("summary_prompt") or _DEFAULT_SUMMARY_PROMPT
     return f"{prompt}\n\n{_SQL_QUERY_RESULT_GUIDANCE}"
 
 
-def get_sql_prompt_instructions() -> str:
+def get_sql_prompt_instructions(agent_type: str | None = None) -> str:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                instructions = registry.get_sql_prompt_instructions(agent_type)
+                if instructions:
+                    return instructions
+        except Exception:
+            pass
     data = _load_prompts_yaml()
     return data.get("sql_prompt_instructions") or _DEFAULT_SQL_PROMPT_INSTRUCTIONS
 
@@ -371,7 +415,15 @@ class SchemaRuntime:
 _schema_runtime_cache: SchemaRuntime | None = None
 
 
-def get_schema_runtime() -> SchemaRuntime:
+def get_schema_runtime(agent_type: str | None = None) -> SchemaRuntime:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                return registry.get_schema_runtime(agent_type)
+        except Exception:
+            pass
     global _schema_runtime_cache
     if _schema_runtime_cache is not None:
         return _schema_runtime_cache
@@ -395,3 +447,101 @@ def reload_schema_runtime() -> SchemaRuntime:
     _schema_runtime_cache = None
     logger.info("\nSchema元数据缓存已清除，重新加载...")
     return get_schema_runtime()
+
+
+class AgentDatabaseConfig(BaseModel):
+    db_type: str = "mysql"
+    db_host: str = ""
+    db_port: str = ""
+    db_name: str = ""
+    db_user: str = ""
+    db_password: str = ""
+
+    def build_url(self) -> str | None:
+        if not all([self.db_host, self.db_name, self.db_user]):
+            return None
+        db_type = self.db_type.lower()
+        if db_type == "postgresql":
+            port = self.db_port or "5432"
+            return f"postgresql+psycopg2://{quote_plus(self.db_user)}:{quote_plus(self.db_password)}@{self.db_host}:{port}/{self.db_name}"
+        port = self.db_port or "3306"
+        return f"mysql+pymysql://{quote_plus(self.db_user)}:{quote_plus(self.db_password)}@{self.db_host}:{port}/{self.db_name}"
+
+
+class AgentRagConfig(BaseModel):
+    docs_dir: str = ""
+    docs_collection: str = ""
+    sql_dir: str = ""
+    sql_collection: str = ""
+
+
+class AgentReportConfig(BaseModel):
+    enabled: bool = False
+
+
+class AgentConfig(BaseModel):
+    agent_type: str
+    display_name: str = ""
+    enabled: bool = True
+    config_dir: str = ""
+    database: AgentDatabaseConfig = AgentDatabaseConfig()
+    rag: AgentRagConfig = AgentRagConfig()
+    reports: AgentReportConfig = AgentReportConfig()
+
+
+_AGENTS_YAML_PATH = Path(__file__).parent.parent / "configs" / "agents.yaml"
+_agents_config_cache: list[AgentConfig] | None = None
+
+
+def _expand_env_vars(value: str) -> str:
+    return os.path.expandvars(value)
+
+
+def _expand_config_env(obj: dict) -> dict:
+    result = {}
+    for key, value in obj.items():
+        if isinstance(value, str):
+            result[key] = _expand_env_vars(value)
+        elif isinstance(value, dict):
+            result[key] = _expand_config_env(value)
+        else:
+            result[key] = value
+    return result
+
+
+def load_agents_yaml() -> list[AgentConfig]:
+    global _agents_config_cache
+    if _agents_config_cache is not None:
+        return _agents_config_cache
+
+    load_env_file()
+
+    yaml_path = _AGENTS_YAML_PATH
+    if not yaml_path.exists():
+        logger.warning(f"\n智能体总控配置文件不存在: {yaml_path}")
+        return []
+
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    agents_data = data.get("agents") or []
+    configs: list[AgentConfig] = []
+    for item in agents_data:
+        expanded = _expand_config_env(item)
+        config = AgentConfig(**expanded)
+        if config.enabled:
+            configs.append(config)
+            logger.info(f"\n已加载智能体配置: {config.agent_type} ({config.display_name})")
+        else:
+            logger.info(f"\n跳过已禁用智能体: {config.agent_type}")
+
+    _agents_config_cache = configs
+    logger.info(f"\n共加载 {len(configs)} 个启用的智能体")
+    return configs
+
+
+def reload_agents_yaml() -> list[AgentConfig]:
+    global _agents_config_cache
+    _agents_config_cache = None
+    logger.info("\n智能体总控配置缓存已清除，重新加载...")
+    return load_agents_yaml()

@@ -27,31 +27,30 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from agent_backend.ops_reports import get_ops_report_manager
 
-router = APIRouter(prefix="/ops", tags=["ops"])
+router = APIRouter(prefix="/{agent_type}/ops", tags=["ops"])
 
 
 @router.get("/reports")
 async def list_ops_reports(
+    agent_type: str,
     limit: int = Query(default=20, ge=1, le=100),
     unread_only: bool = Query(default=False),
 ) -> dict[str, Any]:
-    """列出运维简报，支持分页和未读筛选"""
     manager = get_ops_report_manager()
-    return await manager.list_reports(limit=limit, unread_only=unread_only)
+    return await manager.list_reports(limit=limit, unread_only=unread_only, agent_type=agent_type)
 
 
 @router.get("/reports/latest")
-async def get_latest_ops_report() -> dict[str, Any]:
-    """获取最新一期运维简报"""
+async def get_latest_ops_report(agent_type: str) -> dict[str, Any]:
     manager = get_ops_report_manager()
-    return await manager.get_latest_report()
+    return await manager.get_latest_report(agent_type=agent_type)
 
 
 @router.get("/reports/{report_id}")
 async def get_ops_report(
+    agent_type: str,
     report_id: str,
 ) -> dict[str, Any]:
-    """获取指定ID的运维简报详情"""
     manager = get_ops_report_manager()
     report = await manager.get_report(report_id)
     if not report:
@@ -60,8 +59,7 @@ async def get_ops_report(
 
 
 @router.post("/reports/run")
-async def run_ops_report_now() -> dict[str, Any]:
-    """手动触发生成新一期运维简报"""
+async def run_ops_report_now(agent_type: str) -> dict[str, Any]:
     manager = get_ops_report_manager()
     try:
         return await manager.run_report_now()
@@ -71,9 +69,9 @@ async def run_ops_report_now() -> dict[str, Any]:
 
 @router.put("/reports/{report_id}/read")
 async def mark_ops_report_read(
+    agent_type: str,
     report_id: str,
 ) -> dict[str, Any]:
-    """标记指定运维简报为已读"""
     manager = get_ops_report_manager()
     result = await manager.mark_report_read(report_id)
     if not result:

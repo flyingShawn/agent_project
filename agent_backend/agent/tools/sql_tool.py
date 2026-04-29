@@ -53,11 +53,12 @@ from agent_backend.core.config import (
     get_schema_runtime,
     get_sql_log_full_prompt,
 )
+from agent_backend.core.context import current_agent_type
 from agent_backend.core.errors import AppError
 from agent_backend.rag_engine.retrieval import search_sql_samples
 from agent_backend.sql_agent.executor import execute_sql, SqlExecutionError
 from agent_backend.sql_agent.prompt_builder import (
-    SQL_SYSTEM_PROMPT,
+    _get_sql_system_prompt_for_current_agent,
     SqlPromptBundle,
     build_sql_prompt_bundle,
 )
@@ -323,7 +324,7 @@ def _log_prompt_bundle(bundle: SqlPromptBundle) -> None:
 @tool(args_schema=SqlQueryInput)
 def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | None = None) -> str:
     """
-    查询桌面管理系统的数据库。
+    查询业务数据库。
     只接受自然语言问题，不接受SQL语句本身。
 
     参数：
@@ -338,8 +339,10 @@ def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | 
     """
     logger.info(f"\n[sql_query] 开始处理: {question} (need_export={need_export})")
 
+    agent_type = current_agent_type.get()
+
     try:
-        runtime = get_schema_runtime()
+        runtime = get_schema_runtime(agent_type)
         security = runtime.raw.security
 
         if pre_sql_context and pre_sql_context.get("sql_samples") and pre_sql_context.get("prompt_bundle"):
@@ -349,7 +352,7 @@ def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | 
         else:
             sql_samples = None
             try:
-                sql_samples = search_sql_samples(question)
+                sql_samples = search_sql_samples(question, agent_type=agent_type)
                 _log_sql_samples(sql_samples)
             except Exception as e:
                 logger.warning(f"\n[sql_query] SQL样本检索失败: {e}")
@@ -361,7 +364,7 @@ def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | 
 
         sql_llm = get_sql_llm()
         messages = [
-            {"role": "system", "content": SQL_SYSTEM_PROMPT},
+            {"role": "system", "content": _get_sql_system_prompt_for_current_agent()},
             {"role": "user", "content": prompt},
         ]
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -389,7 +392,7 @@ def sql_query(question: str, need_export: bool = False, pre_sql_context: dict | 
             logger.warning(f"\n[sql_query] SQL敏感列校验失败: {e.message}")
             return json.dumps({"error": f"SQL安全校验失败: {e.message}", "hint": "请重新生成SQL，确保不查询敏感列"}, ensure_ascii=False)
 
-        db_url = get_database_url()
+        db_url = get_database_url(agent_type)
         if not db_url:
             return json.dumps({"error": "数据库未配置", "hint": "请检查DATABASE_URL配置"}, ensure_ascii=False)
 

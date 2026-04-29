@@ -46,7 +46,7 @@ services:
       - RAG_SQL_CANDIDATE_K=${RAG_SQL_CANDIDATE_K:-15}
       - RAG_SQL_HYBRID_ALPHA=${RAG_SQL_HYBRID_ALPHA:-0.8}
 
-      # 数据库配置
+      # 数据库配置（桌面管理智能体）
       - DATABASE_URL=${DATABASE_URL:-}
       - DB_TYPE=${DB_TYPE:-mysql}
       - DB_HOST=${DB_HOST:-}
@@ -55,6 +55,13 @@ services:
       - DB_USER=${DB_USER:-}
       - DB_PASSWORD=${DB_PASSWORD:-}
       - SQL_MAX_ROWS=${SQL_MAX_ROWS:-500}
+
+      # 数据库配置（工单系统智能体）
+      - TICKET_DB_HOST=${TICKET_DB_HOST:-}
+      - TICKET_DB_PORT=${TICKET_DB_PORT:-3306}
+      - TICKET_DB_NAME=${TICKET_DB_NAME:-}
+      - TICKET_DB_USER=${TICKET_DB_USER:-}
+      - TICKET_DB_PASSWORD=${TICKET_DB_PASSWORD:-}
 
       # 网络搜索配置
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
@@ -78,11 +85,15 @@ services:
       # CORS允许的前端来源
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost}
     volumes:
-      # 挂载文档知识库目录（宿主机docs目录 -> 容器/data/docs）
-      - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/docs:ro
-      # 挂载SQL样本库目录（宿主机sql目录 -> 容器/data/sql）
-      - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/sql:ro
-      # 挂载配置文件目录（schema_metadata.yaml等）
+      # 挂载文档知识库目录（每个智能体独立目录）
+      - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/desk-agent/docs:ro
+      # 挂载SQL样本库目录（每个智能体独立目录）
+      - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/desk-agent/sql:ro
+      # 挂载工单智能体文档目录
+      - ${TICKET_HOST_DOCS_DIR:-./data/ticket-agent/docs}:/data/ticket-agent/docs:ro
+      # 挂载工单智能体SQL样本目录
+      - ${TICKET_HOST_SQL_DIR:-./data/ticket-agent/sql}:/data/ticket-agent/sql:ro
+      # 挂载配置文件目录（agents.yaml + 各智能体子目录）
       - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
       # 持久化聊天历史数据库
       - chat_data:/app/data
@@ -149,8 +160,10 @@ services:
       - SYNC_MODE=${SYNC_MODE:-incremental}
       - RAG_REQUIRE_DOCLING=${RAG_REQUIRE_DOCLING:-1}
     volumes:
-      - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/docs:ro
-      - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/sql:ro
+      - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/desk-agent/docs:ro
+      - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/desk-agent/sql:ro
+      - ${TICKET_HOST_DOCS_DIR:-./data/ticket-agent/docs}:/data/ticket-agent/docs:ro
+      - ${TICKET_HOST_SQL_DIR:-./data/ticket-agent/sql}:/data/ticket-agent/sql:ro
       - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
     depends_on:
       - qdrant

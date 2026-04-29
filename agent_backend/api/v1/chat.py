@@ -48,7 +48,7 @@ from pydantic import BaseModel, Field
 
 from agent_backend.agent.graph import get_agent_graph
 from agent_backend.agent.history import manage_history
-from agent_backend.agent.prompts import SYSTEM_PROMPT
+from agent_backend.agent.prompts import get_system_prompt_for_agent
 from agent_backend.agent.stream import stream_graph_response
 from agent_backend.api.external_identity import ExternalIdentity, require_external_identity
 from agent_backend.core.config import (
@@ -56,6 +56,7 @@ from agent_backend.core.config import (
     get_chat_max_history_rounds,
     get_chat_topic_shift_threshold,
 )
+from agent_backend.core.context import current_agent_type
 from agent_backend.core.sse import sse_event
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import Conversation, Message
@@ -115,12 +116,20 @@ class EndChatResponse(BaseModel):
     session_id: str
 
 
-@router.post("/chat")
+@router.post("/{agent_type}/chat")
 async def chat(
+    agent_type: str,
     req: ChatRequest,
     request: Request,
     current_user: ExternalIdentity = Depends(require_external_identity),
 ) -> StreamingResponse:
+    from agent_backend.agent.registry import get_registry
+    registry = get_registry()
+    if not registry.has_agent(agent_type):
+        raise HTTPException(status_code=404, detail=f"智能体不存在: {agent_type}")
+
+    current_agent_type.set(agent_type)
+
     t_start = time.time()
     conn_manager = get_connection_manager()
     session_id = req.session_id or conn_manager.generate_session_id()
@@ -134,7 +143,8 @@ async def chat(
     )
 
     time_context = _build_time_context()
-    enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n【当前时间】\n{time_context}"
+    system_prompt = get_system_prompt_for_agent(agent_type)
+    enhanced_system_prompt = f"{system_prompt}\n\n【当前时间】\n{time_context}"
 
     pre_sql_context = None
     if _likely_needs_sql(req.question):
@@ -143,8 +153,8 @@ async def chat(
             from agent_backend.core.config import get_schema_runtime
             from agent_backend.sql_agent.prompt_builder import build_sql_prompt_bundle
 
-            runtime = get_schema_runtime()
-            sql_samples = search_sql_samples(req.question)
+            runtime = get_schema_runtime(agent_type)
+            sql_samples = search_sql_samples(req.question, agent_type=agent_type)
             if sql_samples:
                 prompt_bundle = build_sql_prompt_bundle(runtime, req.question, sql_samples=sql_samples)
                 pre_sql_context = {
@@ -227,7 +237,7 @@ async def chat(
 
     async def generate():
         logger.info(f"\n[SSE] start generate, session: {session_id[:8]}..., conv: {conversation_id[:8]}...")
-        yield sse_event("start", {"intent": "agent", "session_id": session_id, "conversation_id": conversation_id})
+        yield sse_event("start", {"intent": "agent", "session_id": session_id, "conversation_id": conversation_id, "agent_type": agent_type})
 
         assistant_content = ""
         content_before_replace = ""
@@ -337,8 +347,9 @@ async def chat(
     )
 
 
-@router.post("/chat/end")
+@router.post("/{agent_type}/chat/end")
 async def end_chat(
+    agent_type: str,
     req: EndChatRequest,
     current_user: ExternalIdentity = Depends(require_external_identity),
 ) -> EndChatResponse:

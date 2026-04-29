@@ -16,6 +16,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  agentType: {
+    type: String,
+    default: 'desk-agent',
+  },
 })
 
 const emit = defineEmits(['close', 'unread-change'])
@@ -76,7 +80,7 @@ function renderMarkdown(content) {
 
 async function refreshUnreadMeta() {
   try {
-    const payload = await getLatestOpsReport()
+    const payload = await getLatestOpsReport(props.agentType)
     emit('unread-change', payload?.unread_total || 0)
   } catch (_) {
     // 轮询失败时不打断界面
@@ -88,7 +92,7 @@ async function loadReports(preferredId = null) {
   listError.value = ''
 
   try {
-    const payload = await listOpsReports({ limit: 20 })
+    const payload = await listOpsReports(props.agentType, { limit: 20 })
     reports.value = payload.reports || []
     emit('unread-change', payload.unread_total || 0)
 
@@ -120,13 +124,13 @@ async function loadReport(reportId) {
   detailError.value = ''
 
   try {
-    const payload = await getOpsReport(reportId)
+    const payload = await getOpsReport(props.agentType, reportId)
     selectedReportId.value = reportId
     selectedReport.value = payload
     renderMarkdown(payload.content_md || '')
 
     if (payload.unread) {
-      const readResult = await markOpsReportRead(reportId)
+      const readResult = await markOpsReportRead(props.agentType, reportId)
       selectedReport.value = { ...payload, unread: false }
       reports.value = reports.value.map((item) =>
         item.report_id === reportId ? { ...item, unread: false } : item

@@ -2,22 +2,22 @@ import { fetchWithExternalAuth } from '../utils/externalIdentity'
 
 const API_BASE = '/api/v1'
 
-export async function getConversations(userId = 'admin', limit = 50, offset = 0) {
+export async function getConversations(agentType, userId = 'admin', limit = 50, offset = 0) {
   const response = await fetchWithExternalAuth(
-    `${API_BASE}/conversations?user_id=${encodeURIComponent(userId)}&limit=${limit}&offset=${offset}`
+    `${API_BASE}/${agentType}/conversations?user_id=${encodeURIComponent(userId)}&limit=${limit}&offset=${offset}`
   )
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
   return response.json()
 }
 
-export async function getConversation(id) {
-  const response = await fetchWithExternalAuth(`${API_BASE}/conversations/${id}`)
+export async function getConversation(agentType, id) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/conversations/${id}`)
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
   return response.json()
 }
 
-export async function createConversation(userId = 'admin') {
-  const response = await fetchWithExternalAuth(`${API_BASE}/conversations`, {
+export async function createConversation(agentType, userId = 'admin') {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/conversations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId }),
@@ -26,8 +26,8 @@ export async function createConversation(userId = 'admin') {
   return response.json()
 }
 
-export async function updateConversationTitle(id, title) {
-  const response = await fetchWithExternalAuth(`${API_BASE}/conversations/${id}/title`, {
+export async function updateConversationTitle(agentType, id, title) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/conversations/${id}/title`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -36,8 +36,8 @@ export async function updateConversationTitle(id, title) {
   return response.json()
 }
 
-export async function deleteConversation(id) {
-  const response = await fetchWithExternalAuth(`${API_BASE}/conversations/${id}`, {
+export async function deleteConversation(agentType, id) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/conversations/${id}`, {
     method: 'DELETE',
   })
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)

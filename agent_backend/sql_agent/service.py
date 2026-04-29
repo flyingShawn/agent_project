@@ -39,7 +39,7 @@ from typing import Any
 from agent_backend.core.config import get_schema_runtime
 from agent_backend.llm.clients import OpenAICompatibleClient
 from agent_backend.rag_engine.retrieval import RetrievedChunk, search_sql_samples
-from agent_backend.sql_agent.prompt_builder import build_sql_prompt, SQL_SYSTEM_PROMPT
+from agent_backend.sql_agent.prompt_builder import build_sql_prompt, _get_sql_system_prompt_for_current_agent
 from agent_backend.sql_agent.sql_safety import (
     enforce_deny_select_columns,
     validate_sql_basic,
@@ -106,7 +106,7 @@ def generate_secure_sql(
     prompt = build_sql_prompt(runtime, req.question, sql_samples=sql_samples)
 
     messages = [
-        {"role": "system", "content": SQL_SYSTEM_PROMPT},
+        {"role": "system", "content": _get_sql_system_prompt_for_current_agent()},
         {"role": "user", "content": prompt}
     ]
 

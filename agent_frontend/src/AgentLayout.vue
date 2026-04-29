@@ -1,0 +1,182 @@
+<script setup>
+import { onMounted, ref, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import ChatBox from './components/ChatBox.vue'
+import OpsReportInbox from './components/OpsReportInbox.vue'
+import Sidebar from './components/Sidebar.vue'
+import config from './config'
+import { useConversations } from './composables/useConversations'
+import {
+  getExternalDisplayName,
+  getExternalUserId,
+  readExternalIdentityFromLocation,
+  setExternalIdentity,
+} from './utils/externalIdentity'
+
+const route = useRoute()
+const router = useRouter()
+
+const props = defineProps({
+  agentType: { type: String, default: 'desk-agent' },
+})
+
+const currentAgentType = computed(() => props.agentType || 'desk-agent')
+
+const currentUserId = ref('admin')
+const currentUserLabel = ref('admin')
+const showSidebar = ref(false)
+const showOpsInbox = ref(false)
+const unreadOpsCount = ref(0)
+const chatBoxRef = ref(null)
+const AUTO_OPEN_SIDEBAR_MIN_WIDTH = 1280
+
+const {
+  currentTitle,
+  currentConversationId,
+  startNewConversation,
+  loadConversations,
+  switchConversation,
+  conversations,
+} = useConversations()
+
+function toggleSidebar() {
+  showSidebar.value = !showSidebar.value
+}
+
+function toggleOpsInbox() {
+  showOpsInbox.value = !showOpsInbox.value
+}
+
+async function handleNewConversation() {
+  startNewConversation()
+  if (chatBoxRef.value) {
+    chatBoxRef.value.handleNewSession()
+  }
+}
+
+async function handleSwitchConversation(id) {
+  const data = await switchConversation(currentAgentType.value, id)
+  if (data && chatBoxRef.value) {
+    chatBoxRef.value.loadConversation(data)
+  }
+}
+
+function handleDeleteConversation() {
+  if (!currentConversationId.value && chatBoxRef.value) {
+    chatBoxRef.value.handleNewSession()
+  }
+}
+
+function handleConversationCreated() {
+  loadConversations(currentUserId.value, currentAgentType.value)
+}
+
+function handleConversationUpdated() {
+  loadConversations(currentUserId.value, currentAgentType.value)
+}
+
+function handleOpsUnreadChange(count) {
+  unreadOpsCount.value = Number(count || 0)
+}
+
+watch(currentAgentType, (newType, oldType) => {
+  if (newType !== oldType) {
+    startNewConversation()
+    if (chatBoxRef.value) {
+      chatBoxRef.value.handleNewSession()
+    }
+    loadConversations(currentUserId.value, newType)
+  }
+})
+
+onMounted(async () => {
+  const externalIdentity = setExternalIdentity(readExternalIdentityFromLocation())
+  currentUserId.value = externalIdentity?.userId || getExternalUserId()
+  currentUserLabel.value = externalIdentity?.displayName || getExternalDisplayName()
+  await loadConversations(currentUserId.value, currentAgentType.value)
+  if (window.innerWidth >= AUTO_OPEN_SIDEBAR_MIN_WIDTH && conversations.value.length > 0) {
+    showSidebar.value = true
+  }
+})
+</script>
+
+<template>
+  <div class="h-screen flex flex-row bg-surface-muted overflow-hidden">
+    <div
+      class="flex-shrink-0 bg-white border-r border-[#e8ecf2] flex flex-col h-full transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden"
+      :class="showSidebar ? 'w-72' : 'w-0 border-r-0'"
+    >
+      <Sidebar
+        :agent-type="currentAgentType"
+        @new-conversation="handleNewConversation"
+        @switch-conversation="handleSwitchConversation"
+        @delete-conversation="handleDeleteConversation"
+      />
+    </div>
+
+    <div class="flex-1 flex flex-col min-w-0">
+      <header class="bg-white border-b border-[#e8ecf2] px-5 py-2.5 flex items-center justify-between relative z-10 flex-shrink-0">
+        <div class="flex items-center">
+          <button
+            @click="toggleSidebar"
+            class="rounded-xl p-2 transition-colors cursor-pointer"
+            :class="showSidebar
+              ? 'bg-surface-muted text-text-primary'
+              : 'text-text-tertiary hover:text-text-primary hover:bg-surface-hover'"
+            :title="showSidebar ? '收起历史侧栏' : '展开历史侧栏'"
+          >
+            <svg class="h-[24px] w-[24px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4.25" y="5" width="15.5" height="14" rx="2.75" stroke-width="1.5" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 5.75v12.5" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="absolute left-1/2 -translate-x-1/2 text-center select-none">
+          <h1 class="text-[15px] font-semibold text-text-primary leading-tight">{{ currentTitle }}</h1>
+          <p class="text-[11px] text-text-tertiary mt-0.5">{{ config.subtitle }}</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            @click="toggleOpsInbox"
+            class="relative flex items-center gap-2 px-3 py-1.5 border border-[#e8ecf2] bg-white text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+            title="运维简报"
+          >
+            <span v-if="unreadOpsCount > 0" class="absolute right-2 top-1.5 w-2 h-2 rounded-full bg-rose-500"></span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9 17h6M9 13h6M9 9h6M5 5h14v14H5z" />
+            </svg>
+            <span class="text-[12px] font-medium">运维简报</span>
+          </button>
+
+          <div class="flex items-center space-x-1.5 text-text-secondary bg-surface-muted pl-2.5 pr-3 py-1 rounded-full">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <span class="text-[11px] font-medium">{{ currentUserLabel }}</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 overflow-hidden flex justify-center px-4 sm:px-6">
+        <div class="w-full max-w-chat h-full">
+          <ChatBox
+            ref="chatBoxRef"
+            :user-id="currentUserId"
+            :agent-type="currentAgentType"
+            @conversation-created="handleConversationCreated"
+            @conversation-updated="handleConversationUpdated"
+          />
+        </div>
+      </main>
+    </div>
+
+    <OpsReportInbox
+      :open="showOpsInbox"
+      :agent-type="currentAgentType"
+      @close="showOpsInbox = false"
+      @unread-change="handleOpsUnreadChange"
+    />
+  </div>
+</template>

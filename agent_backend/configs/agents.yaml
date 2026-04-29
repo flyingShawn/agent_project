@@ -1,0 +1,38 @@
+agents:
+  - agent_type: desk-agent
+    display_name: "桌面管理助手"
+    enabled: true
+    config_dir: desk-agent
+    database:
+      db_type: mysql
+      db_host: "${DB_HOST}"
+      db_port: "${DB_PORT}"
+      db_name: "${DB_NAME}"
+      db_user: "${DB_USER}"
+      db_password: "${DB_PASSWORD}"
+    rag:
+      docs_dir: /data/desk-agent/docs
+      docs_collection: desk_agent_docs
+      sql_dir: /data/desk-agent/sql
+      sql_collection: desk_agent_sql
+    reports:
+      enabled: true
+
+  - agent_type: ticket-agent
+    display_name: "工单系统助手"
+    enabled: true
+    config_dir: ticket-agent
+    database:
+      db_type: mysql
+      db_host: "${TICKET_DB_HOST}"
+      db_port: "${TICKET_DB_PORT}"
+      db_name: "${TICKET_DB_NAME}"
+      db_user: "${TICKET_DB_USER}"
+      db_password: "${TICKET_DB_PASSWORD}"
+    rag:
+      docs_dir: /data/ticket-agent/docs
+      docs_collection: ticket_agent_docs
+      sql_dir: /data/ticket-agent/sql
+      sql_collection: ticket_agent_sql
+    reports:
+      enabled: false

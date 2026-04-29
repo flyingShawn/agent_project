@@ -12,6 +12,10 @@ const props = defineProps({
     type: String,
     default: 'admin',
   },
+  agentType: {
+    type: String,
+    default: 'desk-agent',
+  },
 })
 
 const emit = defineEmits(['conversation-created', 'conversation-updated'])
@@ -39,7 +43,7 @@ const handleNewSession = () => {
 
 const loadConversation = (conversationData) => {
   if (currentSessionId.value) {
-    fetchWithExternalAuth('/api/v1/chat/end', {
+    fetchWithExternalAuth(`/api/v1/${props.agentType}/chat/end`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: currentSessionId.value }),
@@ -136,7 +140,7 @@ const autoResize = () => {
 const resetSession = async () => {
   if (currentSessionId.value) {
     try {
-      await fetchWithExternalAuth('/api/v1/chat/end', {
+      await fetchWithExternalAuth(`/api/v1/${props.agentType}/chat/end`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId.value }),
@@ -219,6 +223,7 @@ const sendMessage = async (overrideText) => {
   try {
     await sendChatMessage({
       question: text,
+      agentType: props.agentType,
       history: [],
       images_base64: imagesToSend.map((img) => img.base64),
       lognum: props.userId,
@@ -307,7 +312,7 @@ const handleKeydown = (event) => {
 onUnmounted(() => {
   pendingImages.value = []
   if (currentSessionId.value) {
-    fetchWithExternalAuth('/api/v1/chat/end', {
+    fetchWithExternalAuth(`/api/v1/${props.agentType}/chat/end`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

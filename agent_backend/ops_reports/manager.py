@@ -50,7 +50,7 @@ from agent_backend.ops_reports.executor import OpsReportExecutor
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_PATH = Path(__file__).parent.parent / "configs" / "ops_reports.yaml"
+_CONFIG_PATH = Path(__file__).parent.parent / "configs" / "desk-agent" / "ops_reports.yaml"
 
 
 class OpsReportManager:
@@ -186,22 +186,16 @@ class OpsReportManager:
 
         return await self._executor.generate_report(target_key, config)
 
-    async def list_reports(self, limit: int = 20, unread_only: bool = False) -> dict[str, Any]:
-        """
-        查询运维简报列表。
-
-        参数：
-            limit: 返回数量上限，默认20
-            unread_only: 是否只返回未读简报
-
-        返回：
-            包含 reports、total、unread_total 的字典
-        """
+    async def list_reports(self, limit: int = 20, unread_only: bool = False, agent_type: str | None = None) -> dict[str, Any]:
         from sqlalchemy import func, select
 
         async with async_session() as session:
             base_stmt = select(OpsReport)
             count_stmt = select(func.count()).select_from(OpsReport)
+
+            if agent_type:
+                base_stmt = base_stmt.where(OpsReport.agent_type == agent_type)
+                count_stmt = count_stmt.where(OpsReport.agent_type == agent_type)
 
             if unread_only:
                 base_stmt = base_stmt.where(OpsReport.unread == 1)
@@ -214,10 +208,11 @@ class OpsReportManager:
             ).scalars().all()
 
             total = (await session.execute(count_stmt)).scalar() or 0
+            unread_stmt = select(func.count()).select_from(OpsReport).where(OpsReport.unread == 1)
+            if agent_type:
+                unread_stmt = unread_stmt.where(OpsReport.agent_type == agent_type)
             unread_total = (
-                await session.execute(
-                    select(func.count()).select_from(OpsReport).where(OpsReport.unread == 1)
-                )
+                await session.execute(unread_stmt)
             ).scalar() or 0
 
         return {
@@ -226,25 +221,23 @@ class OpsReportManager:
             "unread_total": unread_total,
         }
 
-    async def get_latest_report(self) -> dict[str, Any]:
-        """
-        获取最新一期运维简报。
-
-        返回：
-            包含 report、unread_total 的字典
-        """
+    async def get_latest_report(self, agent_type: str | None = None) -> dict[str, Any]:
         from sqlalchemy import func, select
 
         async with async_session() as session:
+            stmt = select(OpsReport)
+            if agent_type:
+                stmt = stmt.where(OpsReport.agent_type == agent_type)
             report = (
                 await session.execute(
-                    select(OpsReport).order_by(OpsReport.generated_at.desc()).limit(1)
+                    stmt.order_by(OpsReport.generated_at.desc()).limit(1)
                 )
             ).scalar_one_or_none()
+            unread_stmt = select(func.count()).select_from(OpsReport).where(OpsReport.unread == 1)
+            if agent_type:
+                unread_stmt = unread_stmt.where(OpsReport.agent_type == agent_type)
             unread_total = (
-                await session.execute(
-                    select(func.count()).select_from(OpsReport).where(OpsReport.unread == 1)
-                )
+                await session.execute(unread_stmt)
             ).scalar() or 0
 
         return {

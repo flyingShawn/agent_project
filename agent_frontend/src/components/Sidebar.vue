@@ -4,6 +4,9 @@ import { useConversations } from '../composables/useConversations'
 import config from '../config'
 
 const emit = defineEmits(['new-conversation', 'switch-conversation', 'delete-conversation'])
+const props = defineProps({
+  agentType: { type: String, default: 'desk-agent' },
+})
 
 const {
   conversations,
@@ -37,7 +40,7 @@ function cancelDelete() {
 }
 
 async function confirmDelete(id) {
-  const result = await removeConversation(id)
+  const result = await removeConversation(props.agentType, id)
   if (result.success) {
     emit('delete-conversation', id)
   }
@@ -61,7 +64,7 @@ function startEditing(conv, event) {
 async function finishEditing(conv) {
   const newTitle = editingTitle.value.trim()
   if (newTitle && newTitle !== conv.title) {
-    await renameConversation(conv.id, newTitle)
+    await renameConversation(props.agentType, conv.id, newTitle)
   }
   editingId.value = null
   editingTitle.value = ''

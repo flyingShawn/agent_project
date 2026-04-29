@@ -412,7 +412,27 @@ def hybrid_search(
     return results
 
 
-def get_rag_settings() -> tuple[str, str, str | None, str | None, str, int, float, int, float]:
+def get_rag_settings(agent_type: str | None = None) -> tuple[str, str, str | None, str | None, str, int, float, int, float]:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                rag_config = registry.get_rag_config(agent_type)
+                settings = get_settings()
+                return (
+                    settings.rag.rag_qdrant_url,
+                    settings.rag.rag_qdrant_path,
+                    settings.rag.rag_qdrant_api_key,
+                    rag_config.docs_collection or settings.rag.rag_qdrant_collection,
+                    settings.rag.rag_embedding_model,
+                    settings.rag.rag_top_k,
+                    settings.rag.rag_vector_min_score,
+                    settings.rag.rag_candidate_k,
+                    settings.rag.rag_hybrid_alpha,
+                )
+        except Exception:
+            pass
     rag = get_settings().rag
     return (
         rag.rag_qdrant_url,
@@ -427,7 +447,26 @@ def get_rag_settings() -> tuple[str, str, str | None, str | None, str, int, floa
     )
 
 
-def get_sql_rag_settings() -> tuple[str, str, str | None, str | None, str, int, int, float]:
+def get_sql_rag_settings(agent_type: str | None = None) -> tuple[str, str, str | None, str | None, str, int, int, float]:
+    if agent_type is not None:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                rag_config = registry.get_rag_config(agent_type)
+                settings = get_settings()
+                return (
+                    settings.rag.rag_qdrant_url,
+                    settings.rag.rag_qdrant_path,
+                    settings.rag.rag_qdrant_api_key,
+                    rag_config.sql_collection or settings.rag.rag_sql_qdrant_collection,
+                    settings.rag.rag_embedding_model,
+                    settings.rag.rag_sql_top_k,
+                    settings.rag.rag_sql_candidate_k,
+                    settings.rag.rag_sql_hybrid_alpha,
+                )
+        except Exception:
+            pass
     rag = get_settings().rag
     return (
         rag.rag_qdrant_url,
@@ -444,6 +483,7 @@ def get_sql_rag_settings() -> tuple[str, str, str | None, str | None, str, int, 
 def search_sql_samples(
     query_text: str,
     *,
+    agent_type: str | None = None,
     store: QdrantVectorStore | None = None,
     embedding_model: EmbeddingModel | None = None,
     min_score: float = 0.8,
@@ -469,7 +509,7 @@ def search_sql_samples(
     """
     if store is None or embedding_model is None:
         qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha = (
-            get_sql_rag_settings()
+            get_sql_rag_settings(agent_type)
         )
 
         if embedding_model is None:
