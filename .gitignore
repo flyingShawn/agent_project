@@ -57,6 +57,7 @@ agent_frontend/.vite/
 # Playwright test results
 playwright-report/
 test-results/
+data/playwright_screenshots/
 
 # Temp directories
 temp_npx/
