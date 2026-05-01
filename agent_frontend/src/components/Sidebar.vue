@@ -5,7 +5,7 @@ import config from '../config'
 
 const emit = defineEmits(['new-conversation', 'switch-conversation', 'delete-conversation'])
 const props = defineProps({
-  agentType: { type: String, default: 'desk-agent' },
+  agentType: { type: String, default: '' },
 })
 
 const {

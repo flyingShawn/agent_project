@@ -503,7 +503,7 @@ def search_sql_samples(
         list[RetrievedChunk]: 相似 SQL 样本列表
 
     专有技术说明：
-        - 使用 SQL 专用集合（desk_agent_sql），与文档集合隔离
+        - 使用 SQL 专用集合，与文档集合隔离
         - alpha 默认 0.8，偏向向量检索（SQL 语义匹配比关键词更重要）
         - min_score 较高（0.8），确保只返回高度相关的 SQL 样本
     """

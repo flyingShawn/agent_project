@@ -15,8 +15,6 @@ services:
       - "8000:8000"
     environment:
       - TZ=${TZ:-Asia/Shanghai}
-      # 智能体名称
-      - AGENT_NAME=${AGENT_NAME:-desk-agent}
 
       # 模型配置 - LLM_BASE_URL指向外部LLM服务（OpenAI兼容协议）
       # Windows/macOS使用host.docker.internal，Linux使用宿主机IP
@@ -26,27 +24,22 @@ services:
       - CHAT_MODEL=${CHAT_MODEL:-qwen3.5:9b}
       - VISION_MODEL=${VISION_MODEL:-qwen3.5:9b}
 
-      # RAG文档知识库配置
-      - RAG_DOCS_DIR=/data/docs
+      # RAG向量数据库配置（全局共享）
       - RAG_QDRANT_URL=http://qdrant:6333
       - RAG_QDRANT_PATH=
       - RAG_QDRANT_API_KEY=${RAG_QDRANT_API_KEY:-}
-      - RAG_QDRANT_COLLECTION=${RAG_QDRANT_COLLECTION:-desk_agent_docs}
       - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
-      # RAG_HYBRID_ALPHA 当前代码未读取，文档检索未使用混合权重
       - RAG_HYBRID_ALPHA=${RAG_HYBRID_ALPHA:-0.7}
       - RAG_TOP_K=${RAG_TOP_K:-5}
       - RAG_VECTOR_MIN_SCORE=${RAG_VECTOR_MIN_SCORE:-0.5}
       - RAG_CANDIDATE_K=${RAG_CANDIDATE_K:-30}
 
-      # SQL样本库配置
-      - RAG_SQL_DIR=/data/sql
-      - RAG_SQL_QDRANT_COLLECTION=${RAG_SQL_QDRANT_COLLECTION:-desk_agent_sql}
+      # SQL样本库配置（全局共享）
       - RAG_SQL_TOP_K=${RAG_SQL_TOP_K:-3}
       - RAG_SQL_CANDIDATE_K=${RAG_SQL_CANDIDATE_K:-15}
       - RAG_SQL_HYBRID_ALPHA=${RAG_SQL_HYBRID_ALPHA:-0.8}
 
-      # 数据库配置（桌面管理智能体）
+      # 数据库配置（全局默认，智能体可在 agents.yaml 中覆盖）
       - DATABASE_URL=${DATABASE_URL:-}
       - DB_TYPE=${DB_TYPE:-mysql}
       - DB_HOST=${DB_HOST:-}
@@ -56,12 +49,10 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:-}
       - SQL_MAX_ROWS=${SQL_MAX_ROWS:-500}
 
-      # 数据库配置（工单系统智能体）
+      # 智能体专属数据库配置（按需添加，在 agents.yaml 中引用）
       - TICKET_DB_HOST=${TICKET_DB_HOST:-}
       - TICKET_DB_PORT=${TICKET_DB_PORT:-3306}
       - TICKET_DB_NAME=${TICKET_DB_NAME:-}
-      - TICKET_DB_USER=${TICKET_DB_USER:-}
-      - TICKET_DB_PASSWORD=${TICKET_DB_PASSWORD:-}
 
       # 网络搜索配置
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
@@ -148,14 +139,10 @@ services:
     container_name: agent-docling-sync
     environment:
       - TZ=${TZ:-Asia/Shanghai}
-      - RAG_DOCS_DIR=/data/docs
-      - RAG_SQL_DIR=/data/sql
       - RAG_QDRANT_URL=http://qdrant:6333
       - RAG_QDRANT_PATH=
       - RAG_QDRANT_API_KEY=${RAG_QDRANT_API_KEY:-}
-      - RAG_QDRANT_COLLECTION=${RAG_QDRANT_COLLECTION:-desk_agent_docs}
       - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
-      - RAG_SQL_QDRANT_COLLECTION=${RAG_SQL_QDRANT_COLLECTION:-desk_agent_sql}
       - SYNC_TARGET=${SYNC_TARGET:-all}
       - SYNC_MODE=${SYNC_MODE:-incremental}
       - RAG_REQUIRE_DOCLING=${RAG_REQUIRE_DOCLING:-1}

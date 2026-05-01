@@ -13,7 +13,25 @@ const defaultConfig = {
   ],
 }
 
-// Docker 部署会在容器启动时写入 /config.js，本地开发通常保持为空对象。
+const agentQuickOptions = {
+  'desk-agent': [
+    '查看客户端在线状态',
+    '今日远程操作记录',
+    '近期开关机日志',
+    '老旧资产设备查询',
+    '部门设备数量统计',
+    'USB使用记录查询',
+  ],
+  'ticket-agent': [
+    '最近一周有多少工单',
+    '查询未关闭的工单',
+    '工单处理人统计',
+    '工单类型分布',
+    '高优先级工单列表',
+    '工单平均处理时长',
+  ],
+}
+
 const runtimeConfig = window.__APP_CONFIG__ || {}
 
 const parseQuickOptions = (val) => {
@@ -36,6 +54,9 @@ const config = {
   welcomeText: runtimeConfig.welcomeText || envConfig.welcomeText || defaultConfig.welcomeText,
   inputPlaceholder: runtimeConfig.inputPlaceholder || envConfig.inputPlaceholder || defaultConfig.inputPlaceholder,
   quickOptions: runtimeConfig.quickOptions || envConfig.quickOptions || defaultConfig.quickOptions,
+  getQuickOptions(agentType) {
+    return agentQuickOptions[agentType] || this.quickOptions
+  },
 }
 
 export default config

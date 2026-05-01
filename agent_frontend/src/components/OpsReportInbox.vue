@@ -18,7 +18,7 @@ const props = defineProps({
   },
   agentType: {
     type: String,
-    default: 'desk-agent',
+    default: '',
   },
 })
 

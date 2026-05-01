@@ -50,7 +50,7 @@ from agent_backend.ops_reports.executor import OpsReportExecutor
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_PATH = Path(__file__).parent.parent / "configs" / "desk-agent" / "ops_reports.yaml"
+_CONFIGS_DIR = Path(__file__).parent.parent / "configs"
 
 
 class OpsReportManager:
@@ -327,20 +327,32 @@ class OpsReportManager:
         """
         从YAML配置文件加载简报配置。
 
+        通过 AgentRegistry 获取启用了 reports 的智能体配置。
+
         异常：
-            RuntimeError: 配置文件不存在或配置为空时抛出
+            RuntimeError: 配置为空时抛出
         """
-        if not _CONFIG_PATH.exists():
-            raise RuntimeError(f"运维简报配置不存在: {_CONFIG_PATH}")
-
-        with open(_CONFIG_PATH, "r", encoding="utf-8") as file:
-            data = yaml.safe_load(file) or {}
-
         configs: dict[str, dict[str, Any]] = {}
-        for item in data.get("reports", []):
-            report_key = item.get("report_key")
-            if report_key:
-                configs[report_key] = item
+
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            for agent_cfg in registry.get_enabled_agents():
+                if not agent_cfg.reports.enabled:
+                    continue
+                config_path = _CONFIGS_DIR / agent_cfg.config_dir / "ops_reports.yaml"
+                if not config_path.exists():
+                    logger.warning(f"\n[OpsReport] 运维简报配置不存在: {config_path}")
+                    continue
+                with open(config_path, "r", encoding="utf-8") as file:
+                    data = yaml.safe_load(file) or {}
+                for item in data.get("reports", []):
+                    report_key = item.get("report_key")
+                    if report_key:
+                        item["agent_type"] = agent_cfg.agent_type
+                        configs[report_key] = item
+        except Exception as e:
+            logger.warning(f"\n[OpsReport] 加载配置失败: {e}")
 
         if not configs:
             raise RuntimeError("运维简报配置为空")

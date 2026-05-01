@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["export"])
 
-_EXPORT_DIR = os.path.join(tempfile.gettempdir(), "desk_agent_exports")
+_EXPORT_DIR = os.path.join(tempfile.gettempdir(), "agent_exports")
 
 
 @router.get("/export/download/{filename}")

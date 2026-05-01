@@ -42,7 +42,7 @@ class SyncResponse(BaseModel):
     message: str
 
 
-def _run_ingest(job_id: str, kb_type: str, mode: str) -> None:
+def _run_ingest(job_id: str, kb_type: str, mode: str, agent_type: str | None = None) -> None:
     job = _jobs[job_id]
     try:
         from agent_backend.rag_engine.ingest import ingest_directory
@@ -50,6 +50,25 @@ def _run_ingest(job_id: str, kb_type: str, mode: str) -> None:
         from agent_backend.rag_engine.state import IngestStateStore
 
         settings = RagIngestSettings()
+
+        if agent_type:
+            try:
+                from agent_backend.agent.registry import get_registry
+                registry = get_registry()
+                if registry.has_agent(agent_type):
+                    rag_config = registry.get_rag_config(agent_type)
+                    if kb_type == "sql":
+                        if rag_config.sql_dir:
+                            settings.sql_dir = rag_config.sql_dir
+                        if rag_config.sql_collection:
+                            settings.qdrant_sql_collection = rag_config.sql_collection
+                    else:
+                        if rag_config.docs_dir:
+                            settings.docs_dir = rag_config.docs_dir
+                        if rag_config.docs_collection:
+                            settings.qdrant_collection = rag_config.docs_collection
+            except Exception:
+                pass
 
         if kb_type == "sql":
             docs_dir = settings.resolve_path(settings.sql_dir)
@@ -93,10 +112,10 @@ def sync_docs(agent_type: str, req: SyncRequest) -> SyncResponse:
 
     _jobs[job_id] = {"status": "running", "kb_type": "docs", "mode": mode}
 
-    t = threading.Thread(target=_run_ingest, args=(job_id, "docs", mode), daemon=True)
+    t = threading.Thread(target=_run_ingest, args=(job_id, "docs", mode, agent_type), daemon=True)
     t.start()
 
-    logger.info(f"\n文档同步任务已启动 [{job_id}], 模式: {mode}")
+    logger.info(f"\n文档同步任务已启动 [{job_id}], 智能体: {agent_type}, 模式: {mode}")
     return SyncResponse(
         job_id=job_id,
         status="running",
@@ -111,10 +130,10 @@ def sync_sql_samples(agent_type: str, req: SyncRequest) -> SyncResponse:
 
     _jobs[job_id] = {"status": "running", "kb_type": "sql", "mode": mode}
 
-    t = threading.Thread(target=_run_ingest, args=(job_id, "sql", mode), daemon=True)
+    t = threading.Thread(target=_run_ingest, args=(job_id, "sql", mode, agent_type), daemon=True)
     t.start()
 
-    logger.info(f"\nSQL样本同步任务已启动 [{job_id}], 模式: {mode}")
+    logger.info(f"\nSQL样本同步任务已启动 [{job_id}], 智能体: {agent_type}, 模式: {mode}")
     return SyncResponse(
         job_id=job_id,
         status="running",

@@ -21,7 +21,7 @@
     - _cleanup_old_files: 清理过期导出文件（TTL 2小时）
 
 专有技术说明：
-    - 文件存储在系统临时目录的desk_agent_exports子目录
+    - 文件存储在系统临时目录的agent_exports子目录
     - 文件名格式：{安全化filename}_{8位UUID}.{format}
     - CSV使用utf-8-sig编码（带BOM），确保Excel正确识别中文
     - openpyxl可选依赖：未安装时自动降级为CSV格式
@@ -55,7 +55,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-_EXPORT_DIR = os.path.join(tempfile.gettempdir(), "desk_agent_exports")
+_EXPORT_DIR = os.path.join(tempfile.gettempdir(), "agent_exports")
 _MAX_ROWS = 10000
 _FILE_TTL_HOURS = 2
 _ILLEGAL_XLSX_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]")

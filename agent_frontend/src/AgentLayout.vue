@@ -17,10 +17,10 @@ const route = useRoute()
 const router = useRouter()
 
 const props = defineProps({
-  agentType: { type: String, default: 'desk-agent' },
+  agentType: { type: String, default: '' },
 })
 
-const currentAgentType = computed(() => props.agentType || 'desk-agent')
+const currentAgentType = computed(() => props.agentType)
 
 const currentUserId = ref('admin')
 const currentUserLabel = ref('admin')
@@ -28,6 +28,7 @@ const showSidebar = ref(false)
 const showOpsInbox = ref(false)
 const unreadOpsCount = ref(0)
 const chatBoxRef = ref(null)
+const reportsEnabled = ref(false)
 const AUTO_OPEN_SIDEBAR_MIN_WIDTH = 1280
 
 const {
@@ -86,14 +87,27 @@ watch(currentAgentType, (newType, oldType) => {
       chatBoxRef.value.handleNewSession()
     }
     loadConversations(currentUserId.value, newType)
+    updateReportsEnabled(newType)
   }
 })
+
+async function updateReportsEnabled(agentType) {
+  try {
+    const { fetchAgents } = await import('./api/agents')
+    const data = await fetchAgents()
+    const agent = data.agents?.find(a => a.agent_type === agentType)
+    reportsEnabled.value = agent?.reports_enabled ?? false
+  } catch (e) {
+    reportsEnabled.value = false
+  }
+}
 
 onMounted(async () => {
   const externalIdentity = setExternalIdentity(readExternalIdentityFromLocation())
   currentUserId.value = externalIdentity?.userId || getExternalUserId()
   currentUserLabel.value = externalIdentity?.displayName || getExternalDisplayName()
   await loadConversations(currentUserId.value, currentAgentType.value)
+  updateReportsEnabled(currentAgentType.value)
   if (window.innerWidth >= AUTO_OPEN_SIDEBAR_MIN_WIDTH && conversations.value.length > 0) {
     showSidebar.value = true
   }
@@ -139,6 +153,7 @@ onMounted(async () => {
 
         <div class="flex items-center gap-2">
           <button
+            v-if="reportsEnabled"
             @click="toggleOpsInbox"
             class="relative flex items-center gap-2 px-3 py-1.5 border border-[#e8ecf2] bg-white text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
             title="运维简报"

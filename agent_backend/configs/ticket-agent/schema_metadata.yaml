@@ -4,31 +4,720 @@ db_type: "mysql"
 naming:
   identifier_quote: "`"
   case_insensitive_identifiers: true
+  normalize_columns:
+    Ip_C: ip
+    IP_C: ip
+    Mac_c: mac
+    Mac_C: mac
+    Name_C: machine_name
+    Groupid: group_id
+    GroupID: group_id
+    ClientId: client_id
+    ClientID: client_id
+    MtID: mtid
+    mtid: mtid
 
 security:
-  restricted_tables: []
-  deny_select_columns: []
+  restricted_tables:
+    - admininfo
+    - RoleGroupMap
+    - g_adminroleright
+  deny_select_columns:
+    - admininfo.PassWord1
+    - s_user.UserPwd
+    - s_user.UkeyPwd
 
-permissions: []
+permissions:
+  - name: admin_department_scope_v1
+    description: 按管理员账号（admininfo.LogNum）限制可见部门（s_group.id）与其下设备
+    variables:
+      - name: admin_lognum
+        type: text
+        example: admin
+    allowed_group_ids_sql: |
+      SELECT g.id
+      FROM s_group g
+      JOIN RoleGroupMap x ON x.GroupID = g.id
+      JOIN g_adminroleright y ON y.RoleID = x.RoleID
+      JOIN admininfo a ON a.id = y.AdminID
+      WHERE a.LogNum = :admin_lognum
+    apply_rules:
+      - scope_name: machine_rows
+        when_tables_in_query:
+          - s_machine
+          - alertsystemdb
+          - a_clienthardinfo2
+          - a_equippolicymap
+          - a_policycontent
+          - a_remoteinfo
+          - a_machineruntime
+          - onlineinfo
+        machine_anchor:
+          table: s_machine
+          machine_id_column: ID
+          group_id_column: Groupid
+          join_from_mtid_sql: "JOIN s_machine m ON {source_alias}.MtID = m.ID"
+        where_append_sql: "m.Groupid IN ({allowed_group_ids_sql})"
+      - scope_name: group_rows
+        when_tables_in_query:
+          - s_group
+        where_append_sql: "s_group.id IN ({allowed_group_ids_sql})"
 
 synonyms:
-  工单:
-    - ticket
-    - work_order
-  问题:
-    - ticket
-    - issue
-  故障:
-    - ticket
-    - fault
-  解决方案:
-    - solution
-    - resolution
-  处理人:
-    - assignee
-    - handler
-  创建人:
-    - creator
-    - reporter
+  s_machine.Ip_C:
+    - IP
+    - ip
+    - 设备IP
+    - 终端IP
+  s_machine.Mac_c:
+    - MAC
+    - mac
+    - 物理地址
+  s_machine.Name_C:
+    - 设备名称
+    - 终端名称
+    - 机器名
+  s_machine.VersionNum:
+    - 客户端版本
+    - 版本号
+    - 客户端版本号
+  s_machine.VersionTime:
+    - 客户端安装时间
+    - 安装时间
+    - 版本安装时间
+  s_machine.MtPingPai:
+    - 设备类型
+    - 设备品牌
+    - 操作系统类型
+    - 平台类型
+  s_group.GroupName:
+    - 部门
+    - 组织
+    - 部门名称
+  s_user.UserName:
+    - 用户名
+    - 使用人
+    - 绑定用户
+  alertsystemdb.AlertMsg:
+    - 告警内容
+    - 告警信息
+  a_clienthardinfo2.NetCardList:
+    - 网卡
+    - 网卡列表
+  a_clienthardinfo2.netcardnum:
+    - 网卡数量
 
-tables: []
+tables:
+  - name: s_machine
+    description: 设备信息主表
+    primary_key: DiskNum
+    join_keys:
+      - ID
+    columns:
+      - name: ID
+        type: int
+        comment: 设备自增ID（多数表用 MtID/mtid 指向此字段）
+        semantic_key: machine.id
+      - name: Name_C
+        type: varchar(100)
+        comment: 设备名称
+        semantic_key: machine.name
+      - name: Ip_C
+        type: varchar(50)
+        comment: IP地址
+        semantic_key: machine.ip
+      - name: Mac_c
+        type: varchar(50)
+        comment: MAC地址
+        semantic_key: machine.mac
+      - name: DiskNum
+        type: varchar(100)
+        comment: 磁盘序列号（该表主键）
+        semantic_key: machine.disk_num
+      - name: Groupid
+        type: int
+        comment: 部门ID（关联 s_group.id）
+        semantic_key: machine.group_id
+      - name: ClientId
+        type: int
+        comment: 绑定用户ID（关联 s_user.ID）
+        semantic_key: machine.client_user_id
+      - name: VersionNum
+        type: varchar(100)
+        comment: 版本号
+        semantic_key: machine.version_num
+      - name: VersionTime
+        type: varchar(100)
+        comment: 安装时间
+        semantic_key: machine.version_time
+      - name: MtCmt
+        type: varchar(200)
+        comment: 设备备注（其中 telsafedesk 代表安卓端，其他忽略）
+        semantic_key: machine.comment
+      - name: MtPingPai
+        type: varchar(100)
+        comment: 设备类型/品牌（Linux/ios/mac/harmony,但并没有windows，windows只能用这个为空+MtCmt为空判断）
+        semantic_key: machine.platform
+      - name: MtGetDate
+        type: datetime
+        comment: 最近上线时间
+        semantic_key: machine.online_time
+
+  - name: s_group
+    description: 部门表
+    primary_key: id
+    columns:
+      - name: id
+        type: int
+        comment: 部门ID
+        semantic_key: group.id
+      - name: GroupName
+        type: varchar(100)
+        comment: 部门名称
+        semantic_key: group.name
+      - name: ParentID
+        type: int
+        comment: 上级部门ID（id为0表示的部门名称是 所有部门）
+        semantic_key: group.parent_id
+      - name: groupPhone
+        type: varchar(100)
+        comment: 部门电话
+        semantic_key: group.phone
+      - name: GroupType
+        type: int
+        comment: 部门展示时的顺序(只能用于order By时排序)
+        semantic_key: group.type
+      - name: deppath
+        type: varchar(100)
+        comment: 部门全路径（例如：/部门1/部门2/部门3）
+        semantic_key: group.path
+
+  - name: s_user
+    description: 用户表（可绑定到设备 s_machine.ClientId）
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 用户ID
+        semantic_key: user.id
+      - name: UserName
+        type: varchar(100)
+        comment: 用户名
+        semantic_key: user.name
+      - name: GroupId
+        type: int
+        comment: 所属部门ID
+        semantic_key: user.group_id
+      - name: TelNum
+        type: varchar(50)
+        comment: 电话号码
+        semantic_key: user.phone
+      # - name: UserNum
+      #   type: varchar(50)
+      #   comment: 用户编号
+      #   semantic_key: user.num
+      # - name: UserUUID
+      #   type: varchar(50)
+      #   comment: 用户UUID
+      #   semantic_key: user.uuid
+      # - name: WorkUnit
+      #   type: varchar(200)
+      #   comment: 工作单位
+      #   semantic_key: user.work_unit
+      # - name: UserMail
+      #   type: varchar(50)
+      #   comment: 邮箱
+      #   semantic_key: user.email
+
+  - name: alertsystemdb
+    description: 告警记录表（MtID 指向 s_machine.ID）
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: alert.id
+      - name: MtID
+        type: int
+        comment: 设备ID（关联 s_machine.ID）
+        semantic_key: alert.machine_id
+      - name: AlertTime
+        type: datetime
+        comment: 告警时间
+        semantic_key: alert.time
+      - name: AlertMsg
+        type: varchar(500)
+        comment: 告警内容
+        semantic_key: alert.message
+      - name: nFlag
+        type: int
+        comment: 标志位
+        semantic_key: alert.flag
+
+  - name: a_clienthardinfo2
+    description: 终端资产信息硬件信息表（MtID 指向 s_machine.ID）
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: hard.id
+      - name: MtID
+        type: int
+        comment: 设备ID（关联 s_machine.ID）
+        semantic_key: hard.machine_id
+      - name: CUP
+        type: varchar(200)
+        comment: CPU
+        semantic_key: hard.cpu
+      - name: Board
+        type: varchar(200)
+        comment: 主板
+        semantic_key: hard.board
+      - name: Memory
+        type: varchar(200)
+        comment: 内存
+        semantic_key: hard.memory
+      - name: DiskInfo
+        type: varchar(200)
+        comment: 硬盘信息
+        semantic_key: hard.disk_info
+      - name: DiskSize
+        type: varchar(200)
+        comment: 硬盘大小
+        semantic_key: hard.disk_size
+      - name: ViewCard
+        type: varchar(200)
+        comment: 显卡
+        semantic_key: hard.gpu
+      - name: NetCardList
+        type: varchar(600)
+        comment: 网卡列表
+        semantic_key: hard.net_cards
+      - name: netcardnum
+        type: int
+        comment: 网卡数量
+        semantic_key: hard.net_card_count
+      - name: USBList
+        type: varchar(600)
+        comment: USB设备列表
+        semantic_key: hard.usb_list
+      - name: COMPortList
+        type: varchar(600)
+        comment: 串口设备列表
+        semantic_key: hard.com_port_list  
+      - name: PrintList
+        type: varchar(400)
+        comment: 打印机设备列表
+        semantic_key: hard.print_list    
+      - name: CDRom
+        type: varchar(400)
+        comment: 光驱设备列表
+        semantic_key: hard.cdrom_list  
+      - name: Mouse
+        type: varchar(200)
+        comment: 鼠标
+        semantic_key: hard.mouse  
+      - name: KeyBoard
+        type: varchar(200)
+        comment: 键盘
+        semantic_key: hard.keyboard  
+      - name: ChangeTime
+        type: timestamp
+        comment: 记录时间
+        semantic_key: hard.change_time
+      - name: IsNew
+        type: int
+        comment: 是否最新记录（最重要字段之一！代表此条为最新记录）
+        semantic_key: hard.is_new
+      - name: IsChange
+        type: int
+        comment: 是否发生改变（最重要字段之一！代表此条为最新记录的改变）
+        semantic_key: hard.is_change
+      - name: IsShouldAlert
+        type: int
+        comment: 是否需要告警
+        semantic_key: hard.should_alert
+      - name: serialnum
+        type: varchar(255)
+        comment: 序列号
+        semantic_key: hard.serial_num
+      - name: biosinfo
+        type: varchar(255)
+        comment: BIOS信息
+        semantic_key: hard.bios_info
+
+  - name: a_equippolicymap
+    description: 设备策略对应表（MtID 指向 s_machine.ID）
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: equip_policy_map.id
+      - name: MtID
+        type: int
+        comment: 设备ID（关联 s_machine.ID）
+        semantic_key: equip_policy_map.machine_id
+      - name: PolicyName
+        type: varchar(45)
+        comment: 策略英文字段表示（p_url_policy、p_log_policy等）
+        semantic_key: equip_policy_map.name
+      - name: PolicyID
+        type: int
+        comment: 策略ID（关联 a_policyname.ID；也用于关联 a_policycontent.PolicyID）
+        semantic_key: equip_policy_map.policy_id
+      - name: nFlag
+        type: varchar(45)
+        comment: 标志位
+        semantic_key: equip_policy_map.flag
+
+  - name: a_policyname
+    description: 策略名称表 （关联策略内容表）
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增策略ID（关联 a_equippolicymap.PolicyID；也用于关联 a_policycontent.PolicyID）
+        semantic_key: policy_name.policy_id
+      - name: Name
+        type: varchar(100)
+        comment: 策略名称
+        semantic_key: policy_name.name
+      - name: nType
+        type: int
+        comment: 策略类型(代表是日志策略还是网址策略窗口策略等几十种)
+        semantic_key: policy_name.type
+      # - name: Comment
+      #   type: varchar(100)
+      #   comment: 备注/编码   systemdefaultpolicy是默认，其他没看到作用
+      #   semantic_key: policy_name.comment
+
+  - name: a_policycontent
+    description: 策略具体内容表（不同 Code 下 Name1/Name2/Name3/nValue 的语义不同，需要参考sql文档）
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: policy_content.id
+      - name: PolicyID
+        type: int
+        comment: 策略ID（关联 a_policyname.ID；也用于关联 a_policycontent.PolicyID）
+        semantic_key: policy_content.policy_id
+      - name: Code
+        type: varchar(50)
+        comment: 策略大类编码
+        semantic_key: policy_content.code
+      - name: nType
+        type: int
+        comment: 参数之一，几乎不用
+        semantic_key: policy_content.type
+      - name: Name1
+        type: varchar(100)
+        comment: 子项键
+        semantic_key: policy_content.key
+      - name: Name2
+        type: varchar(100)
+        comment: 子项值（部分 Code 以 Name2 存 bool/int/string）
+        semantic_key: policy_content.value_text
+      - name: Name3
+        type: varchar(8000)
+        comment: 子项值（部分 Code 以 Name3 存长文本/路径/url）
+        semantic_key: policy_content.value_longtext
+      - name: nValue
+        type: int
+        comment: 子项值（部分 Code 以 nValue 存 int/bool）
+        semantic_key: policy_content.value_int
+      - name: comment
+        type: varchar(100)
+        comment: 备注（部分 Code 以 comment 做进一步区）
+        semantic_key: policy_content.comment
+
+  #   和角色相关的先忽略
+  # - name: a_adminpolicymap
+  #   description: 管理员-策略映射表（仅保留结构；权限以管理员-部门为主）
+  #   primary_key: ID
+  #   columns:
+  #     - name: ID
+  #       type: int
+  #       comment: 自增ID
+  #       semantic_key: admin_policy_map.id
+  #     - name: AdminID
+  #       type: int
+  #       comment: 管理员ID
+  #       semantic_key: admin.id
+  #     - name: PolicyID
+  #       type: int
+  #       comment: 策略ID
+  #       semantic_key: policy.id
+  #     - name: nFlag
+  #       type: int
+  #       comment: 标志位
+  #       semantic_key: admin_policy_map.flag
+
+  - name: a_remoteinfo
+    description: 远程协助历史记录表
+    primary_key: null
+    columns:
+      - name: ip
+        type: varchar(50)
+        comment: 被远程客户端的IP
+        semantic_key: remote.ip
+      - name: machinename
+        type: varchar(30)
+        comment: 远程设备机器名
+        semantic_key: remote.machine_name
+      - name: department
+        type: varchar(20)
+        comment: 设备部门
+        semantic_key: remote.department
+      - name: lasttime
+        type: datetime
+        comment: 最近被远程时间
+        semantic_key: remote.last_time
+      - name: mtid
+        type: int
+        comment: 远程设备ID（关联 s_machine.ID）
+        semantic_key: remote.machine_id
+      - name: managerid
+        type: varchar(20)
+        comment: 发起远程的管理机ID(关联 manageinfo.ID)
+        semantic_key: remote.manager_id
+
+  - name: manageinfo
+    description: 管理机登录信息表，需要查询指定管理机ID或指定管理机IP地址对应的具体信息时使用
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 管理员ID
+        semantic_key: manageinfo.id
+      - name: ManageIP
+        type: varchar(100)
+        comment: 管理机IP地址
+        semantic_key: manageinfo.ip
+      - name: MachineName
+        type: varchar(100)
+        comment: 管理机机器名
+        semantic_key: manageinfo.name
+      - name: versionnum
+        type: varchar(20)
+        comment: 管理机版本号
+        semantic_key: manageinfo.version_num
+      # - name: nFlag
+      #   type: int
+      #   comment: 标志位
+      #   semantic_key: manageinfo.flag
+      
+  - name: admininfo
+    description: 管理员信息表
+    primary_key: LogNum
+    columns:
+      - name: ID
+        type: int
+        comment: 管理员ID
+        semantic_key: admin.id
+      - name: LogNum
+        type: varchar(50)
+        comment: 管理员账号（登录名）
+        semantic_key: admin.lognum
+      - name: UserName
+        type: varchar(50)
+        comment: 管理员展示名
+        semantic_key: admin.name
+      - name: PassWord1
+        type: varchar(50)
+        comment: 密码（禁止查询返回）
+        semantic_key: admin.password
+
+  - name: AdminLog
+    description: 管理员日志表
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: admin_log.id
+      - name: AdminID
+        type: varchar(100)
+        comment: 管理员账号（登录名）
+        semantic_key: admin_log.lognum
+      - name: doinfo
+        type: varchar(600)
+        comment: 事件
+        semantic_key: admin_log.info
+      - name: AddDate
+        type: timestamp
+        comment: 发送时间
+        semantic_key: admin_log.time
+      - name: IP
+        type: varchar(50)
+        comment: ip地址
+        semantic_key: admin_log.ip
+      - name: MAC
+        type: varchar(50)
+        comment: mac地址
+        semantic_key: admin_log.mac
+
+  # 角色相关先不处理
+  # - name: RoleGroupMap
+  #   description: 角色-部门映射表（用于权限子查询；字段结构为示例 SQL 所需最小集合）
+  #   primary_key: null
+  #   partial: true
+  #   columns:
+  #     - name: GroupID
+  #       type: int
+  #       comment: 部门ID（关联 s_group.id）
+  #       semantic_key: role_group.group_id
+  #     - name: RoleID
+  #       type: int
+  #       comment: 角色ID
+  #       semantic_key: role_group.role_id
+  #     - name: is_fake_check
+  #       type: int
+  #       comment: 过滤字段（0 或 NULL 代表有效）
+  #       semantic_key: role_group.is_fake_check
+
+  # - name: g_adminroleright
+  #   description: 管理员-角色权限表（用于权限子查询；字段结构为示例 SQL 所需最小集合）
+  #   primary_key: null
+  #   partial: true
+  #   columns:
+  #     - name: AdminID
+  #       type: int
+  #       comment: 管理员ID（关联 admininfo.ID）
+  #       semantic_key: admin_role.admin_id
+  #     - name: RoleID
+  #       type: int
+  #       comment: 角色ID
+  #       semantic_key: admin_role.role_id
+
+  - name: a_machineruntime
+    description: 终端运行时间表（用于运行时间查询）
+    primary_key: ID
+    partial: true
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: runtime.id
+      - name: MtID
+        type: int
+        comment: 设备ID（关联 s_machine.ID）
+        semantic_key: runtime.machine_id
+      - name: systemstarttime
+        type: datetime
+        comment: 系统启动时间(设备/机器/电脑开机时间)
+        semantic_key: runtime.machine_start_time
+      - name: systemruntime
+        type: varchar(100)
+        comment: 系统运行时间（小时）(设备/机器/电脑开机后运行时间)
+        semantic_key: runtime.machine_run_time
+  - name: onlineinfo
+    description: 在线信息表,用于在线设备查询,只要这个表里有的设备,就认为是在线的
+    primary_key: null
+    partial: true
+    columns:
+      - name: mtid
+        type: int
+        comment: 设备ID（关联 s_machine.ID,存在就代表在线）
+        semantic_key: online.machine_id
+# #查询日志的范围
+# CREATE TABLE `usbdb` (
+#   `ID` int NOT NULL AUTO_INCREMENT,
+#   `MtID` int NOT NULL,
+#   `DeviceDesc` varchar(400) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci DEFAULT NULL,
+#   `FriendName` varchar(400) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci DEFAULT NULL,
+#   `USBPlugTime` datetime DEFAULT NULL,
+#   `USBUnPlugTime` datetime DEFAULT NULL,
+#   `LogonUser` varchar(100) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci DEFAULT NULL,
+#   `IsForbit` int DEFAULT NULL,
+#   `isinsert` int DEFAULT NULL,
+#   PRIMARY KEY (`ID`) USING BTREE,
+#   KEY `IX_USBDB` (`USBPlugTime`) USING BTREE,
+#   KEY `IX_USBDB_1` (`MtID`) USING BTREE,
+#   KEY `IX_USBDB_2` (`ID`) USING BTREE
+# ) ENGINE=InnoDB AUTO_INCREMENT=46706 DEFAULT CHARSET=utf8mb3 ROW_FORMAT=DYNAMIC;
+  - name: usbdb
+    description: usb插入拔出和禁用操作日志
+    primary_key: ID
+    columns:
+      - name: ID
+        type: int
+        comment: 自增ID
+        semantic_key: usb.id
+      - name: MtID
+        type: int
+        comment: 设备ID（关联 s_machine.ID）
+        semantic_key: usb.machine_id
+      - name: DeviceDesc
+        type: varchar(400)
+        comment: usb名称
+        semantic_key: usb.name
+      - name: FriendName
+        type: varchar(400)
+        comment: usb备注
+        semantic_key: usb.remark
+      - name: USBPlugTime
+        type: datetime
+        comment: 插入时间
+        semantic_key: usb.plug_time
+      - name: USBUnPlugTime
+        type: datetime
+        comment: 移除时间
+        semantic_key: usb.unplug_time
+      - name: LogonUser
+        type: varchar(100)
+        comment: 登录用户
+        semantic_key: usb.login_user
+      - name: IsForbit
+        type: int
+        comment: 是否禁用
+        semantic_key: usb.is_forbit
+      - name: isinsert
+        type: int
+        comment: 是否插入
+        semantic_key: usb.is_insert 
+relationships:
+  - from: s_machine.Groupid
+    to: s_group.id
+    kind: many_to_one
+    comment: 设备所属部门
+  - from: s_machine.ClientId
+    to: s_user.ID
+    kind: many_to_one
+    comment: 设备绑定用户
+  - from: alertsystemdb.MtID
+    to: s_machine.ID
+    kind: many_to_one
+    comment: 告警对应设备
+  - from: a_clienthardinfo2.MtID
+    to: s_machine.ID
+    kind: many_to_one
+    comment: 硬件信息对应设备
+  - from: a_equippolicymap.MtID
+    to: s_machine.ID
+    kind: many_to_one
+    comment: 策略对应设备
+  - from: a_equippolicymap.PolicyID
+    to: a_policyname.ID
+    kind: many_to_one
+    comment: 策略ID到策略名称
+  - from: a_policycontent.PolicyID
+    to: a_equippolicymap.PolicyID
+    kind: many_to_one
+    comment: 策略内容到策略ID
+  - from: a_remoteinfo.mtid
+    to: s_machine.ID
+    kind: many_to_one
+    comment: 远程协助对应设备
+  - from: a_machineruntime.MtID
+    to: s_machine.ID
+    kind: many_to_one
+    comment: 运行状态对应设备
+  - from: onlineinfo.mtid
+    to: s_machine.ID
+    kind: many_to_one
+    comment: 在线信息对应设备
+

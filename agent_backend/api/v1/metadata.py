@@ -29,25 +29,25 @@ from agent_backend.core.config import get_schema_runtime
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["metadata"])
+router = APIRouter(prefix="/{agent_type}", tags=["metadata"])
 
 
 @router.get("/metadata/summary")
-def metadata_summary() -> dict:
+def metadata_summary(agent_type: str) -> dict:
     """
     获取数据库元数据摘要。
 
     返回所有表的名称、描述、字段数、主键信息，以及同义词总数。
 
     参数：
-        无
+        agent_type: 智能体类型标识
 
     返回：
         dict: 包含table_count/tables/synonym_count字段的摘要信息；
               查询失败时包含error字段
     """
     try:
-        runtime = get_schema_runtime()
+        runtime = get_schema_runtime(agent_type)
         tables = []
         for t in runtime.raw.tables:
             tables.append({

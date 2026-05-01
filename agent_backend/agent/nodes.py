@@ -219,7 +219,9 @@ def init_node(state: AgentState) -> dict[str, Any]:
 def agent_node(state: AgentState) -> dict[str, Any]:
     """调用绑定工具的 LLM，让模型决定直接回答还是发起工具调用。"""
     t0 = time.time()
-    llm = get_llm()
+    from agent_backend.core.context import current_agent_type
+    agent_type = current_agent_type.get()
+    llm = get_llm(agent_type=agent_type or None)
 
     messages = list(state["messages"])
     logger.info(
@@ -445,7 +447,8 @@ def respond_node(state: AgentState) -> dict[str, Any]:
 
     if tool_call_count >= max_tool_calls and isinstance(last_message, AIMessage) and last_message.tool_calls:
         logger.info("\n[respond_node] 达到 max_tool_calls，强制生成最终总结回答")
-        llm = get_llm()
+        agent_type = current_agent_type.get()
+        llm = get_llm(agent_type=agent_type or None)
         summary_prompt = SystemMessage(content=get_summary_prompt(current_agent_type.get()))
         system_messages = [message for message in state["messages"] if isinstance(message, SystemMessage)]
         non_system_messages = [

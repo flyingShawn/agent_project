@@ -81,7 +81,7 @@ class QdrantVectorStore:
         url: str | None = None,
         path: str | None = None,
         api_key: str | None = None,
-        collection: str = "desk_agent_docs",
+        collection: str = "",
         dim: int = 384,
     ) -> None:
         """
@@ -92,7 +92,7 @@ class QdrantVectorStore:
             path: Qdrant本地存储路径，默认从RAG_QDRANT_PATH环境变量读取，
                   设置后优先使用本地模式
             api_key: Qdrant API密钥，默认从RAG_QDRANT_API_KEY环境变量读取
-            collection: 集合名称，默认desk_agent_docs
+            collection: 集合名称
             dim: 向量维度，默认384（bge-small-zh-v1.5的维度）
         """
         settings = get_settings().rag

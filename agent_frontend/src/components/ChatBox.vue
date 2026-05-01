@@ -14,7 +14,7 @@ const props = defineProps({
   },
   agentType: {
     type: String,
-    default: 'desk-agent',
+    default: '',
   },
 })
 
@@ -338,7 +338,7 @@ onUnmounted(() => {
 
         <div class="flex flex-wrap justify-center gap-2.5 max-w-lg">
           <button
-            v-for="option in config.quickOptions"
+            v-for="option in config.getQuickOptions(props.agentType)"
             :key="option"
             @click="handleQuickOption(option)"
             class="quick-option-card bg-white border border-[#e8ecf2] rounded-full px-4 py-2 text-sm text-text-secondary hover:text-primary-500 hover:border-primary-300 transition-all cursor-pointer"

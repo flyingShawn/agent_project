@@ -13,7 +13,7 @@ export function abortCurrentRequest() {
 
 export async function sendChatMessage({
   question,
-  agentType = 'desk-agent',
+  agentType = '',
   history = [],
   images_base64 = null,
   lognum = 'admin',

@@ -3,6 +3,9 @@ agents:
     display_name: "桌面管理助手"
     enabled: true
     config_dir: desk-agent
+    llm:
+      chat_model: "${CHAT_MODEL}"
+      vision_model: "${VISION_MODEL}"
     database:
       db_type: mysql
       db_host: "${DB_HOST}"
@@ -22,13 +25,16 @@ agents:
     display_name: "工单系统助手"
     enabled: true
     config_dir: ticket-agent
+    llm:
+      chat_model: "${CHAT_MODEL}"
+      vision_model: "${VISION_MODEL}"
     database:
       db_type: mysql
       db_host: "${TICKET_DB_HOST}"
       db_port: "${TICKET_DB_PORT}"
       db_name: "${TICKET_DB_NAME}"
-      db_user: "${TICKET_DB_USER}"
-      db_password: "${TICKET_DB_PASSWORD}"
+      db_user: "${DB_USER}"
+      db_password: "${DB_PASSWORD}"
     rag:
       docs_dir: /data/ticket-agent/docs
       docs_collection: ticket_agent_docs

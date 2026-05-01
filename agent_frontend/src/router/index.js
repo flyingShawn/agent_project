@@ -1,11 +1,22 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { fetchAgents } from '../api/agents'
 
 const routes = [
   {
     path: '/',
-    redirect: () => {
+    redirect: async () => {
       const saved = localStorage.getItem('last_agent_type')
-      return saved || '/desk-agent'
+      if (saved) return `/${saved}`
+      try {
+        const data = await fetchAgents()
+        const defaultType = data.default_agent_type
+        if (defaultType) return `/${defaultType}`
+      } catch (e) {
+        // ignore
+      }
+      const firstAgent = data?.agents?.[0]?.agent_type
+      if (firstAgent) return `/${firstAgent}`
+      return '/desk-agent'
     },
   },
   {

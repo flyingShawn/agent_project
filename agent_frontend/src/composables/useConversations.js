@@ -15,7 +15,7 @@ const currentTitle = computed(() => {
 })
 
 export function useConversations() {
-  async function loadConversations(userId = 'admin', agentType = 'desk-agent') {
+  async function loadConversations(userId = 'admin', agentType = '') {
     try {
       const data = await fetchConversations(agentType, userId)
       conversations.value = data.items || []

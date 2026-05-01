@@ -52,21 +52,38 @@ def reset_llm_cache() -> None:
 
 def get_llm(
     *,
+    agent_type: str | None = None,
     streaming: bool = True,
     temperature: float = 0.3,
 ) -> ChatOpenAI:
-    cache_key = f"{streaming}_{temperature}"
-    if cache_key in _llm_cache:
-        logger.info("\nLLM实例缓存命中: key=%s", cache_key)
-        return _llm_cache[cache_key]
-
-    logger.info("\nLLM初始化---------------begin---------------")
     settings = get_settings()
     llm_cfg = settings.llm
 
     base_url = llm_cfg.llm_base_url.rstrip("/")
     api_key = llm_cfg.llm_api_key or "ollama"
     model = llm_cfg.chat_model
+
+    if agent_type:
+        try:
+            from agent_backend.agent.registry import get_registry
+            registry = get_registry()
+            if registry.has_agent(agent_type):
+                agent_llm = registry.get_llm_config(agent_type)
+                if agent_llm.llm_base_url:
+                    base_url = agent_llm.llm_base_url.rstrip("/")
+                if agent_llm.llm_api_key:
+                    api_key = agent_llm.llm_api_key
+                if agent_llm.chat_model:
+                    model = agent_llm.chat_model
+        except Exception:
+            pass
+
+    cache_key = f"{base_url}_{model}_{streaming}_{temperature}"
+    if cache_key in _llm_cache:
+        logger.info("\nLLM实例缓存命中: key=%s", cache_key)
+        return _llm_cache[cache_key]
+
+    logger.info("\nLLM初始化---------------begin---------------")
 
     logger.info("\nget_llm-----http_client")
     http_client = httpx.Client(proxy=None, timeout=httpx.Timeout(300.0, connect=10.0))

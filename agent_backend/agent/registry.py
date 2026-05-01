@@ -34,6 +34,7 @@ import yaml
 
 from agent_backend.core.config import (
     AgentConfig,
+    AgentLlmConfig,
     AgentRagConfig,
     SchemaRuntime,
     load_agents_yaml,
@@ -174,6 +175,10 @@ class AgentRegistry:
         config = self.get_agent_config(agent_type)
         return config.rag
 
+    def get_llm_config(self, agent_type: str) -> AgentLlmConfig:
+        config = self.get_agent_config(agent_type)
+        return config.llm
+
     def get_reports_config(self, agent_type: str) -> dict:
         return self._reports_configs.get(agent_type, {})
 
@@ -183,7 +188,7 @@ class AgentRegistry:
     def get_default_agent_type(self) -> str:
         if self._agents:
             return next(iter(self._agents))
-        return "desk-agent"
+        raise ValueError("没有已启用的智能体")
 
     def has_agent(self, agent_type: str) -> bool:
         return agent_type in self._agents

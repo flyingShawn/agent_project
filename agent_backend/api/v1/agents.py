@@ -23,6 +23,10 @@ router = APIRouter(tags=["agents"])
 async def list_agents() -> dict:
     registry = get_registry()
     agents = registry.get_enabled_agents()
+    try:
+        default_agent_type = registry.get_default_agent_type()
+    except ValueError:
+        default_agent_type = ""
     return {
         "agents": [
             {
@@ -32,5 +36,5 @@ async def list_agents() -> dict:
             }
             for a in agents
         ],
-        "default_agent_type": registry.get_default_agent_type(),
+        "default_agent_type": default_agent_type,
     }

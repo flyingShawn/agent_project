@@ -43,8 +43,3 @@ export async function runOpsReportNow(agentType) {
   })
   return parseJsonResponse(response)
 }
-
-export async function fetchAgents() {
-  const response = await fetchWithExternalAuth(`${API_BASE}/agents`)
-  return parseJsonResponse(response)
-}

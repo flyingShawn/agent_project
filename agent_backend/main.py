@@ -75,8 +75,14 @@ def _preload_components() -> None:
 
     try:
         from agent_backend.core.config import get_schema_runtime
-        get_schema_runtime()
-        log.info("\n[Preload] ✅ Schema 元数据已加载（默认）")
+        from agent_backend.agent.registry import get_registry
+        registry = get_registry()
+        for agent_cfg in registry.get_enabled_agents():
+            try:
+                get_schema_runtime(agent_cfg.agent_type)
+                log.info(f"\n[Preload] ✅ Schema 元数据已加载 ({agent_cfg.agent_type})")
+            except Exception as e:
+                log.warning(f"\n[Preload] ⚠️ Schema 元数据加载失败 ({agent_cfg.agent_type}): {e}")
     except Exception as e:
         log.warning(f"\n[Preload] ⚠️ Schema 元数据加载失败: {e}")
 
@@ -89,7 +95,10 @@ def _preload_components() -> None:
 
     try:
         from agent_backend.rag_engine.retrieval import get_or_create_embedding, get_or_create_store, get_sql_rag_settings
-        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha = get_sql_rag_settings()
+        from agent_backend.agent.registry import get_registry
+        registry = get_registry()
+        default_agent = registry.get_default_agent_type()
+        qdrant_url, qdrant_path, qdrant_api_key, collection, embedding_model_name, top_k, candidate_k, alpha = get_sql_rag_settings(default_agent)
         embedding_model = get_or_create_embedding(embedding_model_name)
         dim = embedding_model.dimension
         get_or_create_store(
@@ -130,7 +139,7 @@ def create_app() -> FastAPI:
         reset_llm_cache()
         logger.info("\n[Shutdown] 应用关闭完成")
 
-    app = FastAPI(title="desk-agent-backend", lifespan=lifespan)
+    app = FastAPI(title="agent-backend", lifespan=lifespan)
 
     cors_origins = [o.strip() for o in get_settings().misc.cors_origins.split(",") if o.strip()]
     app.add_middleware(
