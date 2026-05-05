@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $action = "run"
 $runner = "local"
+$agentType = "desk-agent"
 $baseUrl = if ($env:OPS_REPORT_BASE_URL) { $env:OPS_REPORT_BASE_URL.Trim() } else { "http://localhost:8000" }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -27,16 +28,16 @@ $runnerAliases = @{
 function Show-Usage {
     Write-Host "Usage:" -ForegroundColor Cyan
     Write-Host "  .\scripts\ops_report.cmd" -ForegroundColor Yellow
-    Write-Host "  .\scripts\ops_report.cmd docker" -ForegroundColor Yellow
-    Write-Host "  .\scripts\ops_report.cmd latest" -ForegroundColor Yellow
-    Write-Host "  .\scripts\ops_report.cmd list" -ForegroundColor Yellow
+    Write-Host "  .\scripts\ops_report.cmd ticket-agent" -ForegroundColor Yellow
+    Write-Host "  .\scripts\ops_report.cmd desk-agent latest" -ForegroundColor Yellow
+    Write-Host "  .\scripts\ops_report.cmd desk-agent list docker" -ForegroundColor Yellow
     Write-Host "  .\scripts\ops_report.cmd run http://192.168.1.149:8000" -ForegroundColor Yellow
-    Write-Host "  .\scripts\ops_report_docker.cmd" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Notes:" -ForegroundColor Cyan
-    Write-Host "  default action: run"
-    Write-Host "  default runner: local"
-    Write-Host "  default base url: http://localhost:8000"
+    Write-Host "Args:" -ForegroundColor Cyan
+    Write-Host "  agent-type: desk-agent | ticket-agent | ... (default: desk-agent)"
+    Write-Host "  action: run | latest | list (default: run)"
+    Write-Host "  runner: local | docker (default: local)"
+    Write-Host "  base-url: http://... (default: http://localhost:8000)"
     Write-Host "  optional env: OPS_REPORT_BASE_URL"
 }
 
@@ -63,6 +64,11 @@ foreach ($arg in $CliArgs) {
         continue
     }
 
+    if (-not ($normalized -in @("run", "latest", "last", "list", "local", "docker"))) {
+        $agentType = $arg
+        continue
+    }
+
     throw "Unsupported arg: $arg"
 }
 
@@ -71,15 +77,15 @@ $baseUrl = $baseUrl.TrimEnd("/")
 switch ($action) {
     "run" {
         $method = "POST"
-        $path = "/api/v1/ops/reports/run"
+        $path = "/api/v1/$agentType/ops/reports/run"
     }
     "latest" {
         $method = "GET"
-        $path = "/api/v1/ops/reports/latest"
+        $path = "/api/v1/$agentType/ops/reports/latest"
     }
     "list" {
         $method = "GET"
-        $path = "/api/v1/ops/reports"
+        $path = "/api/v1/$agentType/ops/reports"
     }
     default {
         throw "Unsupported action: $action"

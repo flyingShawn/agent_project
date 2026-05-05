@@ -42,6 +42,7 @@ from agent_backend.api.v1.ops import router as ops_router
 from agent_backend.api.v1.rag import router as rag_router
 from agent_backend.api.v1.sql_agent import router as sql_agent_router
 from agent_backend.api.v1.export import router as export_router
+from agent_backend.api.v1.tasks import router as tasks_router
 
 router = APIRouter()
 router.include_router(agents_router, prefix="/api/v1")
@@ -53,3 +54,4 @@ router.include_router(chat_router, prefix="/api/v1")
 router.include_router(conversations_router, prefix="/api/v1")
 router.include_router(ops_router, prefix="/api/v1")
 router.include_router(rag_router, prefix="/api/v1")
+router.include_router(tasks_router, prefix="/api/v1")

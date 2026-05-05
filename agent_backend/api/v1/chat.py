@@ -224,6 +224,7 @@ async def chat(
                 id=conversation_id,
                 title=_generate_title(req.question),
                 user_id=current_user.user_id,
+                agent_type=agent_type,
                 created_at=now,
                 updated_at=now,
                 is_deleted=0,

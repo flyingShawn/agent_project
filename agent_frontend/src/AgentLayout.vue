@@ -4,8 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import ChatBox from './components/ChatBox.vue'
 import OpsReportInbox from './components/OpsReportInbox.vue'
 import Sidebar from './components/Sidebar.vue'
+import ModeToggle from './components/mode/ModeToggle.vue'
+import TaskModePanel from './components/task/TaskModePanel.vue'
+import TaskWizard from './components/task/TaskWizard.vue'
 import config from './config'
 import { useConversations } from './composables/useConversations'
+import { useTaskMode } from './composables/useTaskMode'
+import { fetchAgents } from './api/agents'
 import {
   getExternalDisplayName,
   getExternalUserId,
@@ -29,6 +34,7 @@ const showOpsInbox = ref(false)
 const unreadOpsCount = ref(0)
 const chatBoxRef = ref(null)
 const reportsEnabled = ref(false)
+const tasksEnabled = ref(false)
 const AUTO_OPEN_SIDEBAR_MIN_WIDTH = 1280
 
 const {
@@ -39,6 +45,32 @@ const {
   switchConversation,
   conversations,
 } = useConversations()
+
+const {
+  mode,
+  tasks,
+  selectedTask,
+  taskSchema,
+  currentStepIndex,
+  currentStep,
+  collectedParams,
+  stepErrors,
+  taskResult,
+  isExecuting,
+  isLoadingSchema,
+  isLastStep,
+  isFirstStep,
+  progressPercent,
+  loadTasks,
+  selectTask,
+  updateParam,
+  nextStep,
+  prevStep,
+  submitTask,
+  resetTask,
+  switchMode,
+  resetForAgentChange,
+} = useTaskMode()
 
 function toggleSidebar() {
   showSidebar.value = !showSidebar.value
@@ -80,6 +112,26 @@ function handleOpsUnreadChange(count) {
   unreadOpsCount.value = Number(count || 0)
 }
 
+async function handleSelectTask(task) {
+  await selectTask(currentAgentType.value, task)
+}
+
+async function handleNextStep() {
+  await nextStep(currentAgentType.value)
+}
+
+async function handleSubmitTask() {
+  await submitTask(currentAgentType.value)
+}
+
+function handleBackToList() {
+  resetTask()
+}
+
+function handleModeChange(newMode) {
+  switchMode(newMode)
+}
+
 watch(currentAgentType, (newType, oldType) => {
   if (newType !== oldType) {
     startNewConversation()
@@ -88,12 +140,13 @@ watch(currentAgentType, (newType, oldType) => {
     }
     loadConversations(currentUserId.value, newType)
     updateReportsEnabled(newType)
+    updateTasksEnabled(newType)
+    resetForAgentChange()
   }
 })
 
 async function updateReportsEnabled(agentType) {
   try {
-    const { fetchAgents } = await import('./api/agents')
     const data = await fetchAgents()
     const agent = data.agents?.find(a => a.agent_type === agentType)
     reportsEnabled.value = agent?.reports_enabled ?? false
@@ -102,12 +155,26 @@ async function updateReportsEnabled(agentType) {
   }
 }
 
+async function updateTasksEnabled(agentType) {
+  try {
+    const data = await fetchAgents()
+    const agent = data.agents?.find(a => a.agent_type === agentType)
+    tasksEnabled.value = agent?.tasks_enabled ?? false
+    if (tasksEnabled.value) {
+      await loadTasks(agentType)
+    }
+  } catch (e) {
+    tasksEnabled.value = false
+  }
+}
+
 onMounted(async () => {
   const externalIdentity = setExternalIdentity(readExternalIdentityFromLocation())
   currentUserId.value = externalIdentity?.userId || getExternalUserId()
   currentUserLabel.value = externalIdentity?.displayName || getExternalDisplayName()
   await loadConversations(currentUserId.value, currentAgentType.value)
-  updateReportsEnabled(currentAgentType.value)
+  await updateReportsEnabled(currentAgentType.value)
+  await updateTasksEnabled(currentAgentType.value)
   if (window.innerWidth >= AUTO_OPEN_SIDEBAR_MIN_WIDTH && conversations.value.length > 0) {
     showSidebar.value = true
   }
@@ -122,6 +189,7 @@ onMounted(async () => {
     >
       <Sidebar
         :agent-type="currentAgentType"
+        :current-user-label="currentUserLabel"
         @new-conversation="handleNewConversation"
         @switch-conversation="handleSwitchConversation"
         @delete-conversation="handleDeleteConversation"
@@ -147,11 +215,20 @@ onMounted(async () => {
         </div>
 
         <div class="absolute left-1/2 -translate-x-1/2 text-center select-none">
-          <h1 class="text-[15px] font-semibold text-text-primary leading-tight">{{ currentTitle }}</h1>
-          <p class="text-[11px] text-text-tertiary mt-0.5">{{ config.subtitle }}</p>
+          <h1 class="text-[15px] font-semibold text-text-primary leading-tight">
+            {{ mode === 'task' && selectedTask ? selectedTask.name : currentTitle }}
+          </h1>
+          <p class="text-[11px] text-text-tertiary mt-0.5">
+            {{ mode === 'task' ? '任务模式' : config.subtitle }}
+          </p>
         </div>
 
         <div class="flex items-center gap-2">
+          <ModeToggle
+            v-if="tasksEnabled"
+            :mode="mode"
+            @update:mode="handleModeChange"
+          />
           <button
             v-if="reportsEnabled"
             @click="toggleOpsInbox"
@@ -164,25 +241,47 @@ onMounted(async () => {
             </svg>
             <span class="text-[12px] font-medium">运维简报</span>
           </button>
-
-          <div class="flex items-center space-x-1.5 text-text-secondary bg-surface-muted pl-2.5 pr-3 py-1 rounded-full">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span class="text-[11px] font-medium">{{ currentUserLabel }}</span>
-          </div>
         </div>
       </header>
 
       <main class="flex-1 overflow-hidden flex justify-center px-4 sm:px-6">
-        <div class="w-full max-w-chat h-full">
+        <div class="w-full h-full" :class="mode === 'chat' ? 'max-w-chat' : 'max-w-2xl'">
           <ChatBox
+            v-if="mode === 'chat'"
             ref="chatBoxRef"
             :user-id="currentUserId"
             :agent-type="currentAgentType"
             @conversation-created="handleConversationCreated"
             @conversation-updated="handleConversationUpdated"
           />
+
+          <template v-else-if="mode === 'task'">
+            <TaskModePanel
+              v-if="!selectedTask"
+              :tasks="tasks"
+              @select-task="handleSelectTask"
+            />
+
+            <TaskWizard
+              v-else
+              :task-schema="taskSchema"
+              :current-step="currentStep"
+              :current-step-index="currentStepIndex"
+              :collected-params="collectedParams"
+              :step-errors="stepErrors"
+              :task-result="taskResult"
+              :is-executing="isExecuting"
+              :is-last-step="isLastStep"
+              :is-first-step="isFirstStep"
+              :progress-percent="progressPercent"
+              :agent-type="currentAgentType"
+              @update-param="updateParam"
+              @next-step="handleNextStep"
+              @prev-step="prevStep"
+              @submit-task="handleSubmitTask"
+              @back-to-list="handleBackToList"
+            />
+          </template>
         </div>
       </main>
     </div>

@@ -20,6 +20,9 @@ agents:
       sql_collection: desk_agent_sql
     reports:
       enabled: true
+    tasks:
+      enabled: true
+      api_base_url: "${DESK_SERVICE_API_URL}"
 
   - agent_type: ticket-agent
     display_name: "工单系统助手"
@@ -42,3 +45,6 @@ agents:
       sql_collection: ticket_agent_sql
     reports:
       enabled: false
+    tasks:
+      enabled: true
+      api_base_url: "${TICKET_SERVICE_API_URL}"

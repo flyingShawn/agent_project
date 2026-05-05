@@ -6,6 +6,7 @@ import config from '../config'
 const emit = defineEmits(['new-conversation', 'switch-conversation', 'delete-conversation'])
 const props = defineProps({
   agentType: { type: String, default: '' },
+  currentUserLabel: { type: String, default: 'admin' },
 })
 
 const {
@@ -180,6 +181,16 @@ defineExpose({ loadConversations })
             </button>
           </div>
         </div>
+      </div>
+    </div>
+    <div class="flex-shrink-0 border-t border-[#eef2f6] px-4 py-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center flex-shrink-0">
+          <svg class="w-4.5 h-4.5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <span class="text-sm text-text-secondary truncate">{{ currentUserLabel }}</span>
       </div>
     </div>
   </div>

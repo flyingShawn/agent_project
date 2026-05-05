@@ -70,7 +70,7 @@ uvicorn agent_backend.main:app
 关键方法：
 
 - `37` `start()`
-  - 读取 `agent_backend/configs/ops_reports.yaml`
+  - 读取各智能体的 `configs/{agent_type}/ops_reports.yaml`
   - 创建 `OpsReportExecutor`
   - 创建 `AsyncIOScheduler`
   - 给每个 `report_key` 注册定时间隔任务
@@ -159,7 +159,7 @@ uvicorn agent_backend.main:app
 
 配置文件位置：
 
-- `agent_backend/configs/ops_reports.yaml`
+- `agent_backend/configs/desk-agent/ops_reports.yaml`
 
 当前默认配置：
 
@@ -196,12 +196,12 @@ main.py / lifespan()
 
 后端 API 在：
 
-- `agent_backend/api/v1/ops.py:36` `POST /api/v1/ops/reports/run`
+- `agent_backend/api/v1/ops.py:36` `POST /api/v1/{agent_type}/ops/reports/run`
 
 调用链是：
 
 ```text
-POST /api/v1/ops/reports/run
+POST /api/v1/{agent_type}/ops/reports/run
   -> api/v1/ops.py run_ops_report_now()
   -> OpsReportManager.run_report_now()
   -> OpsReportExecutor.generate_report()
@@ -255,11 +255,11 @@ generate_report()
 
 API 文件：
 
-- `agent_backend/api/v1/ops.py:12` `GET /api/v1/ops/reports`
-- `agent_backend/api/v1/ops.py:21` `GET /api/v1/ops/reports/latest`
-- `agent_backend/api/v1/ops.py:27` `GET /api/v1/ops/reports/{report_id}`
-- `agent_backend/api/v1/ops.py:36` `POST /api/v1/ops/reports/run`
-- `agent_backend/api/v1/ops.py:45` `PUT /api/v1/ops/reports/{report_id}/read`
+- `agent_backend/api/v1/ops.py:12` `GET /api/v1/{agent_type}/ops/reports`
+- `agent_backend/api/v1/ops.py:21` `GET /api/v1/{agent_type}/ops/reports/latest`
+- `agent_backend/api/v1/ops.py:27` `GET /api/v1/{agent_type}/ops/reports/{report_id}`
+- `agent_backend/api/v1/ops.py:36` `POST /api/v1/{agent_type}/ops/reports/run`
+- `agent_backend/api/v1/ops.py:45` `PUT /api/v1/{agent_type}/ops/reports/{report_id}/read`
 
 健康检查里也暴露了运维简报调度器状态：
 
@@ -341,9 +341,9 @@ App.vue
 
 - `agent_backend/ops_reports/manager.py`
 - `agent_backend/ops_reports/executor.py`
-- `agent_backend/configs/ops_reports.yaml`
+- `agent_backend/configs/{agent_type}/ops_reports.yaml`
 
-它是专门为“运维简报”定制的一套轻量实现：
+它是专门为"运维简报"定制的一套轻量实现：
 
 - 专门的配置模型
 - 专门的指标采集 SQL
@@ -374,7 +374,7 @@ App.vue
 5. `agent_backend/ops_reports/executor.py:397`
    - 看异常阈值判断
 
-6. `agent_backend/configs/ops_reports.yaml`
+6. `agent_backend/configs/{agent_type}/ops_reports.yaml`
    - 改时间窗口、频率、TopN、阈值
 
 7. `agent_backend/api/v1/ops.py`

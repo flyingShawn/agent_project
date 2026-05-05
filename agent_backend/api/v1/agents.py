@@ -33,6 +33,7 @@ async def list_agents() -> dict:
                 "agent_type": a.agent_type,
                 "display_name": a.display_name,
                 "reports_enabled": a.reports.enabled,
+                "tasks_enabled": a.tasks.enabled,
             }
             for a in agents
         ],

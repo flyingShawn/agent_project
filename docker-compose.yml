@@ -54,6 +54,10 @@ services:
       - TICKET_DB_PORT=${TICKET_DB_PORT:-3306}
       - TICKET_DB_NAME=${TICKET_DB_NAME:-}
 
+      # 智能体任务服务配置（按需添加，任务模式使用）
+      - DESK_SERVICE_API_URL=${DESK_SERVICE_API_URL:-}
+      - TICKET_SERVICE_API_URL=${TICKET_SERVICE_API_URL:-}
+
       # 网络搜索配置
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-5}
@@ -145,6 +149,7 @@ services:
       - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
       - SYNC_TARGET=${SYNC_TARGET:-all}
       - SYNC_MODE=${SYNC_MODE:-incremental}
+      - SYNC_AGENT_TYPE=${SYNC_AGENT_TYPE:-}
       - RAG_REQUIRE_DOCLING=${RAG_REQUIRE_DOCLING:-1}
     volumes:
       - ${HOST_DOCS_DIR:-./data/desk-agent/docs}:/data/desk-agent/docs:ro

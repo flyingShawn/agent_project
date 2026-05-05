@@ -208,9 +208,6 @@ def get_max_rows() -> int:
     return get_settings().database.sql_max_rows
 
 
-_SCHEMA_YAML_PATH = Path(__file__).parent.parent / "configs" / "schema_metadata.yaml"
-_PROMPTS_YAML_PATH = Path(__file__).parent.parent / "configs" / "prompts.yaml"
-
 _DEFAULT_SYSTEM_PROMPT = "你是一个专业的AI助手，拥有以下工具能力：\n\n（默认提示词，请配置 configs/{config_dir}/prompts.yaml）"
 _DEFAULT_SQL_SYSTEM_PROMPT = "你是一个专业的数据库查询助手，只返回 SQL 语句，不要包含任何解释或其他内容。"
 _DEFAULT_SUMMARY_PROMPT = "你已达到最大工具调用次数限制，无法再调用任何工具。请基于已收集到的工具执行结果，为用户生成一个完整、有用的最终回答。如果已有查询结果数据，请务必在回答中包含具体的数据内容。"
@@ -269,14 +266,7 @@ _SQL_QUERY_RESULT_GUIDANCE = """【sql_query 结果解读补充规则】
 
 @lru_cache(maxsize=1)
 def _load_prompts_yaml() -> dict:
-    yaml_path = _PROMPTS_YAML_PATH
-    if not yaml_path.exists():
-        logger.warning(f"\n提示词配置文件不存在: {yaml_path}，使用默认值")
-        return {}
-    with open(yaml_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    logger.info(f"\n提示词配置已加载: {yaml_path}")
-    return data or {}
+    return {}
 
 
 def get_system_prompt(agent_type: str | None = None) -> str:
@@ -409,9 +399,6 @@ class SchemaRuntime:
             self.synonyms = {k: list(v) for k, v in self.raw.synonyms.items()}
 
 
-_schema_runtime_cache: SchemaRuntime | None = None
-
-
 def get_schema_runtime(agent_type: str | None = None) -> SchemaRuntime:
     if agent_type is not None:
         try:
@@ -421,27 +408,17 @@ def get_schema_runtime(agent_type: str | None = None) -> SchemaRuntime:
                 return registry.get_schema_runtime(agent_type)
         except Exception:
             pass
-    global _schema_runtime_cache
-    if _schema_runtime_cache is not None:
-        return _schema_runtime_cache
-
-    yaml_path = _SCHEMA_YAML_PATH
-    if not yaml_path.exists():
-        raise FileNotFoundError(f"Schema元数据文件不存在: {yaml_path}")
-
-    with open(yaml_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    raw = SchemaRoot(**data)
-    runtime = SchemaRuntime(raw=raw)
-    _schema_runtime_cache = runtime
-    logger.info(f"\nSchema元数据已加载: {len(raw.tables)} 个表, {len(raw.synonyms or {})} 组同义词")
-    return runtime
+    try:
+        from agent_backend.agent.registry import get_registry
+        registry = get_registry()
+        default_type = registry.get_default_agent_type()
+        return registry.get_schema_runtime(default_type)
+    except Exception:
+        pass
+    raise FileNotFoundError("Schema元数据未找到：请配置 agents.yaml 和 configs/{agent_type}/schema_metadata.yaml")
 
 
 def reload_schema_runtime() -> SchemaRuntime:
-    global _schema_runtime_cache
-    _schema_runtime_cache = None
     logger.info("\nSchema元数据缓存已清除，重新加载...")
     return get_schema_runtime()
 
@@ -483,6 +460,11 @@ class AgentReportConfig(BaseModel):
     enabled: bool = False
 
 
+class AgentTaskConfig(BaseModel):
+    enabled: bool = False
+    api_base_url: str = ""
+
+
 class AgentConfig(BaseModel):
     agent_type: str
     display_name: str = ""
@@ -492,6 +474,11 @@ class AgentConfig(BaseModel):
     database: AgentDatabaseConfig = AgentDatabaseConfig()
     rag: AgentRagConfig = AgentRagConfig()
     reports: AgentReportConfig = AgentReportConfig()
+    tasks: AgentTaskConfig = AgentTaskConfig()
+
+    def model_post_init(self, __context: object) -> None:
+        if not self.config_dir:
+            self.config_dir = self.agent_type
 
 
 _AGENTS_YAML_PATH = Path(__file__).parent.parent / "configs" / "agents.yaml"

@@ -133,7 +133,7 @@ const scrollToBottom = async () => {
 const autoResize = () => {
   if (textareaRef.value) {
     textareaRef.value.style.height = 'auto'
-    textareaRef.value.style.height = Math.min(textareaRef.value.scrollHeight, 150) + 'px'
+    textareaRef.value.style.height = Math.min(textareaRef.value.scrollHeight, 200) + 'px'
   }
 }
 
@@ -393,7 +393,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="chat-input-box flex items-end gap-2 bg-white rounded-2xl border border-[#d9d9e3] px-4 py-3 shadow-sm focus-within:border-primary-400 focus-within:shadow-md transition-all">
+      <div class="chat-input-box flex items-end gap-2 bg-white rounded-2xl border border-[#d9d9e3] px-4 py-3.5 shadow-sm focus-within:border-primary-400 focus-within:shadow-md transition-all">
         <ImageUploader @select="addImageFile" />
 
         <textarea
@@ -403,7 +403,7 @@ onUnmounted(() => {
           @input="autoResize"
           :placeholder="isLoading ? '回复中，输入内容等待发送...' : config.inputPlaceholder"
           rows="1"
-          class="flex-1 resize-none bg-transparent px-1 py-1 text-sm focus:outline-none placeholder:text-text-tertiary"
+          class="flex-1 resize-none bg-transparent px-1 py-1 text-sm focus:outline-none placeholder:text-text-tertiary min-h-[44px]"
         ></textarea>
 
         <button

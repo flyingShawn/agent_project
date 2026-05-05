@@ -114,6 +114,7 @@ class OpsReportExecutor:
         lookback_days = int(config.get("lookback_days", 3))
         llm_polish_enabled = bool(config.get("llm_polish_enabled", True))
         thresholds = config.get("thresholds", {})
+        agent_type = config.get("agent_type", "")
 
         now_dt = datetime.now()
         cutoff_dt = now_dt - timedelta(days=lookback_days)
@@ -157,6 +158,7 @@ class OpsReportExecutor:
             window_start=cutoff_dt.timestamp(),
             window_end=now_dt.timestamp(),
             snapshot=snapshot,
+            agent_type=agent_type,
         )
 
     async def _query_rows(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -916,6 +918,7 @@ class OpsReportExecutor:
         window_start: float,
         window_end: float,
         snapshot: dict[str, Any],
+        agent_type: str = "",
     ) -> dict[str, Any]:
         """
         将报告和指标快照存储到SQLite数据库。
@@ -949,6 +952,7 @@ class OpsReportExecutor:
                     content_md=content_md,
                     severity=severity,
                     unread=1,
+                    agent_type=agent_type,
                     generated_at=generated_at,
                     window_start=window_start,
                     window_end=window_end,
@@ -973,6 +977,7 @@ class OpsReportExecutor:
             "content_md": content_md,
             "severity": severity,
             "unread": True,
+            "agent_type": agent_type,
             "generated_at": generated_at,
             "window_start": window_start,
             "window_end": window_end,

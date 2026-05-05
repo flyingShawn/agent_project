@@ -62,7 +62,7 @@ async def get_ops_report(
 async def run_ops_report_now(agent_type: str) -> dict[str, Any]:
     manager = get_ops_report_manager()
     try:
-        return await manager.run_report_now()
+        return await manager.run_report_now(agent_type=agent_type)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"生成运维简报失败: {exc}") from exc
 

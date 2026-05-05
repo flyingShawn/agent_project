@@ -161,19 +161,7 @@ class OpsReportManager:
                 return report_key
         raise RuntimeError("没有可用的运维简报配置")
 
-    async def run_report_now(self, report_key: str | None = None) -> dict[str, Any]:
-        """
-        手动触发生成运维简报。
-
-        参数：
-            report_key: 简报配置标识，None时使用默认配置
-
-        返回：
-            生成结果字典
-
-        异常：
-            ValueError: 配置不存在时抛出
-        """
+    async def run_report_now(self, report_key: str | None = None, agent_type: str | None = None) -> dict[str, Any]:
         if not self._configs:
             self._configs = self._load_configs()
         if self._executor is None:
@@ -183,6 +171,9 @@ class OpsReportManager:
         config = self._configs.get(target_key)
         if not config:
             raise ValueError(f"运维简报配置不存在: {target_key}")
+
+        if agent_type and not config.get("agent_type"):
+            config = {**config, "agent_type": agent_type}
 
         return await self._executor.generate_report(target_key, config)
 
@@ -388,6 +379,7 @@ class OpsReportManager:
             "summary": report.summary,
             "severity": report.severity,
             "unread": bool(report.unread),
+            "agent_type": report.agent_type,
             "generated_at": report.generated_at,
             "window_start": report.window_start,
             "window_end": report.window_end,

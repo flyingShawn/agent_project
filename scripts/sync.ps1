@@ -11,6 +11,7 @@ $projectRoot = Resolve-Path (Join-Path $scriptDir "..")
 $mode = "incremental"
 $target = "all"
 $runner = "docker"
+$agentType = ""
 
 $modeAliases = @{
     "inc" = "incremental"
@@ -33,21 +34,23 @@ $runnerAliases = @{
 function Show-Usage {
     Write-Host "Usage:" -ForegroundColor Cyan
     Write-Host "  .\scripts\sync.cmd" -ForegroundColor Yellow
-    Write-Host "  .\scripts\sync.cmd inc" -ForegroundColor Yellow
-    Write-Host "  .\scripts\sync.cmd sql full" -ForegroundColor Yellow
-    Write-Host "  .\scripts\sync.cmd docs inc local" -ForegroundColor Yellow
+    Write-Host "  .\scripts\sync.cmd desk-agent" -ForegroundColor Yellow
+    Write-Host "  .\scripts\sync.cmd ticket-agent inc" -ForegroundColor Yellow
+    Write-Host "  .\scripts\sync.cmd desk-agent docs full" -ForegroundColor Yellow
+    Write-Host "  .\scripts\sync.cmd ticket-agent sql inc local" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Args:" -ForegroundColor Cyan
+    Write-Host "  agent-type: desk-agent | ticket-agent | ..."
     Write-Host "  mode: inc | incremental | full"
     Write-Host "  target: all | docs | sql"
     Write-Host "  runner: docker | local"
     Write-Host ""
     Write-Host "Defaults:" -ForegroundColor Cyan
-    Write-Host "  mode=incremental, target=all, runner=docker"
+    Write-Host "  agent-type=(from .env), mode=incremental, target=all, runner=docker"
     Write-Host ""
     Write-Host "Note:" -ForegroundColor Cyan
-    Write-Host "  Docker mode docs sync now uses docling-sync container (supports Office/PDF)."
-    Write-Host "  Docker mode sql sync still uses backend container."
+    Write-Host "  Docker mode docs sync uses docling-sync container (supports Office/PDF)."
+    Write-Host "  Docker mode sql sync uses backend container."
 }
 
 foreach ($arg in $CliArgs) {
@@ -68,11 +71,17 @@ foreach ($arg in $CliArgs) {
         $runner = $runnerAliases[$normalized]
         continue
     }
+    if (-not $agentType) {
+        $agentType = $arg
+        continue
+    }
 
     Write-Error "Unsupported arg: $arg"
 }
 
-Write-Host "target=$target | mode=$mode | runner=$runner" -ForegroundColor Green
+$statusLine = "target=$target | mode=$mode | runner=$runner"
+if ($agentType) { $statusLine += " | agent=$agentType" }
+Write-Host $statusLine -ForegroundColor Green
 
 Push-Location $projectRoot
 try {
@@ -81,10 +90,6 @@ try {
             throw "docker command not found. Install/start Docker Desktop or use local runner."
         }
 
-        # Determine which containers to use based on target
-        # docs  -> docling-sync (has docling for Office/PDF parsing)
-        # sql   -> backend (no docling needed)
-        # all   -> both
         $needsDocling = $target -in @("docs", "all")
         $needsBackend = $target -in @("sql", "all")
 
@@ -98,9 +103,11 @@ try {
             $previousSyncTarget = $env:SYNC_TARGET
             $previousSyncMode = $env:SYNC_MODE
             $previousRequireDocling = $env:RAG_REQUIRE_DOCLING
+            $previousAgentType = $env:SYNC_AGENT_TYPE
             $env:SYNC_TARGET = "docs"
             $env:SYNC_MODE = $mode
             $env:RAG_REQUIRE_DOCLING = "1"
+            if ($agentType) { $env:SYNC_AGENT_TYPE = $agentType }
 
             Write-Host "Building and running docling-sync container for docs sync..." -ForegroundColor Cyan
             try {
@@ -118,6 +125,7 @@ try {
                 if ($null -eq $previousSyncTarget) { Remove-Item Env:SYNC_TARGET -ErrorAction SilentlyContinue } else { $env:SYNC_TARGET = $previousSyncTarget }
                 if ($null -eq $previousSyncMode) { Remove-Item Env:SYNC_MODE -ErrorAction SilentlyContinue } else { $env:SYNC_MODE = $previousSyncMode }
                 if ($null -eq $previousRequireDocling) { Remove-Item Env:RAG_REQUIRE_DOCLING -ErrorAction SilentlyContinue } else { $env:RAG_REQUIRE_DOCLING = $previousRequireDocling }
+                if ($null -eq $previousAgentType) { Remove-Item Env:SYNC_AGENT_TYPE -ErrorAction SilentlyContinue } else { $env:SYNC_AGENT_TYPE = $previousAgentType }
             }
         }
 
@@ -128,8 +136,11 @@ try {
                 throw "docker compose up -d qdrant backend failed."
             }
 
+            $syncCmd = "python scripts/sync_rag.py --target sql --mode $mode"
+            if ($agentType) { $syncCmd += " --agent-type $agentType" }
+
             Write-Host "Running SQL sync inside backend container..." -ForegroundColor Cyan
-            & docker compose exec backend python scripts/sync_rag.py --target sql --mode $mode
+            & docker compose exec backend $syncCmd.Split(" ")
             if ($LASTEXITCODE -ne 0) {
                 throw "SQL sync failed."
             }
@@ -143,7 +154,11 @@ try {
     }
 
     Write-Host "Running sync in local Python environment..." -ForegroundColor Cyan
-    & python scripts/sync.py $target $mode
+    $localArgs = @()
+    if ($agentType) { $localArgs += $agentType }
+    $localArgs += $target
+    $localArgs += $mode
+    & python scripts/sync.py @localArgs
     exit $LASTEXITCODE
 }
 finally {
