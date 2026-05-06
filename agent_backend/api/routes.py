@@ -14,6 +14,7 @@ API 路由总入口
     ├── /{agent_type}/chat            -> 聊天接口
     ├── /{agent_type}/conversations   -> 对话管理接口
     ├── /{agent_type}/ops             -> 运维简报接口
+    ├── /{agent_type}/knowledge       -> 本地知识库 Markdown 管理
     ├── /{agent_type}/rag             -> RAG检索增强生成接口
     ├── /sql-agent                    -> SQL代理接口（全局）
     └── /export                       -> 导出接口（全局）
@@ -39,6 +40,7 @@ from agent_backend.api.v1.conversations import router as conversations_router
 from agent_backend.api.v1.health import router as health_router
 from agent_backend.api.v1.metadata import router as metadata_router
 from agent_backend.api.v1.ops import router as ops_router
+from agent_backend.api.v1.knowledge import router as knowledge_router
 from agent_backend.api.v1.rag import router as rag_router
 from agent_backend.api.v1.sql_agent import router as sql_agent_router
 from agent_backend.api.v1.export import router as export_router
@@ -53,5 +55,6 @@ router.include_router(export_router, prefix="/api/v1")
 router.include_router(chat_router, prefix="/api/v1")
 router.include_router(conversations_router, prefix="/api/v1")
 router.include_router(ops_router, prefix="/api/v1")
+router.include_router(knowledge_router, prefix="/api/v1")
 router.include_router(rag_router, prefix="/api/v1")
 router.include_router(tasks_router, prefix="/api/v1")

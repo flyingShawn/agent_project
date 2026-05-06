@@ -13,10 +13,11 @@
     - async_session: 获取异步数据库会话工厂
     - Conversation: 会话ORM模型
     - Message: 消息ORM模型
+    - KnowledgeEntry: 知识库条目模型
 
 关联文件：
     - agent_backend/db/chat_history.py: SQLite异步引擎和会话管理
     - agent_backend/db/models.py: ORM模型定义
 """
 from .chat_history import init_db, get_session, async_session
-from .models import Conversation, Message
+from .models import Conversation, Message, KnowledgeEntry

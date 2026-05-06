@@ -48,7 +48,17 @@ export function useTaskMode() {
       const schema = await fetchTaskSchema(agentType, task.task_id)
       taskSchema.value = schema
       currentStepIndex.value = 0
-      collectedParams.value = {}
+      const defaults = {}
+      if (schema.steps) {
+        for (const step of schema.steps) {
+          for (const param of step.params) {
+            if (param.default !== null && param.default !== undefined) {
+              defaults[param.key] = param.default
+            }
+          }
+        }
+      }
+      collectedParams.value = defaults
       stepErrors.value = {}
       taskResult.value = null
     } catch (e) {
@@ -98,8 +108,21 @@ export function useTaskMode() {
     if (currentStepIndex.value < (taskSchema.value?.steps?.length || 0) - 1) {
       currentStepIndex.value++
       stepErrors.value = {}
+      _fillStepDefaults()
     }
     return true
+  }
+
+  function _fillStepDefaults() {
+    const step = currentStep.value
+    if (!step) return
+    for (const param of step.params) {
+      if (param.key === 'task_name' && !collectedParams.value[param.key]) {
+        const now = new Date()
+        const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`
+        collectedParams.value[param.key] = `${ts}-admin`
+      }
+    }
   }
 
   function prevStep() {

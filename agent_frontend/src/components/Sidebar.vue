@@ -100,7 +100,7 @@ defineExpose({ loadConversations })
         <h2 class="truncate text-lg font-semibold tracking-[0.01em] text-text-primary">{{ config.appName }}</h2>
       </div>
     </div>
-    <div class="px-3 pb-6">
+    <div class="px-3 pb-5">
       <button
         @click="handleNewConversation"
         class="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-primary-500 hover:bg-primary-50 rounded-lg transition-colors cursor-pointer border border-primary-200 bg-primary-50/50"
@@ -110,6 +110,18 @@ defineExpose({ loadConversations })
         </svg>
         开启新会话
       </button>
+      <a
+        :href="`/${agentType}/knowledge`"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-2 w-full flex items-center gap-2 px-3 py-2.5 text-sm rounded-lg transition-colors cursor-pointer border border-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M5 5.75A2.75 2.75 0 017.75 3H19v16.25A1.75 1.75 0 0117.25 21H7.75A2.75 2.75 0 015 18.25V5.75z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M8 7h7M8 10.5h7M8 14h4" />
+        </svg>
+        知识库
+      </a>
     </div>
     <div class="px-4 pb-4">
       <div class="h-px bg-[#eef2f6]"></div>

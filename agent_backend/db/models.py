@@ -160,3 +160,33 @@ class TaskExecution(Base):
     conversation_id = Column(String(64), nullable=True)
     created_at = Column(Float, nullable=False)
     updated_at = Column(Float, nullable=False)
+
+
+class KnowledgeEntry(Base):
+    """
+    知识库条目模型。
+
+    映射到 knowledge_entries 表，作为知识库录入和编辑的主存储。
+    Markdown 文件仅由这些记录派生生成，用于兼容现有 RAG 同步流程。
+    """
+    __tablename__ = "knowledge_entries"
+    __table_args__ = (
+        Index("idx_knowledge_agent_type", "agent_type"),
+        Index("idx_knowledge_file", "agent_type", "kb_type", "filename"),
+        Index("idx_knowledge_deleted", "is_deleted"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_type = Column(String(64), nullable=False)
+    kb_type = Column(String(16), nullable=False)
+    filename = Column(String(255), nullable=False)
+    title = Column(String(255), nullable=False)
+    scenario = Column(Text, nullable=False, default="")
+    key_tables = Column(Text, nullable=False, default="")
+    sql_code = Column(Text, nullable=False, default="")
+    answer = Column(Text, nullable=False, default="")
+    created_by = Column(String(128), nullable=False, default="legacy")
+    created_at = Column(Float, nullable=False)
+    updated_by = Column(String(128), nullable=False, default="legacy")
+    updated_at = Column(Float, nullable=False)
+    is_deleted = Column(Integer, nullable=False, default=0)

@@ -10,10 +10,10 @@ const emit = defineEmits(['update:mode'])
 </script>
 
 <template>
-  <div class="mode-toggle flex items-center bg-surface-muted rounded-full p-0.5 gap-0.5">
+  <div class="mode-toggle flex items-center gap-1 px-1 py-0.5 bg-surface-muted rounded-lg">
     <button
       @click="emit('update:mode', 'chat')"
-      class="mode-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer"
+      class="mode-tab flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 cursor-pointer"
       :class="mode === 'chat'
         ? 'bg-white text-primary-600 shadow-sm'
         : 'text-text-tertiary hover:text-text-secondary'"
@@ -25,7 +25,7 @@ const emit = defineEmits(['update:mode'])
     </button>
     <button
       @click="emit('update:mode', 'task')"
-      class="mode-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer"
+      class="mode-tab flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 cursor-pointer"
       :class="mode === 'task'
         ? 'bg-white text-primary-600 shadow-sm'
         : 'text-text-tertiary hover:text-text-secondary'"

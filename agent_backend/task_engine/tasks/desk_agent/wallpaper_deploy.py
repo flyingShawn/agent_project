@@ -37,12 +37,13 @@ class WallpaperDeployTask(TaskDefinition):
             description="填写需要下发的壁纸文件信息",
             params=[
                 TaskParam(
-                    key="wallpaper_file_path",
-                    label="壁纸文件路径",
+                    key="wallpaper_file_paths",
+                    label="壁纸文件",
                     type=TaskParamType.FILE_PATH,
                     required=True,
-                    placeholder="如：D:\\share\\wallpapers\\company_bg.jpg",
-                    description="管理机上壁纸文件的完整路径",
+                    placeholder="点击浏览管理机上的壁纸文件，支持多选",
+                    description="管理机上的壁纸文件，可选择多个批量下发",
+                    validation={"multiple": True},
                 ),
                 TaskParam(
                     key="wallpaper_style",
@@ -63,37 +64,81 @@ class WallpaperDeployTask(TaskDefinition):
         TaskStep(
             id="select_targets",
             title="选择下发目标",
-            description="选择需要设置壁纸的客户端或部门",
+            description="选择需要设置壁纸的客户端和/或部门，可同时选择",
             params=[
-                TaskParam(
-                    key="target_type",
-                    label="目标类型",
-                    type=TaskParamType.SELECT,
-                    required=True,
-                    options=[
-                        TaskParamOption(label="按客户端", value="client"),
-                        TaskParamOption(label="按部门", value="department"),
-                    ],
-                ),
                 TaskParam(
                     key="client_ids",
                     label="选择客户端",
                     type=TaskParamType.CLIENT_SELECTOR,
                     required=False,
-                    description="当目标类型为「按客户端」时选择",
+                    options_api="client",
+                    description="可选择特定客户端",
                 ),
                 TaskParam(
                     key="department_ids",
                     label="选择部门",
                     type=TaskParamType.DEPARTMENT_SELECTOR,
                     required=False,
-                    description="当目标类型为「按部门」时选择",
+                    options_api="department",
+                    description="可选择整个部门，与客户端可同时选择",
+                ),
+            ],
+        ),
+        TaskStep(
+            id="notification",
+            title="分发提示",
+            description="设置是否在客户端弹出提示",
+            params=[
+                TaskParam(
+                    key="notify_enabled",
+                    label="开启分发提示",
+                    type=TaskParamType.BOOLEAN,
+                    required=True,
+                    default=False,
+                ),
+                TaskParam(
+                    key="notify_message",
+                    label="提示文字",
+                    type=TaskParamType.TEXT,
+                    required=False,
+                    placeholder="如：管理员正在为您更换壁纸",
+                    description="仅在开启分发提示时生效",
+                ),
+            ],
+        ),
+        TaskStep(
+            id="confirm",
+            title="确认提交",
+            description="确认壁纸下发信息并提交任务",
+            params=[
+                TaskParam(
+                    key="task_name",
+                    label="任务名称",
+                    type=TaskParamType.TEXT,
+                    required=True,
+                    placeholder="自动生成，可修改",
                 ),
             ],
         ),
     ]
 
+    async def validate_step(self, step_id: str, params: dict) -> dict:
+        if step_id == "select_targets":
+            client_ids = params.get("client_ids", [])
+            department_ids = params.get("department_ids", [])
+            if not client_ids and not department_ids:
+                return {
+                    "valid": False,
+                    "errors": {
+                        "client_ids": "请至少选择一个客户端或部门",
+                    },
+                }
+            return {"valid": True, "errors": {}}
+        return await super().validate_step(step_id, params)
+
     async def execute(self, params: dict) -> TaskResult:
+        # 备用链路：desk-agent 当前主执行入口是浏览器本机 XFAgentBridge。
+        # 这里保留给服务端转发模式或联调测试使用。
         api_base = self._get_api_base_url()
         if not api_base:
             return TaskResult(success=False, message="未配置桌管服务 API 地址")
@@ -103,11 +148,13 @@ class WallpaperDeployTask(TaskDefinition):
                 resp = await client.post(
                     f"{api_base}/api/wallpaper/deploy",
                     json={
-                        "wallpaper_file_path": params.get("wallpaper_file_path"),
+                        "wallpaper_file_paths": params.get("wallpaper_file_paths", []),
                         "wallpaper_style": params.get("wallpaper_style", "fill"),
-                        "target_type": params.get("target_type"),
                         "client_ids": params.get("client_ids", []),
                         "department_ids": params.get("department_ids", []),
+                        "notify_enabled": params.get("notify_enabled", False),
+                        "notify_message": params.get("notify_message", ""),
+                        "task_name": params.get("task_name", ""),
                     },
                 )
             if resp.status_code == 200:

@@ -1,10 +1,8 @@
 <script setup>
 import { onMounted, ref, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import ChatBox from './components/ChatBox.vue'
 import OpsReportInbox from './components/OpsReportInbox.vue'
 import Sidebar from './components/Sidebar.vue'
-import ModeToggle from './components/mode/ModeToggle.vue'
 import TaskModePanel from './components/task/TaskModePanel.vue'
 import TaskWizard from './components/task/TaskWizard.vue'
 import config from './config'
@@ -17,9 +15,6 @@ import {
   readExternalIdentityFromLocation,
   setExternalIdentity,
 } from './utils/externalIdentity'
-
-const route = useRoute()
-const router = useRouter()
 
 const props = defineProps({
   agentType: { type: String, default: '' },
@@ -71,6 +66,14 @@ const {
   switchMode,
   resetForAgentChange,
 } = useTaskMode()
+
+const headerTitle = computed(() => {
+  return mode.value === 'task' && selectedTask.value ? selectedTask.value.name : currentTitle.value
+})
+
+const headerSubtitle = computed(() => {
+  return mode.value === 'task' ? '任务模式' : config.subtitle
+})
 
 function toggleSidebar() {
   showSidebar.value = !showSidebar.value
@@ -216,19 +219,14 @@ onMounted(async () => {
 
         <div class="absolute left-1/2 -translate-x-1/2 text-center select-none">
           <h1 class="text-[15px] font-semibold text-text-primary leading-tight">
-            {{ mode === 'task' && selectedTask ? selectedTask.name : currentTitle }}
+            {{ headerTitle }}
           </h1>
           <p class="text-[11px] text-text-tertiary mt-0.5">
-            {{ mode === 'task' ? '任务模式' : config.subtitle }}
+            {{ headerSubtitle }}
           </p>
         </div>
 
         <div class="flex items-center gap-2">
-          <ModeToggle
-            v-if="tasksEnabled"
-            :mode="mode"
-            @update:mode="handleModeChange"
-          />
           <button
             v-if="reportsEnabled"
             @click="toggleOpsInbox"
@@ -245,43 +243,44 @@ onMounted(async () => {
       </header>
 
       <main class="flex-1 overflow-hidden flex justify-center px-4 sm:px-6">
-        <div class="w-full h-full" :class="mode === 'chat' ? 'max-w-chat' : 'max-w-2xl'">
+        <div class="w-full h-full" :class="mode === 'chat' || (mode === 'task' && !selectedTask) ? 'max-w-chat' : 'max-w-2xl'">
           <ChatBox
-            v-if="mode === 'chat'"
             ref="chatBoxRef"
             :user-id="currentUserId"
             :agent-type="currentAgentType"
+            :mode="mode"
+            :tasks-enabled="tasksEnabled"
             @conversation-created="handleConversationCreated"
             @conversation-updated="handleConversationUpdated"
-          />
-
-          <template v-else-if="mode === 'task'">
-            <TaskModePanel
-              v-if="!selectedTask"
-              :tasks="tasks"
-              @select-task="handleSelectTask"
-            />
-
-            <TaskWizard
-              v-else
-              :task-schema="taskSchema"
-              :current-step="currentStep"
-              :current-step-index="currentStepIndex"
-              :collected-params="collectedParams"
-              :step-errors="stepErrors"
-              :task-result="taskResult"
-              :is-executing="isExecuting"
-              :is-last-step="isLastStep"
-              :is-first-step="isFirstStep"
-              :progress-percent="progressPercent"
-              :agent-type="currentAgentType"
-              @update-param="updateParam"
-              @next-step="handleNextStep"
-              @prev-step="prevStep"
-              @submit-task="handleSubmitTask"
-              @back-to-list="handleBackToList"
-            />
-          </template>
+            @update:mode="handleModeChange"
+          >
+            <template #task-content>
+              <TaskModePanel
+                v-if="!selectedTask"
+                :tasks="tasks"
+                @select-task="handleSelectTask"
+              />
+              <TaskWizard
+                v-else
+                :task-schema="taskSchema"
+                :current-step="currentStep"
+                :current-step-index="currentStepIndex"
+                :collected-params="collectedParams"
+                :step-errors="stepErrors"
+                :task-result="taskResult"
+                :is-executing="isExecuting"
+                :is-last-step="isLastStep"
+                :is-first-step="isFirstStep"
+                :progress-percent="progressPercent"
+                :agent-type="currentAgentType"
+                @update-param="updateParam"
+                @next-step="handleNextStep"
+                @prev-step="prevStep"
+                @submit-task="handleSubmitTask"
+                @back-to-list="handleBackToList"
+              />
+            </template>
+          </ChatBox>
         </div>
       </main>
     </div>

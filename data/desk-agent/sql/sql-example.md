@@ -1,12 +1,10 @@
 # SQL查询样本库
 
-本文件包含桌面管理系统的常见SQL查询样本，用于RAG检索增强SQL生成。
-
 #### 查询指定IP的机器信息
 
 适用场景：当用户询问某IP地址对应的设备详细信息时使用，包括设备名称、IP、MAC、用户名、所属部门、操作系统、在线状态等。
 
-关键表：s\_machine, s\_group, s\_user, onlineinfo, a\_clientpara, a\_machineruntime
+关键表：s_machine, s_group, s_user, onlineinfo, a_clientpara, a_machineruntime
 
 ```sql
 SELECT
@@ -39,13 +37,13 @@ WHERE
 ORDER BY INET_ATON(a.IP_C)
 ```
 
-***
+---
 
 #### 查询机器在线信息
 
 适用场景：当用户查询在线设备列表，在线机器信息，客户端在线状态，需展示这个语句中的几列，在线机器一定开机了 ，0.0小时为刚开机不久。
 
-关键表：s\_machine, s\_group, s\_user, onlineinfo, a\_clientpara, a\_machineruntime
+关键表：s_machine, s_group, s_user, onlineinfo, a_clientpara, a_machineruntime
 
 ```sql
 SELECT
@@ -72,13 +70,13 @@ WHERE
 ORDER BY INET_ATON(a.IP_C)
 ```
 
-***
+---
 
 #### 查询部门信息
 
 适用场景：当用户询问部门列表、部门名称、部门层级结构等信息时使用。GroupType
 
-关键表：s\_group
+关键表：s_group
 
 ```sql
 SELECT
@@ -93,13 +91,13 @@ FROM s_group g
 ORDER BY g.GroupType ASC, g.id ASC
 ```
 
-***
+---
 
 #### 查询全部设备的硬件资产信息
 
 适用场景：当用户询问设备硬件资产、CPU、内存、硬盘、显卡、品牌型号等信息时使用。
 
-关键表：A\_ClientHardInfo2, s\_Machine, s\_User, s\_Group, a\_clientpara
+关键表：A_ClientHardInfo2, s_Machine, s_User, s_Group, a_clientpara
 
 ```sql
 SELECT
@@ -144,14 +142,13 @@ ORDER BY
     a.MtID ASC
 ```
 
-***
-
+---
 
 #### 查询最近设备远程记录
 
 适用场景：当用户询问客户端远程记录，查询远程操作记录时使用。managerid是发起远程的管理机id，其他内容是被远程的客户端设备信息。
 
-关键表：a\_remoteinfo
+关键表：a_remoteinfo
 
 ```sql
 SELECT
@@ -165,15 +162,13 @@ FROM
 	a_remoteinfo
 ```
 
-***
+---
 
 #### 查询设备远程记录数量TOP榜
 
 适用场景：当用户询问最近三天哪些设备被远程最多、想看设备远程记录数量 Top 榜时使用。
 
-说明：该写法与当前系统简报“远程协助 Top20”的统计口径一致：先从 AdminLog 提取远程事件，再按设备/IP 聚合计数，并补充设备名称与所属部门。
-
-关键表：AdminLog, s\_machine, s\_group
+关键表：AdminLog, s_machine, s_group
 
 ```sql
 SELECT
@@ -204,7 +199,7 @@ ORDER BY
 LIMIT :top_n
 ```
 
-***
+---
 
 #### 查询指定的管理机信息
 
@@ -222,13 +217,13 @@ FROM
 	manageinfo
 ```
 
-***
+---
 
 #### 查询最近管理员日志
 
 适用场景：需要查询最近管理员相关操作日志是使用。管理员id去manageinfo表联查可获取管理机机器名
 
-关键表：adminlog，manageinfo
+关键表：adminlog, manageinfo
 
 ```sql
 SELECT
@@ -241,13 +236,13 @@ FROM
 	adminlog
 ```
 
-***
+---
 
 #### 查询设备开关机日志
 
 适用场景：需要查询某一段时间内所有客户端（机器、设备、电脑）开关机时间信息
 
-关键表：a\_OpenCloseLog, s\_Machine, s\_Group
+关键表：a_OpenCloseLog, s_Machine, s_Group
 
 ```sql
 SELECT
@@ -268,13 +263,13 @@ ORDER BY
 	a.OpenTime DESC
 ```
 
-***
+---
 
 #### 查询设备usb使用日志
 
 适用场景：需要查询某一段时间内所有客户端（机器、设备、电脑）usb使用和操作日志，查询有接入U盘的电脑相关
 
-关键表：USBDB, s\_Machine, s\_Group
+关键表：USBDB, s_Machine, s_Group
 
 ```sql
 SELECT
@@ -304,9 +299,13 @@ ORDER BY
 	a.USBPlugTime DESC
 ```
 
-***
+---
 
 #### 客户端在线数量
+
+适用场景：查询设备(机器、客户端)当前有多少在线，只有实时状态
+
+关键表：onlineinfo
 
 ```sql
 SELECT
@@ -314,8 +313,15 @@ SELECT
 FROM
 	onlineinfo;
 ```
-***
+
+---
+
 #### 客户端总数
+
+适用场景：
+
+关键表：
+
 ```sql
 SELECT
 	COUNT(*) AS "设备数量" 
@@ -323,9 +329,13 @@ FROM
 	s_machine;
 ```
 
-***
+---
 
 #### 部门总数
+
+适用场景：
+
+关键表：
 
 ```sql
 SELECT
@@ -334,9 +344,13 @@ FROM
 	s_group;
 ```
 
-***
+---
 
 #### USB日志记录数数量
+
+适用场景：
+
+关键表：
 
 ```sql
 SELECT
@@ -345,14 +359,13 @@ FROM
 	usbdb;
 ```
 
-***
+---
 
 #### 查询老旧资产设备
+
 适用场景：硬件资产条件查询中按「出厂日期」判断老旧设备；主板生产日期早于「当前日期往前推 N 年」的阈值。`:years` 为年限数字（如 `5` 表示机龄约 5 年及以上），默认为5。仅取当前有效硬件快照 `IsNew = 1`。
 
 关键表：A_ClientHardInfo2, s_Machine, s_User, s_Group
-
-MySQL：
 
 ```sql
 SELECT
@@ -377,34 +390,10 @@ ORDER BY
     a.MtID ASC
 ```
 
-SQL Server：
-
-```sql
-SELECT
-    a.MtID AS "设备ID",
-    b.Name_C AS "计算机名",
-    d.DepPath AS "所属部门",
-    a.ManufactureDate AS "出厂日期",
-    a.Board AS "主板",
-    a.biosinfo AS "BIOS信息",
-    b.IP_C AS "IP地址"
-FROM
-    A_ClientHardInfo2 a
-    INNER JOIN s_Machine b ON a.MtID = b.ID
-    LEFT OUTER JOIN s_User c ON c.ID = b.ClientID
-    LEFT OUTER JOIN s_Group d ON d.ID = b.GroupID
-WHERE
-    a.IsNew = 1
-    AND a.ManufactureDate IS NOT NULL
-    AND a.ManufactureDate <= DATEADD(YEAR, -:years, CAST(GETDATE() AS DATE))
-ORDER BY
-    a.ManufactureDate ASC,
-    a.MtID ASC
-```
-
 ---
 
 #### 在线终端空闲情况
+
 适用场景：查询在线终端空闲状态（实时），`nIsIdle`为1 表示客户端处于空闲，这里会列举出所有在线是被列表和空闲情况
 
 关键表：onlineinfo, s_Machine
@@ -432,6 +421,8 @@ ORDER BY
 
 适用场景：只想查询有哪些设备处在空闲状态下时
 
+关键表：
+
 ```sql
 SELECT
 	a.MtID AS "设备ID",
@@ -451,3 +442,4 @@ ORDER BY
 	b.Name_C ASC;
 ```
 
+---

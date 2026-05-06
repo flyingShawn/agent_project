@@ -1,4 +1,5 @@
 import { fetchWithExternalAuth } from '../utils/externalIdentity'
+import { executeLocalDeskTask, shouldUseLocalDeskBridge } from './localDeskBridge'
 
 const API_BASE = '/api/v1'
 
@@ -35,6 +36,10 @@ export async function validateTaskStep(agentType, taskId, stepId, params) {
 }
 
 export async function executeTask(agentType, taskId, params) {
+  if (shouldUseLocalDeskBridge(agentType)) {
+    return executeLocalDeskTask(agentType, taskId, params)
+  }
+
   const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/tasks/${taskId}/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -46,5 +51,15 @@ export async function executeTask(agentType, taskId, params) {
 export async function fetchTaskOptions(agentType, optionType, keyword = '') {
   const params = keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''
   const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/tasks/options/${optionType}${params}`)
+  return parseJsonResponse(response)
+}
+
+export async function browseFilesystem(agentType, path = '', fileType = 'all') {
+  const params = new URLSearchParams()
+  if (path) params.set('path', path)
+  if (fileType && fileType !== 'all') params.set('file_type', fileType)
+  const qs = params.toString()
+  const url = `${API_BASE}/${agentType}/tasks/browse${qs ? '?' + qs : ''}`
+  const response = await fetchWithExternalAuth(url)
   return parseJsonResponse(response)
 }

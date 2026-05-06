@@ -2,6 +2,7 @@
 import { ref, nextTick, onUnmounted, computed } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import ImageUploader from './ImageUploader.vue'
+import ModeToggle from './mode/ModeToggle.vue'
 import { sendChatMessage, abortCurrentRequest } from '../api/chat'
 import { useConversations } from '../composables/useConversations'
 import config from '../config'
@@ -16,9 +17,17 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  mode: {
+    type: String,
+    default: 'chat',
+  },
+  tasksEnabled: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['conversation-created', 'conversation-updated'])
+const emit = defineEmits(['conversation-created', 'conversation-updated', 'update:mode'])
 
 const { currentConversationId, updateConversationInList, loadConversations } = useConversations()
 
@@ -331,6 +340,11 @@ onUnmounted(() => {
       ref="messagesContainer"
       class="flex-1 overflow-y-auto no-scrollbar"
     >
+      <template v-if="mode === 'task'">
+        <slot name="task-content"></slot>
+      </template>
+
+      <template v-else>
       <div v-if="!hasMessages" class="h-full flex flex-col items-center justify-center px-6 pb-24">
         <div class="text-center mb-8">
           <h2 class="text-2xl font-semibold text-text-primary mb-2">{{ config.welcomeText }}</h2>
@@ -370,9 +384,15 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </template>
     </div>
 
     <div class="bg-transparent px-4 pb-4 pt-2">
+      <div v-if="tasksEnabled" class="mb-2 flex items-center justify-center">
+        <ModeToggle :mode="mode" @update:mode="emit('update:mode', $event)" />
+      </div>
+
+      <template v-if="mode === 'chat'">
       <div v-if="pendingImages.length > 0" class="mb-3 flex flex-wrap gap-2">
         <div
           v-for="img in pendingImages"
@@ -393,7 +413,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="chat-input-box flex items-end gap-2 bg-white rounded-2xl border border-[#d9d9e3] px-4 py-3.5 shadow-sm focus-within:border-primary-400 focus-within:shadow-md transition-all">
+      <div class="chat-input-box flex items-center gap-2.5 bg-white rounded-2xl border border-[#d9d9e3] px-4 py-3 shadow-sm focus-within:border-primary-400 focus-within:shadow-md transition-all">
         <ImageUploader @select="addImageFile" />
 
         <textarea
@@ -403,13 +423,13 @@ onUnmounted(() => {
           @input="autoResize"
           :placeholder="isLoading ? '回复中，输入内容等待发送...' : config.inputPlaceholder"
           rows="1"
-          class="flex-1 resize-none bg-transparent px-1 py-1 text-sm focus:outline-none placeholder:text-text-tertiary min-h-[44px]"
+          class="flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-6 focus:outline-none placeholder:text-text-tertiary"
         ></textarea>
 
         <button
           v-if="isLoading"
           @click="stopGeneration"
-          class="flex-shrink-0 w-8 h-8 bg-red-500 text-white rounded-full hover:bg-red-600 transition-all flex items-center justify-center cursor-pointer"
+          class="flex-shrink-0 w-9 h-9 bg-red-500 text-white rounded-full hover:bg-red-600 transition-all flex items-center justify-center cursor-pointer"
           title="停止生成"
         >
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -420,7 +440,7 @@ onUnmounted(() => {
           v-else
           @click="sendMessage()"
           :disabled="!inputText.trim() && pendingImages.length === 0"
-          class="flex-shrink-0 w-8 h-8 bg-primary-500 text-white rounded-full hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center justify-center cursor-pointer"
+          class="flex-shrink-0 w-9 h-9 bg-primary-500 text-white rounded-full hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center justify-center cursor-pointer"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" />
@@ -438,6 +458,13 @@ onUnmounted(() => {
           新对话
         </button>
       </div>
+      </template>
+
+      <template v-else>
+        <div class="flex items-center justify-center py-3 text-xs text-text-tertiary">
+          任务模式下请使用上方任务面板操作
+        </div>
+      </template>
     </div>
   </div>
 </template>

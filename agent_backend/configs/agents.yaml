@@ -22,6 +22,8 @@ agents:
       enabled: true
     tasks:
       enabled: true
+      # 备用链路：desk-agent 当前主执行入口是浏览器本机 XFAgentBridge。
+      # 这里保留给服务端转发模式、兼容联调或未来统一接入使用。
       api_base_url: "${DESK_SERVICE_API_URL}"
 
   - agent_type: ticket-agent

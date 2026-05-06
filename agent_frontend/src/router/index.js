@@ -20,6 +20,12 @@ const routes = [
     },
   },
   {
+    path: '/:agentType/knowledge',
+    name: 'agent-knowledge',
+    component: () => import('../KnowledgePage.vue'),
+    props: true,
+  },
+  {
     path: '/:agentType',
     name: 'agent',
     component: () => import('../AgentLayout.vue'),

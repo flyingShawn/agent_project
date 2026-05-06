@@ -32,7 +32,7 @@ const triggerFileInput = () => {
 
     <button
       @click="triggerFileInput"
-      class="w-8 h-8 text-text-tertiary hover:text-primary-500 rounded-full transition-colors flex items-center justify-center cursor-pointer"
+      class="w-9 h-9 text-text-tertiary hover:text-primary-500 hover:bg-primary-50 rounded-full transition-colors flex items-center justify-center cursor-pointer"
       title="上传图片"
     >
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

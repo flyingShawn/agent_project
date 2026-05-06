@@ -39,6 +39,7 @@ yarn-error.log*
 
 .vscode/
 .idea/
+*.user
 *.swp
 *.swo
 *~
@@ -54,10 +55,13 @@ pnpm-lock.yaml
 
 agent_frontend/.vite/
 
-# Playwright test results
+# Qt Creator shadow builds
+qt/**/build*/
+qt/**/build-*/
+
+# Playwright test outputs
 playwright-report/
 test-results/
-data/playwright_screenshots/
 
 # Temp directories
 temp_npx/
@@ -67,7 +71,6 @@ data/chat_history.db
 data/chat_history.db-shm
 data/chat_history.db-wal
 data/desk-agent/docs/
-# User data (keep directory structure but ignore contents)
 data/docs/*
 !data/docs/.gitkeep
 
@@ -76,6 +79,8 @@ data/docs/*
 
 # Temp files
 suggest.txt
+*.tmp
+pw_*.txt
 
 # OS specific
 .DS_Store

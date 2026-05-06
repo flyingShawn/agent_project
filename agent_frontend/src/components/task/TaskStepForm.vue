@@ -1,6 +1,7 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { fetchTaskOptions } from '../../api/tasks'
+import FileBrowserModal from './FileBrowserModal.vue'
 
 const props = defineProps({
   param: {
@@ -26,6 +27,17 @@ const localValue = ref(props.modelValue ?? props.param.default ?? '')
 const dynamicOptions = ref([])
 const optionsLoading = ref(false)
 const searchKeyword = ref('')
+const showFileBrowser = ref(false)
+
+const filePaths = computed(() => {
+  if (Array.isArray(localValue.value)) return localValue.value
+  if (typeof localValue.value === 'string' && localValue.value) return [localValue.value]
+  return []
+})
+
+const isMultipleFiles = computed(() => {
+  return props.param.validation?.multiple !== false
+})
 
 watch(() => props.modelValue, (val) => {
   if (val !== localValue.value) {
@@ -61,6 +73,29 @@ function handleSelectorSearch(keyword) {
   loadDynamicOptions(keyword)
 }
 
+function openFileBrowser() {
+  showFileBrowser.value = true
+}
+
+function handleFileSelect(paths) {
+  if (isMultipleFiles.value) {
+    localValue.value = Array.isArray(paths) ? paths : [paths]
+  } else {
+    localValue.value = Array.isArray(paths) ? (paths[0] || '') : paths
+  }
+  showFileBrowser.value = false
+}
+
+function removeFilePath(index) {
+  if (Array.isArray(localValue.value)) {
+    const newVal = [...localValue.value]
+    newVal.splice(index, 1)
+    localValue.value = newVal
+  } else {
+    localValue.value = ''
+  }
+}
+
 const options = () => props.param.options || dynamicOptions.value
 </script>
 
@@ -82,19 +117,72 @@ const options = () => props.param.options || dynamicOptions.value
     />
 
     <!-- FILE_PATH -->
-    <input
-      v-else-if="param.type === 'file_path'"
-      v-model="localValue"
-      type="text"
-      :placeholder="param.placeholder || '输入文件完整路径'"
-      class="w-full px-3 py-2.5 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400 transition-all"
-      :class="error ? 'border-red-300' : 'border-[#e8ecf2]'"
-    />
-    <div v-if="param.type === 'file_path' && param.description" class="mt-1 flex items-start gap-1">
-      <svg class="w-3.5 h-3.5 text-text-tertiary mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <span class="text-xs text-text-tertiary">{{ param.description }}</span>
+    <div v-else-if="param.type === 'file_path'" class="file-path-field">
+      <button
+        @click="showFileBrowser = true"
+        class="w-full flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed rounded-xl text-sm transition-all cursor-pointer hover:border-primary-300 hover:bg-primary-50/30"
+        :class="error ? 'border-red-300' : 'border-[#d4d9e3]'"
+      >
+        <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-primary-50 text-primary-500 flex items-center justify-center">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+        </div>
+        <div class="flex-1 text-left">
+          <p class="text-sm font-medium text-text-primary">点击选择文件</p>
+          <p class="text-xs text-text-tertiary mt-0.5">{{ isMultipleFiles ? '从管理机选择文件，支持多选' : '从管理机选择一个文件' }}</p>
+        </div>
+        <svg class="w-4 h-4 text-text-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      <div v-if="filePaths.length > 0" class="mt-2.5 space-y-1.5">
+        <div
+          v-for="(path, index) in filePaths"
+          :key="index"
+          class="flex items-center gap-2 px-3 py-2 bg-primary-50/40 border border-primary-100 rounded-lg group"
+        >
+          <svg class="w-4 h-4 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span class="flex-1 text-xs text-text-primary font-mono truncate">{{ path }}</span>
+          <button
+            @click="removeFilePath(index)"
+            class="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-tertiary hover:text-red-500 transition-all cursor-pointer"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="filePaths.length > 0" class="mt-1.5 flex items-center gap-2">
+        <button
+          @click="showFileBrowser = true"
+          class="text-xs text-primary-500 hover:text-primary-600 transition-colors cursor-pointer"
+        >
+          + 继续添加
+        </button>
+        <span class="text-xs text-text-tertiary">已选 {{ filePaths.length }} 个文件</span>
+      </div>
+
+      <p v-if="param.description" class="mt-1.5 text-xs text-text-tertiary flex items-start gap-1">
+        <svg class="w-3.5 h-3.5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {{ param.description }}
+      </p>
+
+      <FileBrowserModal
+        :open="showFileBrowser"
+        :agent-type="agentType"
+        :multiple="isMultipleFiles"
+        :title="param.label || '选择文件'"
+        @close="showFileBrowser = false"
+        @confirm="handleFileSelect"
+      />
     </div>
 
     <!-- TEXTAREA -->
