@@ -48,6 +48,12 @@ TaskReceiveResult TaskReceiver::receive(const QJsonObject &payload, const QStrin
         emit logMessage("任务已接收，但写入本地日志失败");
     }
 
+//    const QString jsonStr = QJsonDocument(payload).toJson(QJsonDocument::Indented);
+//    emit logMessage(QString("收到任务 [%1]:\n%2").arg(payload.value("task_id").toString(), jsonStr));
+
+    const QString jsonRecord = QJsonDocument(record).toJson(QJsonDocument::Indented);
+    emit logMessage(QString("组合record [%1]:\n%2").arg(payload.value("task_id").toString(), jsonRecord));
+
     emit taskAccepted(payload.value("task_id").toString(), executionId, payload);
     return {200, body};
 }

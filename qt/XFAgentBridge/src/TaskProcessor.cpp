@@ -10,11 +10,12 @@ TaskProcessor::TaskProcessor(QObject *parent)
 QJsonObject TaskProcessor::acceptOnly(const QJsonObject &payload, const QString &executionId) const
 {
     const QString requestId = payload.value("request_id").toString();
+    const QString taskId = payload.value("task_id").toString();
 
     QJsonObject item;
-    item.insert("name", "本机接收端");
+    item.insert("name", taskId.isEmpty() ? "任务" : taskId);
     item.insert("status", "success");
-    item.insert("message", "已接收，等待后续处理");
+    item.insert("message", "提交成功，正在处理");
 
     QJsonArray items;
     items.append(item);

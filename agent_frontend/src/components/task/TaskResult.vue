@@ -48,8 +48,7 @@ function getStatusIcon(status) {
         class="flex items-center gap-3 px-4 py-3 bg-white border border-[#e8ecf2] rounded-xl"
       >
         <span v-html="getStatusIcon(item.status)" />
-        <span class="text-sm text-text-primary flex-1">{{ item.name || item.client_name || item.label }}</span>
-        <span class="text-xs text-text-tertiary">{{ item.message || item.status }}</span>
+        <span class="text-sm text-text-primary flex-1">{{ item.message || item.status }}</span>
       </div>
     </div>
 

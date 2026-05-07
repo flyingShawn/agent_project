@@ -3,7 +3,9 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDebug>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -17,6 +19,10 @@
 #include <QTextEdit>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -34,7 +40,42 @@ MainWindow::MainWindow(QWidget *parent)
         appendLog(QString("已接收任务：%1，local_execution_id=%2").arg(taskId, executionId));
     });
 
+    m_ipc = new ProcessIpc(this);
+    connect(m_ipc, &ProcessIpc::messageReceived, this, &MainWindow::recvIpcMessage);
+    // 监听自己的本地 IPC 名称；另一个进程用同一路径 sendToProcess 即可发到这里。
+    if (!m_ipc->listenForProcess("XFAgentBridge")) {
+        qWarning("createActions ProcessIpc listen failed");
+        QCoreApplication::quit();
+        return;
+    }
+
     startServer();
+}
+
+void MainWindow::recvIpcMessage(int command, QByteArray payload)
+{
+    try {
+        // ProcessIpc 已完成拆包和跨平台字节序处理，这里只按业务命令分发。
+        qWarning("recvIpcMessage----cmd[%d] payloadLen[%d]", command, payload.size());
+        if (command == 1234) {
+            qWarning("OperateThreadMsg---------------SCREEN_BEGIN");
+            if (payload.isEmpty()) {
+                qWarning("OperateThreadMsg----payload empty");
+                return;
+            }
+            const int nZeroPos = payload.indexOf('\0');
+            if (nZeroPos >= 0) {
+                payload.truncate(nZeroPos);
+            }
+
+            qWarning("OperateThreadMsg-----------cMsg[%s]", payload.constData());
+        } else {
+            qWarning("OperateThreadMsg----nType:[%d]", command);
+            printf("OperateThreadMsg----nType:[%d]", command);
+        }
+    } catch (...) {
+        qWarning("OperateThreadMsg----catch-error-:[%s]-errno:[%d]", strerror(errno), errno);
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

@@ -21,6 +21,8 @@ qt_add_executable(XFAgentBridge
     src/TaskProcessor.h
     src/TaskReceiver.cpp
     src/TaskReceiver.h
+    src/processipc.h
+    src/processipc.cpp
     src/main.cpp
 )
 

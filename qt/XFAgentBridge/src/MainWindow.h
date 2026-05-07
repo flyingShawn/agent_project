@@ -3,6 +3,7 @@
 #include "BridgeSettings.h"
 #include "HttpServerController.h"
 #include "TaskReceiver.h"
+#include "processipc.h"
 
 #include <QMainWindow>
 
@@ -48,4 +49,8 @@ private:
     QPushButton *m_stopButton = nullptr;
     QPushButton *m_saveButton = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
+
+    ProcessIpc *m_ipc = nullptr;
+private slots:
+    void recvIpcMessage(int command, QByteArray payload);
 };
