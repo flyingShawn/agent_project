@@ -277,7 +277,7 @@ def _collect_required_columns(
 
 @lru_cache(maxsize=32)
 def _load_sql_sections(source_path: str) -> dict[str, str]:
-    settings = RagIngestSettings()
+    settings = RagIngestSettings.from_global_settings()
     base_dir = Path(settings.resolve_path(settings.sql_dir))
 
     candidate_paths = [Path(source_path)]

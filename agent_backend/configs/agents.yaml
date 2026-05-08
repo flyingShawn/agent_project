@@ -38,8 +38,8 @@ agents:
       db_host: "${TICKET_DB_HOST}"
       db_port: "${TICKET_DB_PORT}"
       db_name: "${TICKET_DB_NAME}"
-      db_user: "${DB_USER}"
-      db_password: "${DB_PASSWORD}"
+      db_user: "${TICKET_DB_USER}"
+      db_password: "${TICKET_DB_PASSWORD}"
     rag:
       docs_dir: /data/ticket-agent/docs
       docs_collection: ticket_agent_docs

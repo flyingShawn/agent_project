@@ -44,7 +44,7 @@ def _get_rag_settings_for_agent(agent_type: str) -> tuple[RagIngestSettings, str
         raise SystemExit(f"未找到智能体: {agent_type}，可用: {list(registry._agents.keys())}")
 
     rag_config = registry.get_rag_config(agent_type)
-    settings = RagIngestSettings()
+    settings = RagIngestSettings.from_global_settings()
 
     if rag_config.docs_dir:
         settings.docs_dir = rag_config.docs_dir
@@ -131,7 +131,7 @@ def main() -> int:
         settings, docs_dir, sql_dir, docs_collection, sql_collection = _get_rag_settings_for_agent(args.agent_type)
         print(f"智能体: {args.agent_type}")
     else:
-        settings = RagIngestSettings()
+        settings = RagIngestSettings.from_global_settings()
         docs_dir = settings.docs_dir
         sql_dir = settings.sql_dir
         docs_collection = settings.qdrant_collection

@@ -135,7 +135,7 @@ class RagSettings(BaseSettings):
 
 
 class MiscSettings(BaseSettings):
-    chat_db_path: str = "data/chat_history.db"
+    chat_db_url: str = "postgresql+asyncpg://agent:agent123@localhost:5432/agent_chat"
     cors_origins: str = "http://localhost:3000"
     agent_name: str = ""
     tavily_api_key: str = ""

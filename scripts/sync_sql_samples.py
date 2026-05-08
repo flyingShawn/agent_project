@@ -44,7 +44,7 @@ def main() -> int:
             print(f"未找到智能体: {args.agent_type}，可用: {list(registry._agents.keys())}")
             return 1
         rag_config = registry.get_rag_config(args.agent_type)
-        settings = RagIngestSettings()
+        settings = RagIngestSettings.from_global_settings()
         if rag_config.sql_dir:
             settings.sql_dir = rag_config.sql_dir
         if rag_config.sql_collection:
@@ -53,7 +53,7 @@ def main() -> int:
         collection = rag_config.sql_collection or settings.qdrant_sql_collection
         print(f"智能体: {args.agent_type}")
     else:
-        settings = RagIngestSettings()
+        settings = RagIngestSettings.from_global_settings()
         sql_dir = args.sql_dir or settings.sql_dir
         collection = settings.qdrant_sql_collection
 

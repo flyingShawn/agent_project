@@ -88,13 +88,6 @@ def _assert_delete_allowed(editor_name: str) -> str:
 
 def _resolve_config_path(path_text: str) -> Path:
     path = Path(path_text)
-    if path.is_absolute() and path.exists():
-        return path
-
-    normalized = path_text.replace("\\", "/")
-    if normalized.startswith("/data/"):
-        return _PROJECT_ROOT / normalized.lstrip("/")
-
     if path.is_absolute():
         return path
     return _PROJECT_ROOT / path

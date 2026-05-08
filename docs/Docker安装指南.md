@@ -70,7 +70,8 @@ cp .env.example .env
 #   LLM_BASE_URL      — LLM 服务地址
 #   LLM_API_KEY       — API 密钥
 #   CHAT_MODEL         — 聊天模型名称
-#   DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD — 数据库连接
+#   CHAT_DB_URL        — PostgreSQL 聊天历史数据库连接URL
+#   DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD — 业务数据库连接
 #   HOST_DOCS_DIR      — 桌面助手文档目录
 #   HOST_SQL_DIR       — 桌面助手 SQL 样本目录
 ```
@@ -131,12 +132,13 @@ curl http://localhost:8000/api/v1/health
 
 ### 服务架构
 
-项目包含 4 个 Docker 服务：
+项目包含 5 个 Docker 服务：
 
 | 服务 | 容器名 | 端口 | 说明 |
 |------|--------|------|------|
 | backend | agent-backend | 8000 | 后端 API（FastAPI + Uvicorn） |
 | frontend | agent-frontend | 81→80 | 前端 UI（Nginx + Vue） |
+| postgres | agent-postgres | 5432 | PostgreSQL 聊天历史数据库 |
 | qdrant | agent-qdrant | 6333/6334 | 向量数据库 |
 | docling-sync | agent-docling-sync | — | 文档同步（按需启动，完成后自动退出） |
 
@@ -410,6 +412,9 @@ docker compose logs frontend
 # 查看 Qdrant 日志
 docker compose logs qdrant
 
+# 查看 PostgreSQL 日志
+docker compose logs postgres
+
 # 查看文档同步日志
 docker compose logs docling-sync
 ```
@@ -454,7 +459,7 @@ docker compose logs -t backend
 
 | 数据卷 | 挂载点 | 用途 | 持久化 |
 |--------|--------|------|--------|
-| `chat_data` | `/app/data` | 聊天历史 SQLite 数据库 | ✅ |
+| `pg_data` | `/var/lib/postgresql/data` | PostgreSQL 聊天历史数据库 | ✅ |
 | `qdrant_data` | `/qdrant/storage` | 向量数据 | ✅ |
 | `${HOST_DOCS_DIR}` | `/data/desk-agent/docs` | 桌面助手文档知识库 | 宿主机目录 |
 | `${HOST_SQL_DIR}` | `/data/desk-agent/sql` | 桌面助手 SQL 样本 | 宿主机目录 |
@@ -469,12 +474,12 @@ docker compose logs -t backend
 docker volume ls
 
 # 查看数据卷详情
-docker volume inspect agent_project_chat_data
+docker volume inspect agent_project_pg_data
 docker volume inspect agent_project_qdrant_data
 
 # 清除聊天历史数据库（⚠️ 不可恢复）
 docker compose down
-docker volume rm agent_project_chat_data
+docker volume rm agent_project_pg_data
 docker compose up -d
 
 # 清除向量数据（⚠️ 需要重新同步文档）
@@ -495,6 +500,9 @@ docker compose exec backend python -c "print('hello')"
 
 # 进入 Qdrant 容器
 docker compose exec qdrant sh
+
+# 进入 PostgreSQL 容器
+docker compose exec postgres psql -U agent -d agent_chat
 
 # 以 root 身份进入容器
 docker compose exec -u root backend bash
@@ -569,4 +577,5 @@ except Exception as e:
 - 确保服务器资源充足，特别是 Qdrant 向量数据库和 LLM 服务对内存要求较高
 - 文档同步容器（docling-sync）日常不启动，仅同步文档时通过 `--profile docling` 按需运行
 - 配置文件（`configs/`）以只读方式挂载，修改后需重启后端生效
-- 数据卷（`chat_data`、`qdrant_data`）在 `docker compose down` 时不会删除，需显式使用 `-v` 参数才会清除
+- 数据卷（`pg_data`、`qdrant_data`）在 `docker compose down` 时不会删除，需显式使用 `-v` 参数才会清除
+- PostgreSQL 聊天历史数据库默认用户 `agent`、密码 `agent123`、数据库 `agent_chat`，可通过 `.env` 中的 `PG_USER`/`PG_PASSWORD`/`PG_DB` 自定义

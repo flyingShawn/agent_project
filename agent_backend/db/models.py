@@ -2,7 +2,7 @@
 ORM 数据模型模块
 
 文件功能：
-    定义所有 SQLAlchemy ORM 模型，映射到 SQLite 数据库表。
+    定义所有 SQLAlchemy ORM 模型，映射到 PostgreSQL 数据库表。
     包含聊天历史、运维简报和任务执行三大业务领域的数据模型。
 
 在系统架构中的定位：

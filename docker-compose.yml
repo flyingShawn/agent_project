@@ -1,5 +1,5 @@
 # Docker Compose配置文件
-# 用于编排多个服务：前端、后端、Qdrant向量数据库
+# 用于编排多个服务：前端、后端、PostgreSQL、Qdrant向量数据库
 # Ollama大模型服务部署在Docker外部
 
 services:
@@ -53,6 +53,8 @@ services:
       - TICKET_DB_HOST=${TICKET_DB_HOST:-}
       - TICKET_DB_PORT=${TICKET_DB_PORT:-3306}
       - TICKET_DB_NAME=${TICKET_DB_NAME:-}
+      - TICKET_DB_USER=${TICKET_DB_USER:-}
+      - TICKET_DB_PASSWORD=${TICKET_DB_PASSWORD:-}
 
       # 智能体任务服务配置（按需添加，任务模式使用）
       - DESK_SERVICE_API_URL=${DESK_SERVICE_API_URL:-}
@@ -68,8 +70,8 @@ services:
       - CHAT_HISTORY_COMPRESS_THRESHOLD=${CHAT_HISTORY_COMPRESS_THRESHOLD:-500}
       - CHAT_TOPIC_SHIFT_THRESHOLD=${CHAT_TOPIC_SHIFT_THRESHOLD:-0.15}
 
-      # 聊天历史数据库路径
-      - CHAT_DB_PATH=${CHAT_DB_PATH:-/app/data/chat_history.db}
+      # 聊天历史数据库连接URL（PostgreSQL）
+      - CHAT_DB_URL=postgresql+asyncpg://${PG_USER:-agent}:${PG_PASSWORD:-agent123}@postgres:5432/${PG_DB:-agent_chat}
 
       # 外部入口与第三方会话上报
       - EXTERNAL_ENTRY_SECRET=${EXTERNAL_ENTRY_SECRET:-}
@@ -89,11 +91,12 @@ services:
       # 挂载工单智能体SQL样本目录
       - ${TICKET_HOST_SQL_DIR:-./data/ticket-agent/sql}:/data/ticket-agent/sql:ro
       # 挂载配置文件目录（agents.yaml + 各智能体子目录）
-      - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
-      # 持久化聊天历史数据库
-      - chat_data:/app/data
+      - ${CONFIG_DIR:-./agent_backend/configs}:/app/agent_backend/configs:ro
     depends_on:
-      - qdrant
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
     networks:
       - app-network
     healthcheck:
@@ -156,11 +159,43 @@ services:
       - ${HOST_SQL_DIR:-./data/desk-agent/sql}:/data/desk-agent/sql:ro
       - ${TICKET_HOST_DOCS_DIR:-./data/ticket-agent/docs}:/data/ticket-agent/docs:ro
       - ${TICKET_HOST_SQL_DIR:-./data/ticket-agent/sql}:/data/ticket-agent/sql:ro
-      - ${CONFIG_DIR:-./agent_backend/configs}:/app/configs:ro
+      - ${CONFIG_DIR:-./agent_backend/configs}:/app/agent_backend/configs:ro
     depends_on:
       - qdrant
     networks:
       - app-network
+
+  # ==================== PostgreSQL聊天历史数据库 ====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${PG_USER:-agent}
+      - POSTGRES_PASSWORD=${PG_PASSWORD:-agent123}
+      - POSTGRES_DB=${PG_DB:-agent_chat}
+    command: >
+      postgres
+      -c shared_buffers=32MB
+      -c effective_cache_size=64MB
+      -c work_mem=2MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=20
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-agent} -d ${PG_DB:-agent_chat}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
 
   # ==================== Qdrant向量数据库 ====================
   qdrant:
@@ -185,5 +220,5 @@ networks:
 volumes:
   qdrant_data:
     driver: local
-  chat_data:
+  pg_data:
     driver: local

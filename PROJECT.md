@@ -98,9 +98,9 @@
 | **文本嵌入** | FastEmbed (BAAI/bge-small-zh-v1.5) | >=0.3 | 中文向量模型 |
 | **文档解析** | Docling | >=2.0 | 支持 docx/xlsx/txt/md/pdf 等格式 |
 | **业务数据库** | SQLAlchemy 2.0 | >=2.0 | 支持 MySQL / PostgreSQL 只读查询 |
-| **聊天历史** | SQLite + aiosqlite | >=0.20 | 会话/消息/简报/任务持久化, WAL 模式 |
+| **聊天历史** | PostgreSQL + asyncpg | >=0.29 | 会话/消息/简报/任务持久化, 连接池 |
 | **任务引擎** | Task Engine + Qt Bridge | - | 任务注册/执行 + XFAgentBridge 桌面桥接 |
-| **部署** | Docker Compose + Nginx | - | 前后端 + Qdrant + Docling-sync 四容器编排 |
+| **部署** | Docker Compose + Nginx | - | 前后端 + PostgreSQL + Qdrant + Docling-sync 五容器编排 |
 
 ---
 
@@ -400,7 +400,7 @@ API/CLI → ingest_directory()
 
 | 文件 | 职责 |
 | ---- | ---- |
-| `chat_history.py` | 异步引擎（aiosqlite）、会话工厂、WAL 模式、初始化 |
+| `chat_history.py` | 异步引擎（asyncpg）、会话工厂、连接池、初始化 |
 | `models.py` | ORM 模型：Conversation、Message、OpsReport、OpsMetricSnapshot、TaskExecution、KnowledgeEntry |
 
 #### 数据模型
@@ -722,7 +722,7 @@ agent_project/
 ├── .env.example                  # 环境变量模板
 ├── requirements.txt              # Python 依赖
 ├── requirements-docling.txt      # Docling 依赖
-├── docker-compose.yml            # 容器编排（backend + frontend + docling-sync + qdrant）
+├── docker-compose.yml            # 容器编排（backend + frontend + postgres + docling-sync + qdrant）
 └── PROJECT.md                    # 本文件
 ```
 
@@ -861,7 +861,7 @@ main.py → create_app()
 | **会话** | `CHAT_MAX_HISTORY_ROUNDS` | `6` | 最大保留历史对话轮数 |
 | | `CHAT_HISTORY_COMPRESS_THRESHOLD` | `500` | assistant 消息压缩阈值（字符） |
 | | `CHAT_TOPIC_SHIFT_THRESHOLD` | `0.15` | 话题切换检测阈值 |
-| **聊天历史** | `CHAT_DB_PATH` | `data/chat_history.db` | SQLite 数据库路径 |
+| **聊天历史** | `CHAT_DB_URL` | `postgresql+asyncpg://agent:agent123@localhost:5432/agent_chat` | PostgreSQL 连接URL |
 | **外部集成** | `THIRD_PARTY_CHAT_HISTORY_BASE_URL` | - | 第三方会话上报地址 |
 | | `THIRD_PARTY_CHAT_HISTORY_TIMEOUT_SECONDS` | `3` | 上报超时秒数 |
 | | `EXTERNAL_ENTRY_SECRET` | - | 外部入口 HMAC 密钥 |

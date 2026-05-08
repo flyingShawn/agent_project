@@ -49,7 +49,7 @@ def _run_ingest(job_id: str, kb_type: str, mode: str, agent_type: str | None = N
         from agent_backend.rag_engine.settings import RagIngestSettings
         from agent_backend.rag_engine.state import IngestStateStore
 
-        settings = RagIngestSettings()
+        settings = RagIngestSettings.from_global_settings()
 
         if agent_type:
             try:

@@ -37,6 +37,9 @@ class RagIngestSettings(BaseSettings):
     通过 RAG_ 前缀的环境变量覆盖默认值，如 RAG_QDRANT_URL。
     配置项同时从 .env 文件加载。
 
+    推荐使用 from_global_settings() 工厂方法创建实例，
+    确保 Qdrant 连接配置与全局 AppSettings 一致。
+
     参数：
         qdrant_url: Qdrant服务URL
         qdrant_path: Qdrant本地存储路径（优先于URL模式）
@@ -59,17 +62,33 @@ class RagIngestSettings(BaseSettings):
 
     docs_dir: str = ""
     qdrant_collection: str = ""
-    docs_state_path: str = "./.rag_state/docs_state.json"
+    docs_state_path: str = "data/.rag_state/docs_state.json"
 
     sql_dir: str = ""
     qdrant_sql_collection: str = ""
-    sql_state_path: str = "./.rag_state/sql_state.json"
+    sql_state_path: str = "data/.rag_state/sql_state.json"
 
     chunk_max_chars: int = 800
     chunk_overlap: int = 100
     supported_extensions: list[str] = [".md", ".txt", ".docx", ".xlsx", ".pdf", ".pptx"]
 
     model_config = {"env_prefix": "RAG_", "env_file": ".env", "extra": "ignore"}
+
+    @classmethod
+    def from_global_settings(cls) -> "RagIngestSettings":
+        """从全局 AppSettings 创建实例，确保 Qdrant 连接配置一致。
+
+        在 Docker 环境中，.env 文件可能不存在于容器内，
+        使用此方法可保证从统一的全局配置读取 Qdrant 连接信息。
+        """
+        from agent_backend.core.config import get_settings
+        settings = get_settings()
+        return cls(
+            qdrant_url=settings.rag.rag_qdrant_url,
+            qdrant_path=settings.rag.rag_qdrant_path,
+            qdrant_api_key=settings.rag.rag_qdrant_api_key,
+            embedding_model=settings.rag.rag_embedding_model,
+        )
 
     def resolve_path(self, p: str) -> str:
         """
