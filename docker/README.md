@@ -95,8 +95,17 @@ TICKET_DB_NAME=ticket_system
 TICKET_DB_USER=root
 TICKET_DB_PASSWORD=your_password
 
-# 聊天历史数据库连接URL（PostgreSQL）
-CHAT_DB_URL=postgresql+asyncpg://agent:agent123@postgres:5432/agent_chat
+# 聊天历史 PostgreSQL 配置
+CHAT_DB_HOST=postgres
+CHAT_DB_PORT=5432
+PG_USER=agent
+PG_PASSWORD=agent123
+PG_DB=agent_chat
+CHAT_DB_URL=
+CHAT_DB_POOL_SIZE=5
+CHAT_DB_MAX_OVERFLOW=10
+CHAT_DB_POOL_RECYCLE_SECONDS=3600
+PG_MAX_CONNECTIONS=50
 
 # Qdrant 在容器内使用服务名
 RAG_QDRANT_URL=http://qdrant:6333
@@ -396,7 +405,16 @@ RAG_SQL_CANDIDATE_K=15
 RAG_SQL_HYBRID_ALPHA=0.8
 
 # ==================== 聊天历史 ====================
-CHAT_DB_URL=postgresql+asyncpg://agent:agent123@postgres:5432/agent_chat
+CHAT_DB_HOST=postgres
+CHAT_DB_PORT=5432
+PG_USER=agent
+PG_PASSWORD=agent123
+PG_DB=agent_chat
+CHAT_DB_URL=
+CHAT_DB_POOL_SIZE=5
+CHAT_DB_MAX_OVERFLOW=10
+CHAT_DB_POOL_RECYCLE_SECONDS=3600
+PG_MAX_CONNECTIONS=50
 CHAT_MAX_HISTORY_ROUNDS=6
 CHAT_HISTORY_COMPRESS_THRESHOLD=500
 CHAT_TOPIC_SHIFT_THRESHOLD=0.15
@@ -446,9 +464,9 @@ cd docker\
 ```
 
 打包脚本会自动完成：
-1. 检查 4 个必需镜像是否存在
+1. 检查 5 个必需镜像是否存在
 2. 将镜像导出为 tar 文件
-3. 复制配置文件（docker-compose.yml、.env.example、nginx.conf 等）
+3. 复制配置文件（docker-compose.yml、.env.example、agent_backend/configs、nginx.conf 等）
 4. 打包为压缩文件（Linux: `.tar.gz`，Windows: `.zip`）
 
 最终生成文件：
@@ -466,11 +484,14 @@ agent-docker-offline/
 │   ├── agent-backend-base.tar    # 后端基础镜像（Python + 依赖 + fastembed）
 │   ├── agent-backend.tar         # 后端应用镜像
 │   ├── agent-frontend.tar        # 前端镜像（Nginx + Vue）
-│   └── qdrant.tar                # Qdrant 向量数据库
+│   ├── qdrant.tar                # Qdrant 向量数据库
+│   └── postgres.tar              # PostgreSQL 聊天历史数据库
 ├── config/
 │   ├── .env.example              # 环境变量模板
 │   ├── nginx.conf                # Nginx 配置
 │   └── entrypoint.frontend.sh    # 前端启动脚本
+├── agent_backend/
+│   └── configs/                  # 智能体配置目录
 ├── docker-compose.yml            # 服务编排文件
 ├── deploy-offline.sh             # Linux 离线部署脚本
 ├── deploy-offline.bat            # Windows 离线部署脚本

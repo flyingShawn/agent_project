@@ -79,7 +79,7 @@ else
     echo "⚠ 后端服务可能未完全启动，请稍后检查"
 fi
 
-if curl -f http://localhost/ &> /dev/null; then
+if curl -f http://localhost:81/ &> /dev/null; then
     echo "✓ 前端服务正常"
 else
     echo "⚠ 前端服务可能未完全启动，请稍后检查"
@@ -91,7 +91,7 @@ echo "  部署完成！"
 echo "========================================="
 echo ""
 echo "访问地址："
-echo "\n - 前端界面: http://localhost"
+echo "\n - 前端界面: http://localhost:81"
 echo "\n - 后端API: http://localhost:8000/docs"
 echo "\n - Qdrant控制台: http://localhost:6333/dashboard"
 echo ""

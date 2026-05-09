@@ -163,15 +163,15 @@ uvicorn agent_backend.main:app
 
 当前默认配置：
 
-- `2` `report_key: default_ops_brief`
-- `4` `interval_seconds: 7200`
-- `5` `lookback_days: 3`
-- `6` `top_n: 20`
-- `7` `llm_polish_enabled: true`
+- `report_key`：简报模板标识
+- `schedule`：每日或每周生成计划
+- `lookback_days`：默认统计窗口
+- `top_n`：榜单数量
+- `llm_polish_enabled`：是否启用摘要润色
 
 也就是：
 
-- 每 7200 秒生成一次
+- 按配置的每日/每周时间生成
 - 统计最近 3 天
 - 远程协助和 USB 排 Top20
 - 默认启用 LLM 润色摘要

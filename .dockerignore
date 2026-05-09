@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test/cache output
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+tests/results/
+tests/screenshots/
+
+# Git and local docs
+.git/
+.gitignore
+.gitattributes
+docs/
+.trae/
+
+# Local data and secrets
+data/
+.qdrant_local/
+.qdrant_local_demo/
+.state/
+*.sqlite
+*.db
+.env
+.env.local
+.env.*.local
+
+# Frontend generated dependencies
+agent_frontend/node_modules/
+agent_frontend/dist/
+agent_frontend/.vite/
+
+# Logs and temp files
+*.log
+logs/
+*.tmp
+*.temp
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db

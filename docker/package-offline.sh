@@ -19,7 +19,7 @@ fi
 
 echo "[1/5] 检查本地镜像..."
 MISSING=0
-for img in agent-backend-base:latest agent-backend:latest agent-frontend:latest qdrant/qdrant:v1.17.0; do
+for img in agent-backend-base:latest agent-backend:latest agent-frontend:latest postgres:14-alpine qdrant/qdrant:v1.17.0; do
     if docker image inspect "$img" &> /dev/null; then
         echo "  ✓ 已有镜像: $img"
     else
@@ -42,6 +42,7 @@ echo "[2/5] 准备打包目录..."
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/images"
 mkdir -p "$OUTPUT_DIR/config"
+mkdir -p "$OUTPUT_DIR/agent_backend"
 
 echo ""
 echo "[3/5] 导出Docker镜像（可能需要几分钟）..."
@@ -53,11 +54,14 @@ echo "  导出 agent-frontend..."
 docker save agent-frontend:latest -o "$OUTPUT_DIR/images/agent-frontend.tar"
 echo "  导出 qdrant..."
 docker save qdrant/qdrant:v1.17.0 -o "$OUTPUT_DIR/images/qdrant.tar"
+echo "  导出 postgres..."
+docker save postgres:14-alpine -o "$OUTPUT_DIR/images/postgres.tar"
 
 echo ""
 echo "[4/5] 复制配置文件..."
 cp ../docker-compose.yml "$OUTPUT_DIR/"
 cp ../.env.example "$OUTPUT_DIR/config/.env.example"
+cp -R ../agent_backend/configs "$OUTPUT_DIR/agent_backend/"
 cp nginx.conf "$OUTPUT_DIR/config/"
 cp entrypoint.frontend.sh "$OUTPUT_DIR/config/"
 cp deploy-offline.sh "$OUTPUT_DIR/"
@@ -78,6 +82,7 @@ cat > "$OUTPUT_DIR/README.txt" << 'EOF'
 
 images/              Docker镜像tar文件
 config/              配置文件目录
+agent_backend/configs/ 智能体配置目录
 docker-compose.yml   服务编排文件
 deploy-offline.bat   Windows离线部署脚本
 deploy-offline.sh    Linux离线部署脚本

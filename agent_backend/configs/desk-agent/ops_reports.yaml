@@ -1,15 +1,88 @@
 reports:
-  - report_key: default_ops_brief
+- report_key: daily_patrol
+  name: 日常巡检简报
+  enabled: true
+  schedule:
+    type: daily
+    time: 08:00
+    weekday: 1
+  modules:
+  - key: online_status
     enabled: true
-    interval_seconds: 7200
-    lookback_days: 3
-    top_n: 20
-    llm_polish_enabled: true
-    thresholds:
-      online_drop_abs: 5
-      online_drop_pct: 0.05
-      not_booted_increase_abs: 5
-      remote_top1_min_count: 8
-      remote_top1_increase_abs: 3
-      usb_total_growth_pct: 0.20
-      usb_total_growth_abs: 20
+    type: realtime
+  - key: server_health
+    enabled: false
+    type: realtime
+  - key: remote_top
+    enabled: true
+    type: period
+    range: last_3_days
+  - key: usb_top
+    enabled: true
+    type: period
+    range: last_7_days
+  - key: wallpaper_screen
+    enabled: false
+    type: realtime
+  - key: file_distribution
+    enabled: false
+    type: period
+    range: last_7_days
+  - key: antivirus
+    enabled: false
+    type: realtime
+  - key: hardware_change
+    enabled: false
+    type: period
+    range: last_7_days
+  lookback_days: 3
+  top_n: 20
+  llm_polish_enabled: true
+  thresholds:
+    online_drop_abs: 5
+    online_drop_pct: 0.05
+    not_booted_increase_abs: 5
+    remote_top1_min_count: 8
+    remote_top1_increase_abs: 3
+    usb_total_growth_pct: 0.2
+    usb_total_growth_abs: 20
+- report_key: weekly_security
+  name: 安全合规周报
+  enabled: true
+  schedule:
+    type: weekly
+    time: 09:00
+    weekday: 1
+  modules:
+  - key: online_status
+    enabled: true
+    type: realtime
+  - key: server_health
+    enabled: true
+    type: realtime
+  - key: remote_top
+    enabled: true
+    type: period
+    range: last_week
+  - key: usb_top
+    enabled: true
+    type: period
+    range: last_week
+  - key: wallpaper_screen
+    enabled: true
+    type: realtime
+  - key: file_distribution
+    enabled: true
+    type: period
+    range: last_week
+  - key: antivirus
+    enabled: true
+    type: realtime
+  - key: hardware_change
+    enabled: true
+    type: period
+    range: last_week
+  lookback_days: 7
+  top_n: 20
+  llm_polish_enabled: true
+  thresholds: {}

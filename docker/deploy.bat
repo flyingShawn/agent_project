@@ -16,7 +16,7 @@ if errorlevel 1 (
 )
 
 REM 检查Docker Compose是否安装
-docker-compose --version >nul 2>&1
+docker compose version >nul 2>&1
 if errorlevel 1 (
     echo 错误: Docker Compose未安装
     pause
@@ -24,7 +24,7 @@ if errorlevel 1 (
 )
 
 for /f "tokens=*" %%i in ('docker --version') do set DOCKER_VERSION=%%i
-for /f "tokens=*" %%i in ('docker-compose --version') do set COMPOSE_VERSION=%%i
+for /f "tokens=*" %%i in ('docker compose version') do set COMPOSE_VERSION=%%i
 
 echo √ Docker版本: %DOCKER_VERSION%
 echo √ Docker Compose版本: %COMPOSE_VERSION%
@@ -53,12 +53,12 @@ echo.
 
 REM 停止旧容器
 echo 1. 停止现有容器...
-docker-compose down 2>nul
+docker compose down 2>nul
 
 REM 构建镜像
 echo.
 echo 2. 构建Docker镜像...
-docker-compose build
+docker compose build
 if errorlevel 1 (
     echo 错误: 镜像构建失败
     pause
@@ -68,7 +68,7 @@ if errorlevel 1 (
 REM 启动服务
 echo.
 echo 3. 启动服务...
-docker-compose up -d
+docker compose up -d
 if errorlevel 1 (
     echo 错误: 服务启动失败
     pause
@@ -83,7 +83,7 @@ timeout /t 10 /nobreak >nul
 REM 检查服务状态
 echo.
 echo 5. 检查服务状态...
-docker-compose ps
+docker compose ps
 
 echo.
 echo =========================================
@@ -91,13 +91,13 @@ echo   部署完成！
 echo =========================================
 echo.
 echo 访问地址：
-echo   - 前端界面: http://localhost
+echo   - 前端界面: http://localhost:81
 echo   - 后端API: http://localhost:8000/docs
 echo   - Qdrant控制台: http://localhost:6333/dashboard
 echo.
 echo 常用命令：
-echo   - 查看日志: docker-compose logs -f
-echo   - 停止服务: docker-compose down
-echo   - 重启服务: docker-compose restart
+echo   - 查看日志: docker compose logs -f
+echo   - 停止服务: docker compose down
+echo   - 重启服务: docker compose restart
 echo.
 pause

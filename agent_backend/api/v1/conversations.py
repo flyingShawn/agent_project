@@ -31,17 +31,17 @@
     - agent_backend/api/routes.py: 路由注册入口
 """
 import logging
-import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent_backend.api.external_identity import ExternalIdentity, require_external_identity
 from agent_backend.db.chat_history import get_session
 from agent_backend.db.models import Conversation, Message
+from agent_backend.db.utils import commit_or_rollback, now_utc, to_epoch_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ async def list_conversations(
 ):
     count_stmt = select(func.count()).select_from(Conversation).where(
         Conversation.user_id == current_user.user_id,
-        Conversation.is_deleted == 0,
+        Conversation.is_deleted.is_(False),
         Conversation.agent_type == agent_type,
     )
     total = (await db.execute(count_stmt)).scalar() or 0
@@ -121,7 +121,7 @@ async def list_conversations(
         select(Conversation)
         .where(
             Conversation.user_id == current_user.user_id,
-            Conversation.is_deleted == 0,
+            Conversation.is_deleted.is_(False),
             Conversation.agent_type == agent_type,
         )
         .order_by(Conversation.updated_at.desc())
@@ -137,8 +137,8 @@ async def list_conversations(
                 id=c.id,
                 title=c.title,
                 user_id=c.user_id,
-                created_at=c.created_at,
-                updated_at=c.updated_at,
+                created_at=to_epoch_seconds(c.created_at),
+                updated_at=to_epoch_seconds(c.updated_at),
             )
             for c in conversations
         ],
@@ -156,7 +156,8 @@ async def get_conversation(
     stmt = select(Conversation).where(
         Conversation.id == conversation_id,
         Conversation.user_id == current_user.user_id,
-        Conversation.is_deleted == 0,
+        Conversation.agent_type == agent_type,
+        Conversation.is_deleted.is_(False),
     )
     result = await db.execute(stmt)
     conv = result.scalar_one_or_none()
@@ -175,8 +176,8 @@ async def get_conversation(
         id=conv.id,
         title=conv.title,
         user_id=conv.user_id,
-        created_at=conv.created_at,
-        updated_at=conv.updated_at,
+        created_at=to_epoch_seconds(conv.created_at),
+        updated_at=to_epoch_seconds(conv.updated_at),
         messages=[
             MessageItem(
                 id=m.id,
@@ -184,7 +185,7 @@ async def get_conversation(
                 content=m.content,
                 intent=m.intent,
                 charts=m.charts,
-                created_at=m.created_at,
+                created_at=to_epoch_seconds(m.created_at),
             )
             for m in msgs
         ],
@@ -198,7 +199,7 @@ async def create_conversation(
     current_user: ExternalIdentity = Depends(require_external_identity),
     db: AsyncSession = Depends(get_session),
 ):
-    now = time.time()
+    now = now_utc()
     conv = Conversation(
         id=str(uuid.uuid4()),
         title="新对话",
@@ -206,17 +207,17 @@ async def create_conversation(
         agent_type=agent_type,
         created_at=now,
         updated_at=now,
-        is_deleted=0,
+        is_deleted=False,
     )
     db.add(conv)
-    await db.commit()
+    await commit_or_rollback(db)
     await db.refresh(conv)
 
     logger.info(f"\n[Conv] 创建新会话: {conv.id[:8]}... (用户: {req.user_id})")
     return ConversationCreateResponse(
         id=conv.id,
         title=conv.title,
-        created_at=conv.created_at,
+        created_at=to_epoch_seconds(conv.created_at),
     )
 
 
@@ -231,7 +232,8 @@ async def update_conversation_title(
     stmt = select(Conversation).where(
         Conversation.id == conversation_id,
         Conversation.user_id == current_user.user_id,
-        Conversation.is_deleted == 0,
+        Conversation.agent_type == agent_type,
+        Conversation.is_deleted.is_(False),
     )
     result = await db.execute(stmt)
     conv = result.scalar_one_or_none()
@@ -239,8 +241,8 @@ async def update_conversation_title(
         raise HTTPException(status_code=404, detail="会话不存在")
 
     conv.title = req.title
-    conv.updated_at = time.time()
-    await db.commit()
+    conv.updated_at = now_utc()
+    await commit_or_rollback(db)
 
     logger.info(f"\n[Conv] 会话标题更新: {conversation_id[:8]}... -> {req.title}")
     return TitleUpdateResponse(success=True, title=conv.title)
@@ -256,16 +258,17 @@ async def delete_conversation(
     stmt = select(Conversation).where(
         Conversation.id == conversation_id,
         Conversation.user_id == current_user.user_id,
-        Conversation.is_deleted == 0,
+        Conversation.agent_type == agent_type,
+        Conversation.is_deleted.is_(False),
     )
     result = await db.execute(stmt)
     conv = result.scalar_one_or_none()
     if not conv:
         raise HTTPException(status_code=404, detail="会话不存在")
 
-    conv.is_deleted = 1
-    conv.updated_at = time.time()
-    await db.commit()
+    conv.is_deleted = True
+    conv.updated_at = now_utc()
+    await commit_or_rollback(db)
 
     logger.info(f"\n[Conv] 会话已删除: {conversation_id[:8]}...")
     return DeleteResponse(success=True)

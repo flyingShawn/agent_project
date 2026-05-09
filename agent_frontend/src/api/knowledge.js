@@ -90,3 +90,15 @@ export async function deleteKnowledgeEntry(agentType, payload) {
   })
   return parseJsonResponse(response)
 }
+
+export async function deleteKnowledgeFile(agentType, payload) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/knowledge/files/${encodeURIComponent(payload.filename)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      kb_type: payload.kbType,
+      editor_name: payload.editorName || '',
+    }),
+  })
+  return parseJsonResponse(response)
+}

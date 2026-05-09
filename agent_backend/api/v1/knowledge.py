@@ -1,14 +1,13 @@
 """
 知识库本地管理 API。
 
-SQLite 是知识库条目的主存储；Markdown 文件由数据库记录重建，
+PostgreSQL 是知识库条目的主存储；Markdown 文件由数据库记录重建，
 用于兼容现有 RAG 同步流程。首次读取已有 Markdown 文件时，会自动
 导入为 legacy 条目，避免历史样本丢失。
 """
 from __future__ import annotations
 
 import re
-import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agent_backend.agent.registry import get_registry
 from agent_backend.db.chat_history import get_session
 from agent_backend.db.models import KnowledgeEntry
+from agent_backend.db.utils import commit_or_rollback, from_epoch_seconds, now_utc, to_epoch_seconds
 from agent_backend.rag_engine.chunking import chunk_markdown
 from agent_backend.rag_engine.sql_samples import parse_sql_sample_sections
 
@@ -30,6 +30,9 @@ _INVALID_FILENAME_CHARS = set('<>:"/\\|?*')
 _SQL_BLOCK_RE = re.compile(r"```sql\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 _LEGACY_USER = "legacy"
 _SQL_ADMIN_USER = "admin"
+_SUPER_USER = "su"
+_SUPER_DISPLAY_NAME = "super"
+_DISABLED_USERNAMES = {"super"}
 
 
 class KnowledgeFileRequest(BaseModel):
@@ -59,6 +62,11 @@ class DeleteKnowledgeEntryRequest(BaseModel):
     editor_name: str = ""
 
 
+class DeleteKnowledgeFileRequest(BaseModel):
+    kb_type: str
+    editor_name: str = ""
+
+
 def _validate_kb_type(kb_type: str) -> str:
     if kb_type not in _VALID_KB_TYPES:
         raise HTTPException(status_code=400, detail="知识库类型无效")
@@ -69,20 +77,29 @@ def _normalize_editor_name(name: str) -> str:
     editor = " ".join(str(name or "").strip().split())
     if not editor:
         raise HTTPException(status_code=400, detail="请先输入用户名")
+    if editor in _DISABLED_USERNAMES:
+        raise HTTPException(status_code=403, detail="该账号已禁用")
     return editor
 
 
 def _assert_write_allowed(kb_type: str, editor_name: str) -> str:
     editor = _normalize_editor_name(editor_name)
-    if kb_type == "sql" and editor != _SQL_ADMIN_USER:
+    if kb_type == "sql" and editor not in {_SQL_ADMIN_USER, _SUPER_USER}:
         raise HTTPException(status_code=403, detail="该账号无权限")
     return editor
 
 
 def _assert_delete_allowed(editor_name: str) -> str:
     editor = _normalize_editor_name(editor_name)
-    if editor != _SQL_ADMIN_USER:
+    if editor not in {_SQL_ADMIN_USER, _SUPER_USER}:
         raise HTTPException(status_code=403, detail="该账号无权限")
+    return editor
+
+
+def _assert_delete_file_allowed(editor_name: str) -> str:
+    editor = _normalize_editor_name(editor_name)
+    if editor != _SUPER_USER:
+        raise HTTPException(status_code=403, detail="该账号无权限删除文件")
     return editor
 
 
@@ -90,6 +107,8 @@ def _resolve_config_path(path_text: str) -> Path:
     path = Path(path_text)
     if path.is_absolute():
         return path
+    if path_text.startswith("/") or path_text.startswith("\\"):
+        return _PROJECT_ROOT / Path(path_text.lstrip("/\\"))
     return _PROJECT_ROOT / path
 
 
@@ -243,11 +262,17 @@ def _entry_to_payload(entry: KnowledgeEntry) -> dict:
         "key_tables": entry.key_tables,
         "sql_code": entry.sql_code,
         "answer": entry.answer,
-        "created_by": entry.created_by,
-        "created_at": entry.created_at,
-        "updated_by": entry.updated_by,
-        "updated_at": entry.updated_at,
+        "created_by": _display_name(entry.created_by),
+        "created_at": to_epoch_seconds(entry.created_at),
+        "updated_by": _display_name(entry.updated_by),
+        "updated_at": to_epoch_seconds(entry.updated_at),
     }
+
+
+def _display_name(editor: str) -> str:
+    if editor == _SUPER_USER:
+        return _SUPER_DISPLAY_NAME
+    return editor
 
 
 async def _count_entries(
@@ -264,7 +289,7 @@ async def _count_entries(
         KnowledgeEntry.filename == filename,
     )
     if not include_deleted:
-        stmt = stmt.where(KnowledgeEntry.is_deleted == 0)
+        stmt = stmt.where(KnowledgeEntry.is_deleted.is_(False))
     return int((await db.execute(stmt)).scalar_one() or 0)
 
 
@@ -281,7 +306,7 @@ async def _get_entries(
             KnowledgeEntry.agent_type == agent_type,
             KnowledgeEntry.kb_type == kb_type,
             KnowledgeEntry.filename == filename,
-            KnowledgeEntry.is_deleted == 0,
+            KnowledgeEntry.is_deleted.is_(False),
         )
         .order_by(KnowledgeEntry.id.asc())
     )
@@ -316,7 +341,7 @@ async def _ensure_file_imported(
     if not raw_entries:
         return
 
-    legacy_time = path.stat().st_mtime
+    legacy_time = from_epoch_seconds(path.stat().st_mtime)
     for raw in raw_entries:
         db.add(
             KnowledgeEntry(
@@ -334,7 +359,7 @@ async def _ensure_file_imported(
                 updated_at=legacy_time,
             )
         )
-    await db.commit()
+    await commit_or_rollback(db)
 
 
 async def _ensure_all_files_imported(
@@ -424,12 +449,12 @@ async def _list_db_file_stats(
         .where(
             KnowledgeEntry.agent_type == agent_type,
             KnowledgeEntry.kb_type == kb_type,
-            KnowledgeEntry.is_deleted == 0,
+            KnowledgeEntry.is_deleted.is_(False),
         )
         .group_by(KnowledgeEntry.filename)
     )
     return {
-        row[0]: {"entry_count": int(row[1] or 0), "updated_at": float(row[2] or 0)}
+        row[0]: {"entry_count": int(row[1] or 0), "updated_at": to_epoch_seconds(row[2])}
         for row in result.all()
     }
 
@@ -527,7 +552,7 @@ async def rename_file(
         )
         .values(filename=target.name)
     )
-    await db.commit()
+    await commit_or_rollback(db)
     await _render_markdown_file(
         db,
         agent_type=agent_type,
@@ -536,6 +561,48 @@ async def rename_file(
         base_dir=base_dir,
     )
     return {"file": {"name": target.name, "path": str(target)}}
+
+
+@router.delete("/files/{filename}")
+async def delete_file(
+    agent_type: str,
+    filename: str,
+    req: DeleteKnowledgeFileRequest,
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    kb_type = _validate_kb_type(req.kb_type)
+    editor = _assert_delete_file_allowed(req.editor_name)
+    base_dir = _get_library_dir(agent_type, kb_type)
+    path = _file_path(base_dir, filename)
+    await _ensure_file_imported(db, agent_type=agent_type, kb_type=kb_type, path=path)
+
+    row_count = await _count_entries(
+        db,
+        agent_type=agent_type,
+        kb_type=kb_type,
+        filename=path.name,
+        include_deleted=True,
+    )
+    if not path.exists() and row_count == 0:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    if path.exists():
+        path.unlink()
+
+    if row_count > 0:
+        await db.execute(
+            update(KnowledgeEntry)
+            .where(
+                KnowledgeEntry.agent_type == agent_type,
+                KnowledgeEntry.kb_type == kb_type,
+                KnowledgeEntry.filename == path.name,
+                KnowledgeEntry.is_deleted.is_(False),
+            )
+            .values(is_deleted=True, updated_by=editor, updated_at=now_utc())
+        )
+        await commit_or_rollback(db)
+
+    return {"file": {"name": path.name, "deleted": True}}
 
 
 @router.get("/files/{filename}/entries")
@@ -580,7 +647,7 @@ async def add_entry(
 
     await _ensure_file_imported(db, agent_type=agent_type, kb_type=kb_type, path=path)
     values = _validate_entry_payload(req)
-    now = time.time()
+    now = now_utc()
     entry = KnowledgeEntry(
         agent_type=agent_type,
         kb_type=kb_type,
@@ -592,7 +659,7 @@ async def add_entry(
         **values,
     )
     db.add(entry)
-    await db.commit()
+    await commit_or_rollback(db)
     await _render_markdown_file(
         db,
         agent_type=agent_type,
@@ -623,7 +690,7 @@ async def update_entry(
             KnowledgeEntry.agent_type == agent_type,
             KnowledgeEntry.kb_type == kb_type,
             KnowledgeEntry.filename == path.name,
-            KnowledgeEntry.is_deleted == 0,
+            KnowledgeEntry.is_deleted.is_(False),
         )
     )
     entry = result.scalar_one_or_none()
@@ -634,8 +701,8 @@ async def update_entry(
     for key, value in values.items():
         setattr(entry, key, value)
     entry.updated_by = editor
-    entry.updated_at = time.time()
-    await db.commit()
+    entry.updated_at = now_utc()
+    await commit_or_rollback(db)
     await _render_markdown_file(
         db,
         agent_type=agent_type,
@@ -666,17 +733,17 @@ async def delete_entry(
             KnowledgeEntry.agent_type == agent_type,
             KnowledgeEntry.kb_type == kb_type,
             KnowledgeEntry.filename == path.name,
-            KnowledgeEntry.is_deleted == 0,
+            KnowledgeEntry.is_deleted.is_(False),
         )
     )
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="条目不存在")
 
-    entry.is_deleted = 1
+    entry.is_deleted = True
     entry.updated_by = editor
-    entry.updated_at = time.time()
-    await db.commit()
+    entry.updated_at = now_utc()
+    await commit_or_rollback(db)
     await _render_markdown_file(
         db,
         agent_type=agent_type,

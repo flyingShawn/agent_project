@@ -135,7 +135,15 @@ class RagSettings(BaseSettings):
 
 
 class MiscSettings(BaseSettings):
-    chat_db_url: str = "postgresql+asyncpg://agent:agent123@localhost:5432/agent_chat"
+    chat_db_url: str = ""
+    chat_db_host: str = "localhost"
+    chat_db_port: str = "5432"
+    pg_user: str = "agent"
+    pg_password: str = "agent123"
+    pg_db: str = "agent_chat"
+    chat_db_pool_size: int = 5
+    chat_db_max_overflow: int = 10
+    chat_db_pool_recycle_seconds: int = 3600
     cors_origins: str = "http://localhost:3000"
     agent_name: str = ""
     tavily_api_key: str = ""
@@ -157,6 +165,16 @@ class AppSettings(BaseModel):
     database: DatabaseSettings = DatabaseSettings()
     rag: RagSettings = RagSettings()
     misc: MiscSettings = MiscSettings()
+
+    def build_chat_db_url(self) -> str:
+        if self.misc.chat_db_url:
+            return self.misc.chat_db_url
+        db = self.misc
+        return (
+            "postgresql+asyncpg://"
+            f"{quote_plus(db.pg_user)}:{quote_plus(db.pg_password)}"
+            f"@{db.chat_db_host}:{db.chat_db_port}/{db.pg_db}"
+        )
 
     def build_database_url(self) -> str | None:
         if self.database.database_url:

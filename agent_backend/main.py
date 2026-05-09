@@ -47,7 +47,7 @@ from agent_backend.core.config import load_env_file, get_settings
 from agent_backend.core.errors import register_exception_handlers
 from agent_backend.core.logging import configure_logging
 from agent_backend.core.request_id import RequestIdMiddleware
-from agent_backend.db.chat_history import init_db
+from agent_backend.db.chat_history import init_db, close_db
 from agent_backend.ops_reports import get_ops_report_manager
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
@@ -135,6 +135,7 @@ def create_app() -> FastAPI:
         await ops_report_manager.shutdown()
         conn_manager = get_connection_manager()
         conn_manager.shutdown()
+        await close_db()
         from agent_backend.llm.factory import reset_llm_cache
         reset_llm_cache()
         logger.info("\n[Shutdown] 应用关闭完成")

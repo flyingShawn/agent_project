@@ -3,9 +3,15 @@ import { fetchAgents } from '../api/agents'
 
 const routes = [
   {
-    path: '/ops-report-demo',
-    name: 'ops-report-demo',
-    component: () => import('../OpsReportDemo.vue'),
+    path: '/ops-report-center',
+    name: 'ops-report-center',
+    component: () => import('../OpsReportCenter.vue'),
+  },
+  {
+    path: '/:agentType/ops-report-center',
+    name: 'agent-ops-report-center',
+    component: () => import('../OpsReportCenter.vue'),
+    props: true,
   },
   {
     path: '/',

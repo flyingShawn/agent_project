@@ -23,7 +23,7 @@ if errorlevel 1 (
 REM 检查镜像是否存在
 echo [1/5] 检查本地镜像...
 set MISSING=0
-for %%I in (agent-backend-base:latest agent-backend:latest agent-frontend:latest qdrant/qdrant:v1.17.0) do (
+for %%I in (agent-backend-base:latest agent-backend:latest agent-frontend:latest postgres:14-alpine qdrant/qdrant:v1.17.0) do (
     docker image inspect %%I >nul 2>&1
     if errorlevel 1 (
         echo   ✗ 缺少镜像: %%I
@@ -50,6 +50,7 @@ if exist %OUTPUT_DIR% rmdir /s /q %OUTPUT_DIR%
 mkdir %OUTPUT_DIR%
 mkdir %OUTPUT_DIR%\images
 mkdir %OUTPUT_DIR%\config
+mkdir %OUTPUT_DIR%\agent_backend
 
 REM 导出镜像
 echo.
@@ -62,12 +63,15 @@ echo   导出 agent-frontend...
 docker save agent-frontend:latest -o %OUTPUT_DIR%\images\agent-frontend.tar
 echo   导出 qdrant...
 docker save qdrant/qdrant:v1.17.0 -o %OUTPUT_DIR%\images\qdrant.tar
+echo   导出 postgres...
+docker save postgres:14-alpine -o %OUTPUT_DIR%\images\postgres.tar
 
 REM 复制配置文件
 echo.
 echo [4/5] 复制配置文件...
 copy ..\docker-compose.yml %OUTPUT_DIR%\ >nul
 copy ..\.env.example %OUTPUT_DIR%\config\.env.example >nul
+xcopy ..\agent_backend\configs %OUTPUT_DIR%\agent_backend\configs\ /E /I /Y >nul
 copy nginx.conf %OUTPUT_DIR%\config\ >nul
 copy entrypoint.frontend.sh %OUTPUT_DIR%\config\ >nul
 copy deploy-offline.sh %OUTPUT_DIR%\ >nul
@@ -88,6 +92,7 @@ echo ## 目录结构 >> %OUTPUT_DIR%\README.txt
 echo. >> %OUTPUT_DIR%\README.txt
 echo images/          Docker镜像tar文件 >> %OUTPUT_DIR%\README.txt
 echo config/          配置文件目录 >> %OUTPUT_DIR%\README.txt
+echo agent_backend/configs/  智能体配置目录 >> %OUTPUT_DIR%\README.txt
 echo docker-compose.yml  服务编排文件 >> %OUTPUT_DIR%\README.txt
 echo deploy-offline.bat  Windows离线部署脚本 >> %OUTPUT_DIR%\README.txt
 echo deploy-offline.sh   Linux离线部署脚本 >> %OUTPUT_DIR%\README.txt

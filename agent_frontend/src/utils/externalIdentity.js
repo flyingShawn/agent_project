@@ -1,4 +1,5 @@
 const DEFAULT_USER_ID = 'admin'
+const DISPLAY_NAME_MAP = { su: 'super' }
 
 let cachedIdentity = null
 
@@ -49,7 +50,8 @@ export function getExternalUserId() {
 
 export function getExternalDisplayName() {
   const identity = getExternalIdentity()
-  return identity?.displayName || identity?.userId || DEFAULT_USER_ID
+  const raw = identity?.displayName || identity?.userId || DEFAULT_USER_ID
+  return DISPLAY_NAME_MAP[raw] || raw
 }
 
 export function buildExternalAuthHeaders() {

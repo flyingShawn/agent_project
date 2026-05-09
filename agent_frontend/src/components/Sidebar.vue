@@ -111,6 +111,17 @@ defineExpose({ loadConversations })
         开启新会话
       </button>
       <a
+        :href="`/${agentType}/ops-report-center`"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-2 w-full flex items-center gap-2 px-3 py-2.5 text-sm rounded-lg transition-colors cursor-pointer border border-transparent text-blue-600 hover:bg-blue-50"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9 17h6M9 13h6M9 9h6M5 5h14v14H5z" />
+        </svg>
+        运维简报中心
+      </a>
+      <a
         :href="`/${agentType}/knowledge`"
         target="_blank"
         rel="noopener noreferrer"

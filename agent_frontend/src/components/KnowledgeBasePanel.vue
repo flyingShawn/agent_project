@@ -4,6 +4,7 @@ import {
   addKnowledgeEntry,
   createKnowledgeFile,
   deleteKnowledgeEntry,
+  deleteKnowledgeFile,
   fetchKnowledgeEntries,
   fetchKnowledgeFiles,
   renameKnowledgeFile,
@@ -41,6 +42,7 @@ const isSavingFile = ref(false)
 const isRenamingFile = ref(false)
 const isSavingEntry = ref(false)
 const isDeletingEntry = ref(false)
+const isDeletingFile = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 
@@ -49,15 +51,17 @@ const activeTypeLabel = computed(() => {
 })
 
 const normalizedEditorName = computed(() => props.editorName.trim())
+const isSuperUser = computed(() => normalizedEditorName.value === 'su')
 const hasEditor = computed(() => Boolean(normalizedEditorName.value))
 const canWriteCurrentType = computed(() => {
   if (!hasEditor.value) return false
-  return activeType.value !== 'sql' || normalizedEditorName.value === 'admin'
+  return activeType.value !== 'sql' || normalizedEditorName.value === 'admin' || isSuperUser.value
 })
-const canDeleteEntry = computed(() => normalizedEditorName.value === 'admin')
+const canDeleteEntry = computed(() => normalizedEditorName.value === 'admin' || isSuperUser.value)
+const canDeleteFile = computed(() => isSuperUser.value)
 const writeDisabledReason = computed(() => {
   if (!hasEditor.value) return '请先在右上角输入用户名'
-  if (activeType.value === 'sql' && normalizedEditorName.value !== 'admin') return '该账号无权限'
+  if (activeType.value === 'sql' && normalizedEditorName.value !== 'admin' && !isSuperUser.value) return '该账号无权限'
   return ''
 })
 const isEditingEntry = computed(() => editingEntryId.value !== null)
@@ -281,6 +285,34 @@ async function handleDeleteEntry(entry) {
   }
 }
 
+async function handleDeleteFile() {
+  if (!canDeleteFile.value) {
+    errorMessage.value = hasEditor.value ? '该账号无权限删除文件' : writeDisabledReason.value
+    successMessage.value = ''
+    return
+  }
+  if (!selectedFile.value) return
+  if (!window.confirm(`确认删除文件「${selectedFile.value}」及其所有内容？此操作不可恢复！`)) return
+  isDeletingFile.value = true
+  clearMessages()
+  try {
+    await deleteKnowledgeFile(props.agentType, {
+      filename: selectedFile.value,
+      kbType: activeType.value,
+      editorName: normalizedEditorName.value,
+    })
+    selectedFile.value = ''
+    renameName.value = ''
+    resetEntryForm()
+    await loadFiles()
+    successMessage.value = '文件已删除'
+  } catch (error) {
+    setError(error)
+  } finally {
+    isDeletingFile.value = false
+  }
+}
+
 watch(activeType, () => {
   selectedFile.value = ''
   renameName.value = ''
@@ -398,6 +430,14 @@ onMounted(() => loadFiles())
                 class="rounded-lg border border-[#d9d9e3] px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover disabled:text-text-tertiary disabled:cursor-not-allowed cursor-pointer"
               >
                 重命名
+              </button>
+              <button
+                v-if="canDeleteFile"
+                @click="handleDeleteFile"
+                :disabled="isDeletingFile || !selectedFile"
+                class="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:text-text-tertiary disabled:cursor-not-allowed cursor-pointer"
+              >
+                {{ isDeletingFile ? '删除中...' : '删除文件' }}
               </button>
             </div>
           </div>

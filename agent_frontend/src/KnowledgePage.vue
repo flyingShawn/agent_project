@@ -15,8 +15,15 @@ const STORAGE_KEY = 'knowledge_editor_name'
 const editorName = ref('')
 const draftName = ref('')
 const editingUser = ref(false)
+const loginError = ref('')
 
-const displayName = computed(() => editorName.value || '未登录')
+const DISPLAY_NAME_MAP = { su: 'super' }
+const DISABLED_USERNAMES = ['super']
+
+const displayName = computed(() => {
+  if (!editorName.value) return '未登录'
+  return DISPLAY_NAME_MAP[editorName.value.trim()] || editorName.value.trim()
+})
 
 onMounted(() => {
   setExternalIdentity(readExternalIdentityFromLocation())
@@ -31,6 +38,11 @@ function startEditUser() {
 
 function saveUser() {
   const name = draftName.value.trim()
+  loginError.value = ''
+  if (DISABLED_USERNAMES.includes(name)) {
+    loginError.value = '该账号已禁用'
+    return
+  }
   editorName.value = name
   if (name) {
     localStorage.setItem(STORAGE_KEY, name)
@@ -58,18 +70,29 @@ function saveUser() {
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <template v-if="editingUser">
-            <input
-              v-model="draftName"
-              @keydown.enter.prevent="saveUser"
-              class="w-40 rounded-lg border border-[#d9d9e3] px-3 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
-              placeholder="输入用户名"
-            />
-            <button
-              @click="saveUser"
-              class="rounded-lg bg-primary-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-600 cursor-pointer"
-            >
-              保存
-            </button>
+            <div class="flex flex-col items-end gap-1">
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="draftName"
+                  @keydown.enter.prevent="saveUser"
+                  class="w-40 rounded-lg border border-[#d9d9e3] px-3 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
+                  placeholder="输入用户名"
+                />
+                <button
+                  @click="saveUser"
+                  class="rounded-lg bg-primary-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-600 cursor-pointer"
+                >
+                  保存
+                </button>
+                <button
+                  @click="loginError = ''; editingUser = false; draftName = editorName"
+                  class="rounded-lg border border-[#d9d9e3] px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover cursor-pointer"
+                >
+                  取消
+                </button>
+              </div>
+              <p v-if="loginError" class="text-xs text-red-500">{{ loginError }}</p>
+            </div>
           </template>
           <button
             v-else

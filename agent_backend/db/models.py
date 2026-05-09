@@ -26,7 +26,7 @@ ORM 数据模型模块
     - agent_backend/api/v1/conversations.py: 操作 Conversation / Message
     - agent_backend/task_engine/executor.py: 操作 TaskExecution
 """
-from sqlalchemy import Column, String, Integer, Float, Text, ForeignKey, Index
+from sqlalchemy import Boolean, Column, DateTime, String, Integer, Text, ForeignKey, Index
 from sqlalchemy.orm import relationship
 
 from .chat_history import Base
@@ -48,14 +48,17 @@ class Conversation(Base):
         is_deleted: 软删除标记，0=正常，1=已删除
     """
     __tablename__ = "conversations"
+    __table_args__ = (
+        Index("idx_conversation_user_agent_deleted_updated", "user_id", "agent_type", "is_deleted", "updated_at"),
+    )
 
     id = Column(String, primary_key=True)
     title = Column(String, nullable=False, default="新对话")
     user_id = Column(String, nullable=False, default="admin")
     agent_type = Column(String, nullable=False, default="")
-    created_at = Column(Float, nullable=False)
-    updated_at = Column(Float, nullable=False)
-    is_deleted = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    is_deleted = Column(Boolean, nullable=False, default=False)
 
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
 
@@ -77,6 +80,9 @@ class Message(Base):
         created_at: 消息创建时间戳
     """
     __tablename__ = "messages"
+    __table_args__ = (
+        Index("idx_message_conversation_created_id", "conversation_id", "created_at", "id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False)
@@ -84,7 +90,7 @@ class Message(Base):
     content = Column(Text, nullable=False, default="")
     intent = Column(String, nullable=True)
     charts = Column(Text, nullable=True)
-    created_at = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
 
     conversation = relationship("Conversation", back_populates="messages")
 
@@ -108,12 +114,12 @@ class OpsReport(Base):
     summary = Column(Text, nullable=False, default="")
     content_md = Column(Text, nullable=False, default="")
     severity = Column(String(16), nullable=False, default="normal")
-    unread = Column(Integer, nullable=False, default=1)
+    unread = Column(Boolean, nullable=False, default=True)
     agent_type = Column(String, nullable=False, default="")
-    generated_at = Column(Float, nullable=False)
-    window_start = Column(Float, nullable=False)
-    window_end = Column(Float, nullable=False)
-    created_at = Column(Float, nullable=False)
+    generated_at = Column(DateTime(timezone=True), nullable=False)
+    window_start = Column(DateTime(timezone=True), nullable=False)
+    window_end = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class OpsMetricSnapshot(Base):
@@ -126,14 +132,16 @@ class OpsMetricSnapshot(Base):
     __tablename__ = "ops_metric_snapshot"
     __table_args__ = (
         Index("idx_ops_metric_snapshot_report_key", "report_key"),
+        Index("idx_ops_metric_snapshot_agent_report_created", "agent_type", "report_key", "created_at"),
         Index("idx_ops_metric_snapshot_created_at", "created_at"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     report_id = Column(String(64), ForeignKey("ops_report.report_id"), nullable=False)
     report_key = Column(String(64), nullable=False)
+    agent_type = Column(String, nullable=False, default="")
     snapshot_data = Column(Text, nullable=False)
-    created_at = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class TaskExecution(Base):
@@ -158,8 +166,8 @@ class TaskExecution(Base):
     status = Column(String(16), nullable=False, default="pending")
     result = Column(Text, nullable=True)
     conversation_id = Column(String(64), nullable=True)
-    created_at = Column(Float, nullable=False)
-    updated_at = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class KnowledgeEntry(Base):
@@ -186,7 +194,7 @@ class KnowledgeEntry(Base):
     sql_code = Column(Text, nullable=False, default="")
     answer = Column(Text, nullable=False, default="")
     created_by = Column(String(128), nullable=False, default="legacy")
-    created_at = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
     updated_by = Column(String(128), nullable=False, default="legacy")
-    updated_at = Column(Float, nullable=False)
-    is_deleted = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    is_deleted = Column(Boolean, nullable=False, default=False)

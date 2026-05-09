@@ -71,7 +71,14 @@ services:
       - CHAT_TOPIC_SHIFT_THRESHOLD=${CHAT_TOPIC_SHIFT_THRESHOLD:-0.15}
 
       # 聊天历史数据库连接URL（PostgreSQL）
-      - CHAT_DB_URL=postgresql+asyncpg://${PG_USER:-agent}:${PG_PASSWORD:-agent123}@postgres:5432/${PG_DB:-agent_chat}
+      - CHAT_DB_HOST=postgres
+      - CHAT_DB_PORT=5432
+      - PG_USER=${PG_USER:-agent}
+      - PG_PASSWORD=${PG_PASSWORD:-agent123}
+      - PG_DB=${PG_DB:-agent_chat}
+      - CHAT_DB_POOL_SIZE=${CHAT_DB_POOL_SIZE:-5}
+      - CHAT_DB_MAX_OVERFLOW=${CHAT_DB_MAX_OVERFLOW:-10}
+      - CHAT_DB_POOL_RECYCLE_SECONDS=${CHAT_DB_POOL_RECYCLE_SECONDS:-3600}
 
       # 外部入口与第三方会话上报
       - EXTERNAL_ENTRY_SECRET=${EXTERNAL_ENTRY_SECRET:-}
@@ -123,6 +130,8 @@ services:
       - VITE_APP_WELCOME_TEXT=${VITE_APP_WELCOME_TEXT:-有什么我能帮您的呢？}
       - VITE_APP_INPUT_PLACEHOLDER=${VITE_APP_INPUT_PLACEHOLDER:-给智能助手发消息}
       - VITE_QUICK_OPTIONS=${VITE_QUICK_OPTIONS:-查看客户端在线状态,今日远程操作记录,近期开关机日志,老旧资产设备查询,部门设备数量统计,USB使用记录查询}
+      - VITE_LOCAL_DESK_BRIDGE_URL=${VITE_LOCAL_DESK_BRIDGE_URL:-http://127.0.0.1:17891}
+      - VITE_LOCAL_DESK_BRIDGE_ENABLED=${VITE_LOCAL_DESK_BRIDGE_ENABLED:-true}
     depends_on:
       - backend
     networks:
@@ -167,9 +176,11 @@ services:
 
   # ==================== PostgreSQL聊天历史数据库 ====================
   postgres:
-    image: postgres:16-alpine
+    image: postgres:14-alpine
     container_name: agent-postgres
     restart: unless-stopped
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=${PG_USER:-agent}
       - POSTGRES_PASSWORD=${PG_PASSWORD:-agent123}
@@ -180,7 +191,7 @@ services:
       -c effective_cache_size=64MB
       -c work_mem=2MB
       -c maintenance_work_mem=32MB
-      -c max_connections=20
+      -c max_connections=${PG_MAX_CONNECTIONS:-50}
     volumes:
       - pg_data:/var/lib/postgresql/data
     networks:

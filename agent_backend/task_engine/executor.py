@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import uuid
 from typing import Any
 
@@ -50,11 +49,14 @@ class TaskExecutor:
             raise TaskParamValidationError(json.dumps(validation_errors, ensure_ascii=False))
 
         execution_id = uuid.uuid4().hex[:16]
-        created_at = time.time()
+        from agent_backend.db.utils import now_utc
+
+        created_at = now_utc()
 
         try:
             from agent_backend.db.chat_history import async_session
             from agent_backend.db.models import TaskExecution
+            from agent_backend.db.utils import commit_or_rollback
 
             async with async_session() as session:
                 execution = TaskExecution(
@@ -68,7 +70,7 @@ class TaskExecutor:
                     updated_at=created_at,
                 )
                 session.add(execution)
-                await session.commit()
+                await commit_or_rollback(session)
         except Exception as e:
             logger.warning(f"\n记录任务执行开始失败: {e}")
 
@@ -105,6 +107,7 @@ class TaskExecutor:
         try:
             from agent_backend.db.chat_history import async_session
             from agent_backend.db.models import TaskExecution
+            from agent_backend.db.utils import commit_or_rollback, now_utc
 
             async with async_session() as session:
                 from sqlalchemy import update
@@ -115,11 +118,11 @@ class TaskExecutor:
                     .values(
                         status=status,
                         result=json.dumps(result_data, ensure_ascii=False) if result_data else None,
-                        updated_at=time.time(),
+                        updated_at=now_utc(),
                     )
                 )
                 await session.execute(stmt)
-                await session.commit()
+                await commit_or_rollback(session)
         except Exception as e:
             logger.warning(f"\n更新任务执行状态失败: {e}")
 

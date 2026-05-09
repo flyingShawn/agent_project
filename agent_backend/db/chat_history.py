@@ -41,15 +41,15 @@ logger = logging.getLogger(__name__)
 
 load_env_file()
 _settings = get_settings()
-CHAT_DB_URL = _settings.misc.chat_db_url
+CHAT_DB_URL = _settings.build_chat_db_url()
 
 engine = create_async_engine(
     CHAT_DB_URL,
     echo=False,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=_settings.misc.chat_db_pool_size,
+    max_overflow=_settings.misc.chat_db_max_overflow,
     pool_pre_ping=True,
-    pool_recycle=3600,
+    pool_recycle=_settings.misc.chat_db_pool_recycle_seconds,
 )
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -63,6 +63,11 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info(f"\n[DB] PostgreSQL 数据库初始化完成: {CHAT_DB_URL.split('@')[-1] if '@' in CHAT_DB_URL else CHAT_DB_URL}")
+
+
+async def close_db():
+    await engine.dispose()
+    logger.info("\n[DB] PostgreSQL 连接池已关闭")
 
 
 async def get_session() -> AsyncSession:

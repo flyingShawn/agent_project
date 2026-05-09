@@ -60,6 +60,7 @@ from agent_backend.core.context import current_agent_type
 from agent_backend.core.sse import sse_event
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import Conversation, Message
+from agent_backend.db.utils import commit_or_rollback, now_utc
 from agent_backend.integrations.chat_history_push import dispatch_chat_history_report
 from agent_backend.sql_agent.connection_manager import get_connection_manager
 
@@ -182,7 +183,7 @@ async def chat(
     }
 
     if conversation_id:
-        await _ensure_conversation_owned(conversation_id, current_user.user_id)
+        await _ensure_conversation_owned(conversation_id, current_user.user_id, agent_type)
         db_history = await _load_conversation_messages(conversation_id)
         managed_history = manage_history(
             history=db_history,
@@ -218,7 +219,7 @@ async def chat(
 
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
-        now = time.time()
+        now = now_utc()
         async with async_session() as db:
             conv = Conversation(
                 id=conversation_id,
@@ -227,10 +228,10 @@ async def chat(
                 agent_type=agent_type,
                 created_at=now,
                 updated_at=now,
-                is_deleted=0,
+                is_deleted=False,
             )
             db.add(conv)
-            await db.commit()
+            await commit_or_rollback(db)
         logger.info(f"\n[Chat] 自动创建会话记录: {conversation_id[:8]}... 标题: {_generate_title(req.question)}")
 
     await _save_message(conversation_id, "user", req.question)
@@ -480,10 +481,10 @@ async def _save_message(conversation_id: str, role: str, content: str, intent: s
                 content=content,
                 intent=intent,
                 charts=charts,
-                created_at=time.time(),
+                created_at=now_utc(),
             )
             db.add(msg)
-            await db.commit()
+            await commit_or_rollback(db)
     except Exception as e:
         logger.error(f"\n保存消息失败: {e}")
 
@@ -491,18 +492,18 @@ async def _save_message(conversation_id: str, role: str, content: str, intent: s
 async def _update_conversation_timestamp(conversation_id: str):
     try:
         async with async_session() as db:
-            from sqlalchemy import select, update
+            from sqlalchemy import select
             stmt = select(Conversation).where(Conversation.id == conversation_id)
             result = await db.execute(stmt)
             conv = result.scalar_one_or_none()
             if conv:
-                conv.updated_at = time.time()
-                await db.commit()
+                conv.updated_at = now_utc()
+                await commit_or_rollback(db)
     except Exception as e:
         logger.error(f"\n更新会话时间戳失败: {e}")
 
 
-async def _ensure_conversation_owned(conversation_id: str, user_id: str) -> None:
+async def _ensure_conversation_owned(conversation_id: str, user_id: str, agent_type: str) -> None:
     """续聊前先校验会话归属，避免只靠 conversation_id 跨账号读取历史。"""
     async with async_session() as db:
         from sqlalchemy import select
@@ -510,7 +511,8 @@ async def _ensure_conversation_owned(conversation_id: str, user_id: str) -> None
         stmt = select(Conversation.id).where(
             Conversation.id == conversation_id,
             Conversation.user_id == user_id,
-            Conversation.is_deleted == 0,
+            Conversation.agent_type == agent_type,
+            Conversation.is_deleted.is_(False),
         )
         result = await db.execute(stmt)
         if result.scalar_one_or_none() is None:

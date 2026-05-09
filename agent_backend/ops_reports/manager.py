@@ -27,7 +27,7 @@
 
 关联文件：
     - agent_backend/ops_reports/executor.py: OpsReportExecutor 报告生成器
-    - agent_backend/db/chat_history.py: async_session SQLite会话
+    - agent_backend/db/chat_history.py: async_session PostgreSQL会话
     - agent_backend/db/models.py: OpsReport, OpsMetricSnapshot ORM模型
     - agent_backend/configs/ops_reports.yaml: 简报配置文件
     - agent_backend/api/v1/ops.py: REST API 调用入口
@@ -35,6 +35,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+import copy
 import json
 import logging
 from pathlib import Path
@@ -42,10 +44,12 @@ from typing import Any
 
 import yaml
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from agent_backend.db.chat_history import async_session
 from agent_backend.db.models import OpsMetricSnapshot, OpsReport
+from agent_backend.db.utils import commit_or_rollback, to_epoch_seconds
 from agent_backend.ops_reports.executor import OpsReportExecutor
 
 logger = logging.getLogger(__name__)
@@ -75,6 +79,8 @@ class OpsReportManager:
         self._scheduler: AsyncIOScheduler | None = None
         self._executor: OpsReportExecutor | None = None
         self._configs: dict[str, dict[str, Any]] = {}
+        self._config_paths: dict[str, Path] = {}
+        self._run_locks: dict[str, asyncio.Lock] = {}
 
     async def start(self) -> None:
         """
@@ -94,19 +100,7 @@ class OpsReportManager:
         )
 
         for report_key, config in self._configs.items():
-            if not config.get("enabled", True):
-                continue
-            interval_seconds = int(config.get("interval_seconds", 7200))
-            self._scheduler.add_job(
-                self._run_report_job,
-                trigger=IntervalTrigger(seconds=interval_seconds),
-                id=f"ops_report::{report_key}",
-                args=[report_key],
-                replace_existing=True,
-            )
-            logger.info(
-                f"\n[OpsReport] 已注册简报任务: {report_key}, interval={interval_seconds}s"
-            )
+            self._sync_scheduler_job(report_key, config)
 
         self._scheduler.start()
         logger.info("\n[OpsReport] 运维简报调度器已启动")
@@ -146,7 +140,7 @@ class OpsReportManager:
             ],
         }
 
-    def get_default_report_key(self) -> str:
+    def get_default_report_key(self, agent_type: str | None = None) -> str:
         """
         获取默认的简报配置标识（第一个启用的配置）。
 
@@ -157,6 +151,8 @@ class OpsReportManager:
             self._configs = self._load_configs()
 
         for report_key, config in self._configs.items():
+            if agent_type and config.get("agent_type") != agent_type:
+                continue
             if config.get("enabled", True):
                 return report_key
         raise RuntimeError("没有可用的运维简报配置")
@@ -167,15 +163,18 @@ class OpsReportManager:
         if self._executor is None:
             self._executor = OpsReportExecutor()
 
-        target_key = report_key or self.get_default_report_key()
+        target_key = report_key or self.get_default_report_key(agent_type)
         config = self._configs.get(target_key)
         if not config:
             raise ValueError(f"运维简报配置不存在: {target_key}")
+        if agent_type and config.get("agent_type") != agent_type:
+            raise ValueError(f"运维简报配置不属于当前智能体: {target_key}")
 
-        if agent_type and not config.get("agent_type"):
-            config = {**config, "agent_type": agent_type}
+        lock_key = f"{config.get('agent_type', '')}::{target_key}"
+        lock = self._run_locks.setdefault(lock_key, asyncio.Lock())
 
-        return await self._executor.generate_report(target_key, config)
+        async with lock:
+            return await self._executor.generate_report(target_key, config)
 
     async def list_reports(self, limit: int = 20, unread_only: bool = False, agent_type: str | None = None) -> dict[str, Any]:
         from sqlalchemy import func, select
@@ -189,8 +188,8 @@ class OpsReportManager:
                 count_stmt = count_stmt.where(OpsReport.agent_type == agent_type)
 
             if unread_only:
-                base_stmt = base_stmt.where(OpsReport.unread == 1)
-                count_stmt = count_stmt.where(OpsReport.unread == 1)
+                base_stmt = base_stmt.where(OpsReport.unread.is_(True))
+                count_stmt = count_stmt.where(OpsReport.unread.is_(True))
 
             reports = (
                 await session.execute(
@@ -199,7 +198,7 @@ class OpsReportManager:
             ).scalars().all()
 
             total = (await session.execute(count_stmt)).scalar() or 0
-            unread_stmt = select(func.count()).select_from(OpsReport).where(OpsReport.unread == 1)
+            unread_stmt = select(func.count()).select_from(OpsReport).where(OpsReport.unread.is_(True))
             if agent_type:
                 unread_stmt = unread_stmt.where(OpsReport.agent_type == agent_type)
             unread_total = (
@@ -224,7 +223,7 @@ class OpsReportManager:
                     stmt.order_by(OpsReport.generated_at.desc()).limit(1)
                 )
             ).scalar_one_or_none()
-            unread_stmt = select(func.count()).select_from(OpsReport).where(OpsReport.unread == 1)
+            unread_stmt = select(func.count()).select_from(OpsReport).where(OpsReport.unread.is_(True))
             if agent_type:
                 unread_stmt = unread_stmt.where(OpsReport.agent_type == agent_type)
             unread_total = (
@@ -236,7 +235,7 @@ class OpsReportManager:
             "unread_total": unread_total,
         }
 
-    async def get_report(self, report_id: str) -> dict[str, Any] | None:
+    async def get_report(self, report_id: str, agent_type: str | None = None) -> dict[str, Any] | None:
         """
         获取指定ID的运维简报详情（含完整内容和指标快照）。
 
@@ -249,18 +248,20 @@ class OpsReportManager:
         from sqlalchemy import select
 
         async with async_session() as session:
-            report = (
-                await session.execute(
-                    select(OpsReport).where(OpsReport.report_id == report_id)
-                )
-            ).scalar_one_or_none()
+            stmt = select(OpsReport).where(OpsReport.report_id == report_id)
+            if agent_type:
+                stmt = stmt.where(OpsReport.agent_type == agent_type)
+            report = (await session.execute(stmt)).scalar_one_or_none()
             if not report:
                 return None
 
             snapshot = (
                 await session.execute(
                     select(OpsMetricSnapshot)
-                    .where(OpsMetricSnapshot.report_id == report_id)
+                    .where(
+                        OpsMetricSnapshot.report_id == report_id,
+                        OpsMetricSnapshot.agent_type == report.agent_type,
+                    )
                     .order_by(OpsMetricSnapshot.created_at.desc())
                     .limit(1)
                 )
@@ -275,7 +276,7 @@ class OpsReportManager:
 
         return self._serialize_report(report, include_content=True, snapshot=snapshot_data)
 
-    async def mark_report_read(self, report_id: str) -> dict[str, Any] | None:
+    async def mark_report_read(self, report_id: str, agent_type: str | None = None) -> dict[str, Any] | None:
         """
         标记指定简报为已读。
 
@@ -288,22 +289,20 @@ class OpsReportManager:
         from sqlalchemy import func, select
 
         async with async_session() as session:
-            report = (
-                await session.execute(
-                    select(OpsReport).where(OpsReport.report_id == report_id)
-                )
-            ).scalar_one_or_none()
+            stmt = select(OpsReport).where(OpsReport.report_id == report_id)
+            if agent_type:
+                stmt = stmt.where(OpsReport.agent_type == agent_type)
+            report = (await session.execute(stmt)).scalar_one_or_none()
             if not report:
                 return None
 
-            report.unread = 0
-            await session.commit()
+            report.unread = False
+            await commit_or_rollback(session)
 
-            unread_total = (
-                await session.execute(
-                    select(func.count()).select_from(OpsReport).where(OpsReport.unread == 1)
-                )
-            ).scalar() or 0
+            unread_stmt = select(func.count()).select_from(OpsReport).where(OpsReport.unread.is_(True))
+            if agent_type:
+                unread_stmt = unread_stmt.where(OpsReport.agent_type == agent_type)
+            unread_total = (await session.execute(unread_stmt)).scalar() or 0
 
         return {"report_id": report_id, "unread": False, "unread_total": unread_total}
 
@@ -324,6 +323,7 @@ class OpsReportManager:
             RuntimeError: 配置为空时抛出
         """
         configs: dict[str, dict[str, Any]] = {}
+        self._config_paths = {}
 
         try:
             from agent_backend.agent.registry import get_registry
@@ -342,6 +342,7 @@ class OpsReportManager:
                     if report_key:
                         item["agent_type"] = agent_cfg.agent_type
                         configs[report_key] = item
+                        self._config_paths[report_key] = config_path
         except Exception as e:
             logger.warning(f"\n[OpsReport] 加载配置失败: {e}")
 
@@ -350,6 +351,147 @@ class OpsReportManager:
 
         logger.info(f"\n[OpsReport] 已加载 {len(configs)} 个简报配置")
         return configs
+
+    def _build_trigger(self, config: dict[str, Any]):
+        schedule = config.get("schedule") or {}
+        schedule_type = schedule.get("type")
+        if schedule_type in {"daily", "weekly"}:
+            hour, minute = self._parse_time(schedule.get("time", "08:00"))
+            if schedule_type == "weekly":
+                try:
+                    weekday = int(schedule.get("weekday") or 1)
+                except (TypeError, ValueError):
+                    weekday = 1
+                day_of_week = (weekday - 1) % 7
+                return CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
+            return CronTrigger(hour=hour, minute=minute)
+
+        interval_seconds = int(config.get("interval_seconds", 7200))
+        return IntervalTrigger(seconds=interval_seconds)
+
+    def _sync_scheduler_job(self, report_key: str, config: dict[str, Any]) -> None:
+        if self._scheduler is None:
+            return
+        job_id = f"ops_report::{report_key}"
+        if not config.get("enabled", True):
+            if self._scheduler.running and self._scheduler.get_job(job_id):
+                self._scheduler.remove_job(job_id)
+            return
+        trigger = self._build_trigger(config)
+        self._scheduler.add_job(
+            self._run_report_job,
+            trigger=trigger,
+            id=job_id,
+            args=[report_key],
+            replace_existing=True,
+        )
+        logger.info(f"\n[OpsReport] 已注册简报任务: {report_key}, trigger={trigger}")
+
+    @staticmethod
+    def _parse_time(value: str) -> tuple[int, int]:
+        try:
+            hour_text, minute_text = str(value).split(":", 1)
+            hour = min(max(int(hour_text), 0), 23)
+            minute = min(max(int(minute_text), 0), 59)
+            return hour, minute
+        except Exception:
+            return 8, 0
+
+    def list_definitions(self, agent_type: str | None = None) -> dict[str, Any]:
+        """
+        获取简报定义列表。
+
+        参数：
+            agent_type: 智能体类型筛选
+
+        返回：
+            包含 definitions 列表的字典
+        """
+        if not self._configs:
+            self._configs = self._load_configs()
+
+        definitions = []
+        for report_key, config in self._configs.items():
+            if agent_type and config.get("agent_type") != agent_type:
+                continue
+            definitions.append({
+                "report_key": report_key,
+                "name": config.get("name", report_key),
+                "enabled": config.get("enabled", True),
+                "schedule": config.get("schedule", {}),
+                "modules": config.get("modules", []),
+                "agent_type": config.get("agent_type", ""),
+            })
+
+        return {"definitions": definitions}
+
+    def update_definition(self, report_key: str, body: dict[str, Any], agent_type: str | None = None) -> dict[str, Any]:
+        """
+        更新简报定义配置，并持久化到 YAML。
+
+        参数：
+            report_key: 简报配置标识
+            body: 更新内容，支持 enabled、schedule、modules 字段
+            agent_type: 智能体类型
+
+        返回：
+            更新后的定义字典
+
+        异常：
+            ValueError: 配置不存在时抛出
+        """
+        if not self._configs:
+            self._configs = self._load_configs()
+
+        config = self._configs.get(report_key)
+        if not config:
+            raise ValueError(f"运维简报配置不存在: {report_key}")
+        if agent_type and config.get("agent_type") != agent_type:
+            raise ValueError(f"运维简报配置不属于当前智能体: {report_key}")
+
+        if "enabled" in body:
+            config["enabled"] = body["enabled"]
+        if "schedule" in body:
+            config["schedule"] = body["schedule"]
+        if "modules" in body:
+            config["modules"] = body["modules"]
+        self._persist_definition(report_key, config)
+        self._sync_scheduler_job(report_key, config)
+
+        logger.info(f"\n[OpsReport] 已更新简报定义: {report_key}")
+
+        return {
+            "report_key": report_key,
+            "name": config.get("name", report_key),
+            "enabled": config.get("enabled", True),
+            "schedule": config.get("schedule", {}),
+            "modules": config.get("modules", []),
+            "agent_type": config.get("agent_type", ""),
+        }
+
+    def _persist_definition(self, report_key: str, config: dict[str, Any]) -> None:
+        config_path = self._config_paths.get(report_key)
+        if not config_path:
+            raise ValueError(f"运维简报配置文件不存在: {report_key}")
+
+        with open(config_path, "r", encoding="utf-8") as file:
+            data = yaml.safe_load(file) or {}
+
+        updated = False
+        for item in data.get("reports", []):
+            if item.get("report_key") != report_key:
+                continue
+            item["enabled"] = bool(config.get("enabled", True))
+            item["schedule"] = copy.deepcopy(config.get("schedule", {}))
+            item["modules"] = copy.deepcopy(config.get("modules", []))
+            updated = True
+            break
+
+        if not updated:
+            raise ValueError(f"运维简报配置不存在: {report_key}")
+
+        with open(config_path, "w", encoding="utf-8") as file:
+            yaml.safe_dump(data, file, allow_unicode=True, sort_keys=False)
 
     @staticmethod
     def _serialize_report(
@@ -380,9 +522,9 @@ class OpsReportManager:
             "severity": report.severity,
             "unread": bool(report.unread),
             "agent_type": report.agent_type,
-            "generated_at": report.generated_at,
-            "window_start": report.window_start,
-            "window_end": report.window_end,
+            "generated_at": to_epoch_seconds(report.generated_at),
+            "window_start": to_epoch_seconds(report.window_start),
+            "window_end": to_epoch_seconds(report.window_end),
         }
         if include_content:
             payload["content_md"] = report.content_md
