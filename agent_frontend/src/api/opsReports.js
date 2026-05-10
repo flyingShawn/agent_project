@@ -60,3 +60,8 @@ export async function updateOpsDefinition(agentType, reportKey, data) {
   })
   return parseJsonResponse(response)
 }
+
+export async function getOnlineTrend(agentType, hours = 24) {
+  const response = await fetchWithExternalAuth(`${API_BASE}/${agentType}/ops/online-trend?hours=${hours}`)
+  return parseJsonResponse(response)
+}

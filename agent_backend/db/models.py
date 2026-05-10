@@ -144,6 +144,28 @@ class OpsMetricSnapshot(Base):
     created_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class OnlineSnapshot(Base):
+    """
+    客户端在线状态定时快照模型。
+
+    映射到 online_snapshot 表，每隔一定时间采集一次客户端在线数量和在线率，
+    用于绘制在线趋势图表。
+    """
+    __tablename__ = "online_snapshot"
+    __table_args__ = (
+        Index("idx_online_snapshot_agent_created", "agent_type", "created_at"),
+        Index("idx_online_snapshot_created_at", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_type = Column(String, nullable=False, default="")
+    online_count = Column(Integer, nullable=False, default=0)
+    total_count = Column(Integer, nullable=False, default=0)
+    online_rate = Column(Integer, nullable=False, default=0)
+    not_booted_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class TaskExecution(Base):
     """
     任务执行记录模型。

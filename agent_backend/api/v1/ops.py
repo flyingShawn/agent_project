@@ -122,3 +122,12 @@ async def update_ops_definition(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/online-trend")
+async def get_online_trend(
+    agent_type: str,
+    hours: int = Query(default=24, ge=1, le=168),
+) -> dict[str, Any]:
+    manager = get_ops_report_manager()
+    return await manager.get_online_trend(hours=hours, agent_type=agent_type)

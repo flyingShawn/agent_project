@@ -11,7 +11,7 @@ reports:
     enabled: true
     type: realtime
   - key: server_health
-    enabled: false
+    enabled: true
     type: realtime
   - key: remote_top
     enabled: true
@@ -22,17 +22,17 @@ reports:
     type: period
     range: last_7_days
   - key: wallpaper_screen
-    enabled: false
+    enabled: true
     type: realtime
   - key: file_distribution
-    enabled: false
+    enabled: true
     type: period
     range: last_7_days
   - key: antivirus
-    enabled: false
+    enabled: true
     type: realtime
   - key: hardware_change
-    enabled: false
+    enabled: true
     type: period
     range: last_7_days
   lookback_days: 3

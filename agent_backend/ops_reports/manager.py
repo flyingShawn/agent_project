@@ -48,8 +48,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from agent_backend.db.chat_history import async_session
-from agent_backend.db.models import OpsMetricSnapshot, OpsReport
-from agent_backend.db.utils import commit_or_rollback, to_epoch_seconds
+from agent_backend.db.models import OpsMetricSnapshot, OpsReport, OnlineSnapshot
+from agent_backend.db.utils import commit_or_rollback, now_utc, to_epoch_seconds
 from agent_backend.ops_reports.executor import OpsReportExecutor
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,13 @@ class OpsReportManager:
 
         for report_key, config in self._configs.items():
             self._sync_scheduler_job(report_key, config)
+
+        self._scheduler.add_job(
+            self._collect_online_snapshot_job,
+            IntervalTrigger(minutes=30),
+            id="ops_online_snapshot",
+            replace_existing=True,
+        )
 
         self._scheduler.start()
         logger.info("\n[OpsReport] 运维简报调度器已启动")
@@ -530,6 +537,62 @@ class OpsReportManager:
             payload["content_md"] = report.content_md
             payload["snapshot"] = snapshot
         return payload
+
+
+    async def _collect_online_snapshot_job(self) -> None:
+        try:
+            if self._executor is None:
+                self._executor = OpsReportExecutor()
+            from datetime import datetime, timedelta
+            now_dt = datetime.now()
+            cutoff_dt = now_dt - timedelta(days=3)
+            online = await self._executor._collect_online_metrics(cutoff_dt)
+            agent_types = set()
+            for config in self._configs.values():
+                at = config.get("agent_type", "")
+                if at:
+                    agent_types.add(at)
+            if not agent_types:
+                agent_types = {""}
+            now = now_utc()
+            async with async_session() as session:
+                for agent_type in agent_types:
+                    snapshot = OnlineSnapshot(
+                        agent_type=agent_type,
+                        online_count=online.get("online_count", 0),
+                        total_count=online.get("total_count", 0),
+                        online_rate=round(online.get("online_rate", 0) * 10),
+                        not_booted_count=online.get("not_booted_count", 0),
+                        created_at=now,
+                    )
+                    session.add(snapshot)
+                await commit_or_rollback(session)
+            logger.info(f"\n[OpsReport] 在线状态快照采集完成: online={online.get('online_count', 0)}/{online.get('total_count', 0)}")
+        except Exception as exc:
+            logger.error(f"\n[OpsReport] 在线状态快照采集失败: {exc}")
+
+    async def get_online_trend(self, hours: int = 24, agent_type: str | None = None) -> dict[str, Any]:
+        from sqlalchemy import select
+
+        from datetime import timedelta
+        cutoff = now_utc() - timedelta(hours=hours)
+        async with async_session() as session:
+            stmt = select(OnlineSnapshot).order_by(OnlineSnapshot.created_at.asc())
+            if agent_type:
+                stmt = stmt.where(OnlineSnapshot.agent_type == agent_type)
+            stmt = stmt.where(OnlineSnapshot.created_at >= cutoff)
+            rows = (await session.execute(stmt)).scalars().all()
+
+        data_points = []
+        for row in rows:
+            data_points.append({
+                "timestamp": to_epoch_seconds(row.created_at),
+                "online_count": row.online_count,
+                "total_count": row.total_count,
+                "online_rate": row.online_rate / 10.0 if row.online_rate else 0.0,
+                "not_booted_count": row.not_booted_count,
+            })
+        return {"data_points": data_points, "hours": hours}
 
 
 def get_ops_report_manager() -> OpsReportManager:

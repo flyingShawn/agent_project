@@ -1769,16 +1769,17 @@ class OpsReportExecutor:
                 sections.append("最近统计窗口内没有 U 盘电脑使用记录。")
 
         if "wallpaper_screen" in enabled_modules:
-            sections.extend(["", "## 壁纸屏保策略"])
             wallpaper = wallpaper_screen.get("wallpaper") if isinstance(wallpaper_screen, dict) else None
             screensaver = wallpaper_screen.get("screensaver") if isinstance(wallpaper_screen, dict) else None
             client_total = int(wallpaper_screen.get("client_total") or 0) if isinstance(wallpaper_screen, dict) else 0
-            if self._has_policy_data(wallpaper) or self._has_policy_data(screensaver):
-                if self._has_policy_data(wallpaper):
-                    sections.extend(f"- {line}" for line in self._format_policy_summary("壁纸策略", wallpaper, client_total))
-                if self._has_policy_data(screensaver):
-                    sections.extend(f"- {line}" for line in self._format_policy_summary("屏保策略", screensaver, client_total))
-            else:
+            if self._has_policy_data(wallpaper):
+                sections.extend(["", "## 壁纸策略应用情况"])
+                sections.extend(f"- {line}" for line in self._format_policy_summary("壁纸策略", wallpaper, client_total))
+            if self._has_policy_data(screensaver):
+                sections.extend(["", "## 屏保策略应用情况"])
+                sections.extend(f"- {line}" for line in self._format_policy_summary("屏保策略", screensaver, client_total))
+            if not self._has_policy_data(wallpaper) and not self._has_policy_data(screensaver):
+                sections.extend(["", "## 壁纸屏保策略"])
                 sections.append("暂无数据。")
 
         if "file_distribution" in enabled_modules:

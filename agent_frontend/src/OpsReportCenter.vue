@@ -1,4 +1,4 @@
-﻿<script setup>
+﻿﻿<script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
@@ -13,6 +13,7 @@ import {
   getOpsDefinitions,
   updateOpsDefinition,
   runOpsReportNow,
+  getOnlineTrend,
 } from './api/opsReports'
 
 marked.use(
@@ -35,7 +36,17 @@ const timeRanges = [
   { label: '近30天', value: 'last_30_days' },
   { label: '本周', value: 'this_week' },
   { label: '本月', value: 'this_month' },
+  { label: '上周', value: 'last_week' },
 ]
+
+const rangeLabelMap = {
+  last_3_days: '近3天',
+  last_7_days: '近7天',
+  last_30_days: '近30天',
+  this_week: '本周',
+  this_month: '本月',
+  last_week: '上周',
+}
 
 const scheduleTypes = [
   { label: '每日', value: 'daily' },
@@ -56,7 +67,7 @@ const allModules = [
   { key: 'wallpaper_screen', title: '壁纸屏保策略', category: 'realtime', description: '策略应用情况', alwaysData: false, icon: 'wallpaper' },
   { key: 'file_distribution', title: '文件分发统计', category: 'period', description: '分发任务量与执行情况', alwaysData: false, range: 'last_7_days', icon: 'file' },
   { key: 'antivirus', title: '杀毒软件安装', category: 'realtime', description: '安装数量与品牌分布', alwaysData: true, icon: 'antivirus' },
-  { key: 'hardware_change', title: '硬件资产变化', category: 'period', description: '新增、变更、减少资产', alwaysData: true, range: 'last_7_days', icon: 'hardware' },
+  { key: 'hardware_change', title: '硬件资产变化', category: 'period', description: '新增、变更资产', alwaysData: true, range: 'last_7_days', icon: 'hardware' },
 ]
 
 const moduleIconMap = {
@@ -80,7 +91,7 @@ const mainView = ref('report')
 const activeHistoryKey = ref(null)
 const configTemplateKey = ref(null)
 const viewMode = ref('visual')
-const themeMode = ref('dark')
+const themeMode = ref('light')
 const currentTime = ref(new Date())
 const scheduleType = ref('daily')
 const scheduleTime = ref('08:00')
@@ -95,6 +106,7 @@ const isLoadingReports = ref(false)
 const isLoadingDetail = ref(false)
 const isGenerating = ref(false)
 const isSavingDef = ref(false)
+const onlineTrendData = ref([])
 
 const configTemplate = computed(() => definitions.value.find((d) => d.report_key === configTemplateKey.value) || {})
 
@@ -122,7 +134,8 @@ const selectedReportSnapshot = computed(() => selectedReport.value?.snapshot || 
 const selectedReportModules = computed(() => {
   const snap = selectedReportSnapshot.value
   if (!snap || Object.keys(snap).length === 0) return []
-  return allModules.filter((m) => snap[m.key])
+  const customRenderKeys = ['wallpaper_screen', 'file_distribution']
+  return allModules.filter((m) => snap[m.key] && !customRenderKeys.includes(m.key))
 })
 
 const selectedReportDef = computed(() => {
@@ -157,6 +170,14 @@ function getModuleRange(key) {
   if (!def || !def.modules) return 'last_7_days'
   const m = def.modules.find((mod) => mod.key === key)
   return m?.range || 'last_7_days'
+}
+
+function getSnapshotRangeLabel(key) {
+  const snap = selectedReportSnapshot.value
+  if (!snap || !snap[key]) return ''
+  const range = snap[key].range
+  if (!range) return ''
+  return rangeLabelMap[range] || range
 }
 
 function isWeeklyTemplate() {
@@ -330,6 +351,16 @@ async function loadReportDetail(reportId) {
   }
 }
 
+async function loadOnlineTrend() {
+  try {
+    const payload = await getOnlineTrend(agentType.value, 24)
+    onlineTrendData.value = payload.data_points || []
+  } catch (e) {
+    console.error('加载在线趋势数据失败:', e)
+    onlineTrendData.value = []
+  }
+}
+
 const chartRefs = ref({})
 const chartInstances = ref({})
 
@@ -347,9 +378,39 @@ function buildChartOption(moduleKey, snapshot) {
   const grid = { top: 30, right: 16, bottom: 24, left: 44 }
   const gridHorizontal = { top: 12, right: 40, bottom: 12, left: 120 }
 
+  const emptyGraphic = {
+    graphic: [{
+      type: 'text', left: 'center', top: 'middle',
+      style: { text: '暂无数据', fontSize: 14, fontWeight: 500, fill: isDark.value ? '#475569' : '#94A3B8' },
+    }],
+    xAxis: { show: false },
+    yAxis: { show: false },
+    series: [],
+  }
+
   switch (moduleKey) {
     case 'online_status': {
       const d = snapshot
+      if (onlineTrendData.value.length >= 2) {
+        const trend = onlineTrendData.value
+        const timeLabels = trend.map((p) => {
+          const dt = new Date(p.timestamp * 1000)
+          return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`
+        })
+        return {
+          ...base, grid: { top: 40, right: 16, bottom: 24, left: 50 },
+          legend: { data: ['在线数', '在线率'], textStyle: { color: textColor.value, fontSize: 11 }, top: 4, right: 16 },
+          xAxis: { type: 'category', data: timeLabels, axisLine: { lineStyle: { color: axisLineColor.value } }, axisLabel: { color: textColor.value, fontSize: 10, interval: Math.max(0, Math.floor(timeLabels.length / 8) - 1) } },
+          yAxis: [
+            { type: 'value', name: '在线数', splitLine: { lineStyle: { color: splitLineColor.value } }, axisLabel: { color: textColor.value }, nameTextStyle: { color: textColor.value, fontSize: 10 } },
+            { type: 'value', name: '在线率%', max: 100, splitLine: { show: false }, axisLabel: { color: textColor.value, formatter: '{value}%' }, nameTextStyle: { color: textColor.value, fontSize: 10 } },
+          ],
+          series: [
+            { name: '在线数', type: 'line', data: trend.map((p) => p.online_count), smooth: true, symbol: 'circle', symbolSize: 4, itemStyle: { color: '#22C55E' }, lineStyle: { width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(34,197,94,0.25)' }, { offset: 1, color: 'rgba(34,197,94,0.02)' }]) } },
+            { name: '在线率', type: 'line', yAxisIndex: 1, data: trend.map((p) => p.online_rate), smooth: true, symbol: 'circle', symbolSize: 4, itemStyle: { color: '#00D4FF' }, lineStyle: { width: 2, type: 'dashed' } },
+          ],
+        }
+      }
       return {
         ...base, grid,
         xAxis: { type: 'category', data: ['在线', '离线', '未开机'], axisLine: { lineStyle: { color: axisLineColor.value } }, axisLabel: { color: textColor.value } },
@@ -359,8 +420,10 @@ function buildChartOption(moduleKey, snapshot) {
     }
     case 'server_health': {
       const servers = snapshot.servers || []
+      if (servers.length === 0) return { ...base, ...emptyGraphic }
       return {
-        ...base, grid, legend: { data: ['CPU', '内存', '磁盘'], textStyle: { color: textColor.value, fontSize: 11 }, top: 4, right: 16 },
+        ...base, grid: { top: 28, right: 16, bottom: 20, left: 44 },
+        legend: { data: ['CPU', '内存', '磁盘'], textStyle: { color: textColor.value, fontSize: 11 }, top: 4, right: 16 },
         xAxis: { type: 'category', data: servers.map((s) => s.name), axisLine: { lineStyle: { color: axisLineColor.value } }, axisLabel: { color: textColor.value } },
         yAxis: { type: 'value', max: 100, splitLine: { lineStyle: { color: splitLineColor.value } }, axisLabel: { color: textColor.value, formatter: '{value}%' } },
         series: [
@@ -372,6 +435,7 @@ function buildChartOption(moduleKey, snapshot) {
     }
     case 'remote_top': {
       const clients = (snapshot.top_clients || []).slice(0, 5).reverse()
+      if (clients.length === 0) return { ...base, ...emptyGraphic }
       return {
         ...base, grid: gridHorizontal,
         xAxis: { type: 'value', splitLine: { lineStyle: { color: splitLineColor.value } }, axisLabel: { color: textColor.value } },
@@ -379,8 +443,9 @@ function buildChartOption(moduleKey, snapshot) {
         series: [{ type: 'bar', data: clients.map((c) => c.remote_count), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#00D4FF' }, { offset: 1, color: '#22C55E' }]), borderRadius: [0, 4, 4, 0] }, barWidth: 16 }],
       }
     }
-    case 'usb_top': {
+    case 'usb_top_devices': {
       const devices = (snapshot.top_devices || []).slice(0, 5).reverse()
+      if (devices.length === 0) return { ...base, ...emptyGraphic }
       return {
         ...base, grid: { ...gridHorizontal, left: 140 },
         xAxis: { type: 'value', splitLine: { lineStyle: { color: splitLineColor.value } }, axisLabel: { color: textColor.value } },
@@ -388,12 +453,23 @@ function buildChartOption(moduleKey, snapshot) {
         series: [{ type: 'bar', data: devices.map((d) => d.usage_count), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#A855F7' }, { offset: 1, color: '#EC4899' }]), borderRadius: [0, 4, 4, 0] }, barWidth: 16 }],
       }
     }
+    case 'usb_top_machines': {
+      const machines = (snapshot.top_machines || []).slice(0, 5).reverse()
+      if (machines.length === 0) return { ...base, ...emptyGraphic }
+      return {
+        ...base, grid: gridHorizontal,
+        xAxis: { type: 'value', splitLine: { lineStyle: { color: splitLineColor.value } }, axisLabel: { color: textColor.value } },
+        yAxis: { type: 'category', data: machines.map((m) => m.machine_name || '未知'), axisLine: { lineStyle: { color: axisLineColor.value } }, axisLabel: { color: labelColor.value, fontSize: 11 } },
+        series: [{ type: 'bar', data: machines.map((m) => m.usage_count), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#00D4FF' }, { offset: 1, color: '#22C55E' }]), borderRadius: [0, 4, 4, 0] }, barWidth: 16 }],
+      }
+    }
     case 'antivirus': {
       const items = snapshot.items || []
+      if (items.length === 0) return { ...base, ...emptyGraphic }
       return {
         ...base,
         series: [{
-          type: 'pie', radius: ['52%', '78%'], center: ['50%', '50%'], avoidLabelOverlap: false,
+          type: 'pie', radius: ['45%', '72%'], center: ['50%', '50%'], avoidLabelOverlap: false,
           itemStyle: { borderRadius: 6, borderColor: isDark.value ? '#0F172A' : '#FFFFFF', borderWidth: 2 },
           label: { show: true, position: 'outside', color: labelColor.value, fontSize: 11, formatter: '{b}\n{d}%' },
           labelLine: { lineStyle: { color: isDark.value ? '#475569' : '#CBD5E1' } },
@@ -405,16 +481,16 @@ function buildChartOption(moduleKey, snapshot) {
       }
     }
     case 'hardware_change': {
+      const hasData = (snapshot.added || 0) + (snapshot.changed || 0) > 0
+      if (!hasData) return { ...base, ...emptyGraphic }
       return {
-        ...base, grid,
-        xAxis: { type: 'category', data: ['新增', '变更', '减少', '待确认'], axisLine: { lineStyle: { color: axisLineColor.value } }, axisLabel: { color: textColor.value } },
+        ...base, grid: { top: 16, right: 16, bottom: 20, left: 44 },
+        xAxis: { type: 'category', data: ['新增', '变更'], axisLine: { lineStyle: { color: axisLineColor.value } }, axisLabel: { color: textColor.value } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: splitLineColor.value } }, axisLabel: { color: textColor.value } },
         series: [{ type: 'bar', data: [
           { value: snapshot.added || 0, itemStyle: { color: '#22C55E' } },
           { value: snapshot.changed || 0, itemStyle: { color: '#00D4FF' } },
-          { value: snapshot.removed || 0, itemStyle: { color: '#EF4444' } },
-          { value: snapshot.pending_confirm || 0, itemStyle: { color: '#F59E0B' } },
-        ], barWidth: 40, itemStyle: { borderRadius: [4, 4, 0, 0] } }],
+        ], barWidth: 36, itemStyle: { borderRadius: [4, 4, 0, 0] } }],
       }
     }
     default:
@@ -436,6 +512,18 @@ function initCharts() {
 
   nextTick(() => {
     for (const moduleKey of Object.keys(snap)) {
+      if (moduleKey === 'usb_top') {
+        for (const subKey of ['usb_top_devices', 'usb_top_machines']) {
+          const option = buildChartOption(subKey, snap[moduleKey])
+          if (!option) continue
+          const el = chartRefs.value[subKey]
+          if (!el) continue
+          const instance = echarts.init(el, null, { renderer: 'canvas' })
+          instance.setOption(option)
+          chartInstances.value[subKey] = instance
+        }
+        continue
+      }
       const option = buildChartOption(moduleKey, snap[moduleKey])
       if (!option) continue
       const el = chartRefs.value[moduleKey]
@@ -455,6 +543,7 @@ let timer = null
 onMounted(async () => {
   await loadDefinitions()
   await loadReports()
+  await loadOnlineTrend()
   window.addEventListener('resize', handleResize)
   timer = setInterval(() => { currentTime.value = new Date() }, 1000)
 })
@@ -685,33 +774,49 @@ watch([viewMode, themeMode, mainView, selectedReport], () => {
             </div>
 
             <div v-if="viewMode === 'visual'" class="chart-grid">
-              <article v-for="m in selectedReportModules" :key="m.key" class="chart-card" :class="{ 'span-2': ['online_status', 'server_health', 'hardware_change'].includes(m.key) }">
-                <div class="chart-title">{{ m.title }}</div>
-                <div :ref="(el) => setChartRef(el, m.key)" class="chart-container"></div>
+              <article v-for="m in selectedReportModules" :key="m.key" class="chart-card" :class="{ 'span-2': m.key === 'online_status', ['module-' + m.key]: true }">
+                <div class="chart-title">{{ m.title }}<span v-if="m.category === 'period' && getSnapshotRangeLabel(m.key)" class="chart-range">{{ getSnapshotRangeLabel(m.key) }}</span></div>
+                <div v-if="m.key === 'online_status' && selectedReportSnapshot.online_status" class="online-summary">
+                  <div class="online-stat"><span class="online-stat-value green">{{ selectedReportSnapshot.online_status.online_count || 0 }}</span><span class="online-stat-label">在线</span></div>
+                  <div class="online-stat"><span class="online-stat-value">{{ selectedReportSnapshot.online_status.total_count || 0 }}</span><span class="online-stat-label">总数</span></div>
+                  <div class="online-stat"><span class="online-stat-value cyan">{{ (selectedReportSnapshot.online_status.online_rate || 0).toFixed(1) }}%</span><span class="online-stat-label">在线率</span></div>
+                  <div class="online-stat"><span class="online-stat-value amber">{{ selectedReportSnapshot.online_status.not_booted_count || 0 }}</span><span class="online-stat-label">未开机</span></div>
+                </div>
+                <div v-if="m.key === 'usb_top' && selectedReportSnapshot.usb_top" class="usb-charts">
+                  <div class="usb-chart-group">
+                    <div class="usb-chart-label">U盘使用TOP</div>
+                    <div :ref="(el) => setChartRef(el, 'usb_top_devices')" class="chart-container chart-container-sm"></div>
+                  </div>
+                  <div class="usb-chart-group">
+                    <div class="usb-chart-label">用U盘的电脑TOP</div>
+                    <div :ref="(el) => setChartRef(el, 'usb_top_machines')" class="chart-container chart-container-sm"></div>
+                  </div>
+                </div>
+                <div v-else :ref="(el) => setChartRef(el, m.key)" class="chart-container"></div>
               </article>
 
-              <article v-if="selectedReportSnapshot.wallpaper_screen" class="chart-card span-2">
+              <article v-if="selectedReportSnapshot.wallpaper_screen" class="chart-card module-wallpaper_screen">
                 <div class="chart-title">壁纸屏保策略应用情况</div>
                 <div class="wallpaper-rows">
                   <div class="wallpaper-row">
                     <div class="wallpaper-info">
                       <strong>壁纸策略</strong>
-                      <span>已应用 {{ selectedReportSnapshot.wallpaper_screen.wallpaper?.applied || 0 }}/{{ selectedReportSnapshot.wallpaper_screen.wallpaper?.total || 0 }}</span>
+                      <span>已应用 {{ selectedReportSnapshot.wallpaper_screen.wallpaper?.applied || 0 }}/{{ selectedReportSnapshot.wallpaper_screen.client_total || 0 }}</span>
                     </div>
-                    <div class="wallpaper-bar"><div class="wallpaper-bar-fill" :style="{ width: ratioWidth(selectedReportSnapshot.wallpaper_screen.wallpaper) }"></div></div>
+                    <div class="wallpaper-bar"><div class="wallpaper-bar-fill" :style="{ width: ratioWidth({ applied: selectedReportSnapshot.wallpaper_screen.wallpaper?.applied || 0, total: selectedReportSnapshot.wallpaper_screen.client_total || 0 }) }"></div></div>
                   </div>
                   <div class="wallpaper-row">
                     <div class="wallpaper-info">
                       <strong>屏保策略</strong>
-                      <span>已应用 {{ selectedReportSnapshot.wallpaper_screen.screensaver?.applied || 0 }}/{{ selectedReportSnapshot.wallpaper_screen.screensaver?.total || 0 }}</span>
+                      <span>已应用 {{ selectedReportSnapshot.wallpaper_screen.screensaver?.applied || 0 }}/{{ selectedReportSnapshot.wallpaper_screen.client_total || 0 }}</span>
                     </div>
-                    <div class="wallpaper-bar"><div class="wallpaper-bar-fill" :style="{ width: ratioWidth(selectedReportSnapshot.wallpaper_screen.screensaver) }"></div></div>
+                    <div class="wallpaper-bar"><div class="wallpaper-bar-fill" :style="{ width: ratioWidth({ applied: selectedReportSnapshot.wallpaper_screen.screensaver?.applied || 0, total: selectedReportSnapshot.wallpaper_screen.client_total || 0 }) }"></div></div>
                   </div>
                 </div>
               </article>
 
-              <article v-if="selectedReportSnapshot.file_distribution" class="chart-card span-2">
-                <div class="chart-title">文件分发任务</div>
+              <article v-if="selectedReportSnapshot.file_distribution" class="chart-card module-file_distribution">
+                <div class="chart-title">文件分发任务<span v-if="getSnapshotRangeLabel('file_distribution')" class="chart-range">{{ getSnapshotRangeLabel('file_distribution') }}</span></div>
                 <div class="file-dist-rows">
                   <div v-for="task in (selectedReportSnapshot.file_distribution.tasks || [])" :key="task.task_name" class="file-dist-row">
                     <div class="file-dist-name">{{ task.task_name }}</div>
@@ -889,11 +994,11 @@ watch([viewMode, themeMode, mainView, selectedReport], () => {
 .range-btn.active { background: rgba(0,212,255,0.1); border-color: rgba(0,212,255,0.4); color: var(--accent-cyan); }
 .module-realtime { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-light); font-size: 11px; font-weight: 600; color: var(--accent-cyan); }
 
-.report-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.report-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px; border-radius: var(--radius); background: var(--panel-bg); border: 1px solid var(--border-light); }
 .meta-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .meta-tag { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; background: var(--tag-bg); color: var(--accent-cyan); border: 1px solid var(--tag-border); }
 .meta-tag.severity { border: none; }
-.report-summary { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.6; max-width: 640px; }
+.report-summary { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.7; flex: 1; }
 .report-time { margin: 4px 0 0; font-size: 11px; color: var(--text-muted); }
 .gen-btn { display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(0,212,255,0.3); background: rgba(0,212,255,0.08); color: var(--accent-cyan); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; flex-shrink: 0; }
 .gen-btn:hover { background: rgba(0,212,255,0.15); border-color: var(--accent-cyan); box-shadow: var(--glow-cyan); }
@@ -904,18 +1009,33 @@ watch([viewMode, themeMode, mainView, selectedReport], () => {
 .chart-card:hover { border-color: var(--border); }
 .chart-card.span-2 { grid-column: span 2; }
 .chart-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; }
-.chart-container { width: 100%; height: 220px; }
-.chart-card.span-2 .chart-container { height: 200px; }
+.chart-range { font-size: 10px; font-weight: 500; color: var(--text-muted); margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--item-bg); }
+.chart-container { width: 100%; height: 180px; }
+.chart-card.span-2 .chart-container { height: 220px; }
+.chart-card.module-hardware_change .chart-container { height: 130px; }
+.chart-card.module-server_health .chart-container { height: 160px; }
+.chart-card.module-antivirus .chart-container { height: 200px; }
+.chart-container-sm { width: 100%; height: 150px; }
+.usb-charts { display: flex; gap: 12px; }
+.usb-chart-group { flex: 1; min-width: 0; }
+.usb-chart-label { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+.online-summary { display: flex; gap: 16px; margin-bottom: 10px; padding: 8px 12px; border-radius: 8px; background: var(--item-bg); }
+.online-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.online-stat-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.online-stat-value.green { color: var(--accent-green); }
+.online-stat-value.cyan { color: var(--accent-cyan); }
+.online-stat-value.amber { color: var(--accent-amber); }
+.online-stat-label { font-size: 10px; font-weight: 600; color: var(--text-muted); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-.wallpaper-rows { display: flex; flex-direction: column; gap: 12px; }
-.wallpaper-row { display: grid; grid-template-columns: 1fr 200px; gap: 12px; align-items: center; }
+.wallpaper-rows { display: flex; flex-direction: column; gap: 10px; }
+.wallpaper-row { display: grid; grid-template-columns: 1fr 180px; gap: 10px; align-items: center; }
 .wallpaper-info strong { display: block; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .wallpaper-info span { font-size: 11px; color: var(--text-muted); }
 .wallpaper-bar { height: 6px; border-radius: 3px; background: rgba(148,163,184,0.1); overflow: hidden; }
 .wallpaper-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); transition: width 0.6s ease; }
 
-.file-dist-rows { display: flex; flex-direction: column; gap: 14px; }
+.file-dist-rows { display: flex; flex-direction: column; gap: 10px; }
 .file-dist-row { display: flex; flex-direction: column; gap: 6px; }
 .file-dist-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .file-dist-stats { display: flex; gap: 16px; }
@@ -926,7 +1046,26 @@ watch([viewMode, themeMode, mainView, selectedReport], () => {
 .stat-item.exec strong { color: var(--accent-cyan); }
 .stat-item.dist strong { color: var(--accent-purple); }
 
-.text-report { padding: 22px; border-radius: var(--radius); background: var(--panel-bg); border: 1px solid var(--border-light); }
+.text-report { padding: 22px; border-radius: var(--radius); background: var(--panel-bg); border: 1px solid var(--border-light); color: var(--text-primary); }
+.text-report :deep(h1), .text-report :deep(h2), .text-report :deep(h3), .text-report :deep(h4), .text-report :deep(h5), .text-report :deep(h6) { color: var(--text-primary); margin-top: 1.2em; margin-bottom: 0.6em; font-weight: 700; }
+.text-report :deep(h1) { font-size: 1.5em; border-bottom: 1px solid var(--border-light); padding-bottom: 0.3em; }
+.text-report :deep(h2) { font-size: 1.3em; border-bottom: 1px solid var(--border-light); padding-bottom: 0.25em; }
+.text-report :deep(h3) { font-size: 1.15em; }
+.text-report :deep(p) { color: var(--text-secondary); line-height: 1.7; margin: 0.6em 0; }
+.text-report :deep(ul), .text-report :deep(ol) { color: var(--text-secondary); padding-left: 1.5em; margin: 0.5em 0; }
+.text-report :deep(li) { margin: 0.25em 0; line-height: 1.6; }
+.text-report :deep(strong) { color: var(--text-primary); }
+.text-report :deep(table) { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 13px; }
+.text-report :deep(th) { background: var(--item-bg); color: var(--text-primary); font-weight: 600; text-align: left; padding: 8px 12px; border: 1px solid var(--border-light); }
+.text-report :deep(td) { color: var(--text-secondary); padding: 7px 12px; border: 1px solid var(--border-light); }
+.text-report :deep(tr:hover td) { background: var(--item-hover); }
+.text-report :deep(code) { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; padding: 2px 6px; border-radius: 4px; background: var(--item-bg); color: var(--accent-cyan); }
+.text-report :deep(pre) { background: var(--item-bg); border: 1px solid var(--border-light); border-radius: 8px; padding: 14px; overflow-x: auto; margin: 1em 0; }
+.text-report :deep(pre code) { background: transparent; padding: 0; color: var(--text-secondary); }
+.text-report :deep(blockquote) { border-left: 3px solid var(--accent-cyan); margin: 1em 0; padding: 0.5em 1em; color: var(--text-muted); background: var(--item-bg); border-radius: 0 6px 6px 0; }
+.text-report :deep(hr) { border: none; border-top: 1px solid var(--border-light); margin: 1.5em 0; }
+.text-report :deep(a) { color: var(--accent-cyan); text-decoration: none; }
+.text-report :deep(a:hover) { text-decoration: underline; }
 
 @media (max-width: 1200px) {
   .chart-grid { grid-template-columns: 1fr; }
