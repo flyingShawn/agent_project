@@ -7,6 +7,7 @@ const emit = defineEmits(['new-conversation', 'switch-conversation', 'delete-con
 const props = defineProps({
   agentType: { type: String, default: '' },
   currentUserLabel: { type: String, default: 'admin' },
+  isSuperUser: { type: Boolean, default: false },
 })
 
 const {
@@ -122,6 +123,7 @@ defineExpose({ loadConversations })
         运维简报中心
       </a>
       <a
+        v-if="isSuperUser"
         :href="`/${agentType}/knowledge`"
         target="_blank"
         rel="noopener noreferrer"

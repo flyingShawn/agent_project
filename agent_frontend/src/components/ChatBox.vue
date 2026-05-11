@@ -25,6 +25,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  isSuperUser: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['conversation-created', 'conversation-updated', 'update:mode'])
@@ -388,7 +392,7 @@ onUnmounted(() => {
     </div>
 
     <div class="bg-transparent px-4 pb-4 pt-2">
-      <div v-if="tasksEnabled" class="mb-2 flex items-center justify-center">
+      <div v-if="tasksEnabled && isSuperUser" class="mb-2 flex items-center justify-center">
         <ModeToggle :mode="mode" @update:mode="emit('update:mode', $event)" />
       </div>
 

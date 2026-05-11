@@ -526,6 +526,20 @@ docker compose exec -u root backend bash
 
 适用于目标机器无法访问外网（无法 `docker pull`）的场景。在有网的机器上打包，然后拷贝到内网机器部署。
 
+### 9.0 目标机器系统要求
+
+| 项目 | 最低要求 | 建议配置 |
+|------|---------|---------|
+| 操作系统 | Linux（CentOS 7+/Ubuntu 18.04+）或 Windows Server 2019+ | Ubuntu 20.04+ / Windows Server 2022 |
+| Docker | Docker 19.03+ | Docker 24+ |
+| Docker Compose | V2+（`docker compose version` 可查看） | 最新版 |
+| 磁盘空间 | 10 GB 可用（解压 4 GB + 运行时数据） | 20 GB+ |
+| 内存 | 4 GB | 8 GB+ |
+| CPU | 2 核 | 4 核+ |
+| CPU 架构 | x86_64（AMD64） | 与打包机器架构一致 |
+
+> **注意**：Docker 镜像与 CPU 架构绑定。在 x86_64 机器上构建的镜像无法在 ARM 机器上运行（反之亦然）。打包机器和部署机器的 CPU 架构必须一致。如需跨架构构建，使用 `docker buildx build --platform linux/amd64`。
+
 ### 9.1 打包（在有网机器上操作）
 
 前置条件：已按前文步骤完成基础镜像构建和应用镜像构建。
@@ -543,16 +557,18 @@ cd docker\
 
 打包脚本会自动完成：
 1. 检查 5 个必需镜像是否存在（backend-base、backend、frontend、postgres、qdrant）
-2. 将镜像导出为 tar 文件
-3. 复制配置文件（docker-compose.yml、.env.example、agent_backend/configs、nginx.conf 等）
-4. 打包为压缩文件（Linux: `.tar.gz`，Windows: `.zip`）
+2. 检测可选镜像（docling-sync），如已构建则自动导出
+3. 将镜像导出为 tar 文件
+4. 生成 SHA256 校验文件（`images/checksums.sha256`）
+5. 复制配置文件（docker-compose.yml、.env.example、agent_backend/configs、nginx.conf 等）
+6. 打包为压缩文件（Linux: `.tar.gz`，Windows: `.zip`）
 
 最终生成文件：
 
 | 平台 | 输出文件 | 包含内容 |
 |------|---------|---------|
-| Linux/Mac | `agent-docker-offline.tar.gz` | 镜像 + 配置 + 部署脚本 |
-| Windows | `agent-docker-offline.zip` | 镜像 + 配置 + 部署脚本 |
+| Linux/Mac | `agent-docker-offline.tar.gz` | 镜像 + 配置 + 部署脚本 + 校验文件 |
+| Windows | `agent-docker-offline.zip` | 镜像 + 配置 + 部署脚本 + 校验文件 |
 
 打包后的目录结构：
 
@@ -563,7 +579,10 @@ agent-docker-offline/
 │   ├── agent-backend.tar         # 后端应用镜像
 │   ├── agent-frontend.tar        # 前端镜像（Nginx + Vue）
 │   ├── qdrant.tar                # Qdrant 向量数据库
-│   └── postgres.tar              # PostgreSQL 数据库（可选，打包脚本自动检测）
+│   ├── postgres.tar              # PostgreSQL 数据库
+│   ├── agent-docling-sync-base.tar  # [可选] 文档同步基础镜像
+│   ├── agent-docling-sync.tar       # [可选] 文档同步应用镜像
+│   └── checksums.sha256          # SHA256 校验文件
 ├── config/
 │   ├── .env.example              # 环境变量模板
 │   ├── nginx.conf                # Nginx 配置
@@ -576,12 +595,19 @@ agent-docker-offline/
 └── README.txt                    # 说明文件
 ```
 
-> **可选**：如果需要文档同步功能（Office/PDF 解析），还需额外打包 docling-sync 镜像：
-> ```bash
-> docker save agent-docling-sync-base:latest -o agent-docling-sync-base.tar
-> docker save agent-docling-sync:latest -o agent-docling-sync.tar
-> ```
-> 将这两个 tar 文件放入 `images/` 目录即可。
+> **docling-sync 镜像**：打包脚本会自动检测本地是否已构建 docling-sync 镜像。如果已构建则自动包含，未构建则跳过并提示。如需文档同步功能（Office/PDF 解析），请先运行 `build-docling-sync.sh` 构建。
+
+#### 离线包大小估算
+
+| 组件 | 未压缩 | 压缩后（约） |
+|------|--------|-------------|
+| 5 个必需镜像 | ~3.7 GB | ~2.0 GB |
+| + docling-sync 镜像（CPU 版） | +8 GB | +4 GB |
+| 配置文件 | <1 MB | <1 MB |
+| **总计（不含 docling）** | **~3.7 GB** | **~2.0 GB** |
+| **总计（含 docling CPU 版）** | **~12 GB** | **~6 GB** |
+
+> **docling-sync 镜像说明**：docling-sync 仅用于解析 Office/PDF 文档（`.docx`、`.xlsx`、`.pdf`、`.pptx`）。如果您的文档知识库只包含 `.md`/`.txt` 文件，**完全不需要构建和打包 docling-sync 镜像**。后端可直接处理 Markdown 和纯文本文件的解析与向量化，无需 docling 依赖。只需在 `.env` 中设置 `RAG_REQUIRE_DOCLING=0` 即可跳过 docling 可用性检查。
 
 ### 9.2 部署（在内网机器上操作）
 
@@ -601,7 +627,28 @@ cd agent-docker-offline/
 # Windows: 右键解压 zip 文件，进入解压目录
 ```
 
-**第三步：运行离线部署脚本**
+**第三步：校验镜像完整性（可选但推荐）**
+
+```bash
+# Linux
+cd images/
+sha256sum -c checksums.sha256
+
+# Windows (PowerShell)
+cd images/
+# 逐行校验
+Get-Content checksums.sha256 | ForEach-Object {
+    $parts = $_ -split '\s+'
+    $expected = $parts[0]
+    $file = $parts[1]
+    $actual = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
+    if ($actual -eq $expected.ToLower()) { Write-Host "OK: $file" } else { Write-Host "FAIL: $file" }
+}
+```
+
+> 如果校验失败，说明文件在传输过程中损坏，需要重新传输。
+
+**第四步：运行离线部署脚本**
 
 ```bash
 # Linux / Mac
@@ -613,12 +660,14 @@ chmod +x deploy-offline.sh
 ```
 
 部署脚本会自动完成：
-1. 从 tar 文件加载所有 Docker 镜像（无需联网）
-2. 从 `.env.example` 创建 `.env` 配置文件
-3. 复制 nginx.conf、entrypoint 脚本和智能体配置目录到工作目录
-4. 启动所有服务
+1. 校验镜像文件完整性（如存在校验文件）
+2. 从 tar 文件加载所有 Docker 镜像（无需联网），加载失败会终止并提示
+3. 从 `.env.example` 创建 `.env` 配置文件
+4. 创建数据目录（`data/desk-agent/docs`、`data/desk-agent/sql` 等）
+5. 复制 nginx.conf、entrypoint 脚本和智能体配置目录到工作目录
+6. 启动所有服务
 
-**第四步：修改配置**
+**第五步：修改配置**
 
 离线部署脚本启动后，**必须修改 `.env` 文件**中的以下配置项以匹配内网环境：
 
@@ -631,8 +680,13 @@ OLLAMA_BASE_URL=http://内网Ollama地址:11434
 DB_HOST=内网MySQL地址
 TICKET_DB_HOST=内网MySQL地址
 
+# CORS 跨域配置（必须包含前端实际访问地址，否则前端无法调用后端 API）
+CORS_ORIGINS=http://目标机器IP:81,http://localhost:81
+
 # 其他按需修改...
 ```
+
+> **重要**：`CORS_ORIGINS` 必须包含前端实际访问地址。例如目标机器 IP 为 `192.168.1.200`，则设置为 `http://192.168.1.200:81,http://localhost:81`。否则前端页面无法调用后端 API。
 
 修改后重启后端：
 
@@ -640,7 +694,7 @@ TICKET_DB_HOST=内网MySQL地址
 docker compose restart backend
 ```
 
-**第五步：验证**
+**第六步：验证**
 
 ```bash
 # 检查服务状态
@@ -653,7 +707,58 @@ curl http://localhost:8000/api/v1/health
 # http://目标机器IP:81
 ```
 
-### 9.3 常见问题
+**第七步：同步文档知识库**
+
+将文档放入数据目录后，执行同步命令：
+
+```bash
+# 同步所有（文档 + SQL 样本）
+docker compose exec backend python scripts/sync_rag.py --target all
+
+# 仅同步指定智能体
+docker compose exec backend python scripts/sync_rag.py --agent-type desk-agent --target all
+```
+
+### 9.3 防火墙与端口配置
+
+内网环境中防火墙策略通常较严格，需确保以下端口可访问：
+
+| 端口 | 协议 | 服务 | 方向 | 说明 |
+|------|------|------|------|------|
+| 81 | TCP | frontend | 入站 | 前端页面访问（用户浏览器访问） |
+| 8000 | TCP | backend | 入站 | 后端 API（前端调用） |
+| 5432 | TCP | postgres | 仅容器内 | PostgreSQL（不应对外暴露） |
+| 6333 | TCP | qdrant | 仅容器内 | Qdrant REST API |
+| 6334 | TCP | qdrant | 仅容器内 | Qdrant gRPC |
+| 11434 | TCP | ollama | 出站 | Ollama API（后端访问宿主机 Ollama） |
+| 3306 | TCP | MySQL | 出站 | 业务数据库（后端访问宿主机 MySQL） |
+
+> **安全建议**：5432、6333、6334 端口仅容器内部通信使用，不应在防火墙中对外暴露。只需开放 81（前端）和 8000（后端 API，如需直接访问）端口。
+
+### 9.4 离线部署升级流程
+
+当需要更新内网部署的版本时：
+
+1. **有网机器**：拉取最新代码，重新构建镜像，运行打包脚本生成新的离线包
+2. **内网机器**：
+   ```bash
+   # 1. 仅加载新镜像（不停止服务）
+   for f in images/*.tar; do docker load -i "$f"; done
+
+   # 2. 重新创建容器（数据卷自动保留）
+   docker compose up -d
+
+   # 3. 验证新版本正常
+   docker compose ps
+   curl http://localhost:8000/api/v1/health
+
+   # 4. 确认正常后清理旧镜像
+   docker image prune
+   ```
+
+> **注意**：`docker compose up -d` 会自动检测镜像变更并重新创建容器，但不会删除数据卷（`pg_data`、`qdrant_data`），聊天记录和向量数据会保留。
+
+### 9.5 常见问题
 
 **Q: 目标机器是 Linux，但打包机器是 Windows（或反之），可以吗？**
 
@@ -662,9 +767,18 @@ curl http://localhost:8000/api/v1/health
 - 如果在 Windows 上打包，部署到 Linux，解压后使用 `deploy-offline.sh`
 - 如果在 Linux 上打包，部署到 Windows，解压后使用 `deploy-offline.bat`
 
+**Q: 打包机器和部署机器的 CPU 架构不同怎么办？**
+
+Docker 镜像与 CPU 架构绑定。默认构建的是当前机器架构的镜像（通常为 x86_64/AMD64）。如果打包机器和部署机器架构不同（如 x86 vs ARM），需要使用跨架构构建：
+
+```bash
+# 在 x86 机器上构建 ARM 镜像
+docker buildx build --platform linux/arm64 -f docker/Dockerfile.backend.base -t agent-backend-base:latest .
+```
+
 **Q: 如何更新离线包？**
 
-在有网机器上拉取最新代码，重新构建镜像，再运行打包脚本即可。内网机器上重新加载镜像后 `docker compose up -d` 会自动使用新镜像。
+参考 [9.4 离线部署升级流程](#94-离线部署升级流程)。
 
 **Q: 镜像文件很大，如何减小体积？**
 
@@ -675,6 +789,13 @@ curl http://localhost:8000/api/v1/health
 - `postgres:14-alpine.tar` 约 80 MB
 
 如果目标机器已有相同版本的基础镜像，可以只打包应用镜像和 qdrant，跳过 `agent-backend-base.tar`。
+
+**Q: 镜像加载失败怎么办？**
+
+部署脚本会在加载失败时终止并提示。常见原因：
+- 传输过程中文件损坏：使用 `sha256sum -c images/checksums.sha256` 校验
+- 磁盘空间不足：确保目标机器有足够空间（至少 10 GB 可用）
+- CPU 架构不匹配：确认打包和部署机器架构一致
 
 ---
 

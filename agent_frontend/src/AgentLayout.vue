@@ -24,6 +24,7 @@ const currentAgentType = computed(() => props.agentType)
 
 const currentUserId = ref('admin')
 const currentUserLabel = ref('admin')
+const isSuperUser = computed(() => currentUserId.value === 'su')
 const showSidebar = ref(false)
 const showOpsInbox = ref(false)
 const unreadOpsCount = ref(0)
@@ -193,6 +194,7 @@ onMounted(async () => {
       <Sidebar
         :agent-type="currentAgentType"
         :current-user-label="currentUserLabel"
+        :is-super-user="isSuperUser"
         @new-conversation="handleNewConversation"
         @switch-conversation="handleSwitchConversation"
         @delete-conversation="handleDeleteConversation"
@@ -250,6 +252,7 @@ onMounted(async () => {
             :agent-type="currentAgentType"
             :mode="mode"
             :tasks-enabled="tasksEnabled"
+            :is-super-user="isSuperUser"
             @conversation-created="handleConversationCreated"
             @conversation-updated="handleConversationUpdated"
             @update:mode="handleModeChange"

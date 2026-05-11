@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 REM Docker快速部署脚本 - Windows版本
 
 echo =========================================

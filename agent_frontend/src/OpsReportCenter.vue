@@ -1,4 +1,4 @@
-﻿﻿<script setup>
+﻿﻿﻿<script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
@@ -767,10 +767,6 @@ watch([viewMode, themeMode, mainView, selectedReport], () => {
                 <p class="report-summary">{{ selectedReport.summary }}</p>
                 <p class="report-time">生成时间：{{ formatTimestamp(selectedReport.generated_at) }}</p>
               </div>
-              <button class="gen-btn" :disabled="isGenerating" type="button" @click="generateNow">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                {{ isGenerating ? '生成中...' : '立即生成' }}
-              </button>
             </div>
 
             <div v-if="viewMode === 'visual'" class="chart-grid">
@@ -867,6 +863,49 @@ watch([viewMode, themeMode, mainView, selectedReport], () => {
   --panel-bg: #FFFFFF; --panel-hover: #F8FAFC;
   --item-bg: #F8FAFC; --item-hover: #F1F5F9;
   --input-bg: #FFFFFF; --tag-bg: rgba(0,212,255,0.06); --tag-border: rgba(0,212,255,0.2);
+}
+
+.ops-dashboard .sidebar-left,
+.ops-dashboard .main-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,0.25) transparent;
+}
+.ops-dashboard .sidebar-left:hover,
+.ops-dashboard .main-content:hover {
+  scrollbar-color: rgba(148,163,184,0.4) transparent;
+}
+.ops-dashboard .sidebar-left::-webkit-scrollbar,
+.ops-dashboard .main-content::-webkit-scrollbar {
+  width: 6px;
+}
+.ops-dashboard .sidebar-left::-webkit-scrollbar-track,
+.ops-dashboard .main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ops-dashboard .sidebar-left::-webkit-scrollbar-thumb,
+.ops-dashboard .main-content::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.25);
+  border-radius: 3px;
+}
+.ops-dashboard .sidebar-left:hover::-webkit-scrollbar-thumb,
+.ops-dashboard .main-content:hover::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.4);
+}
+.ops-dashboard.light .sidebar-left,
+.ops-dashboard.light .main-content {
+  scrollbar-color: rgba(100,116,139,0.18) transparent;
+}
+.ops-dashboard.light .sidebar-left:hover,
+.ops-dashboard.light .main-content:hover {
+  scrollbar-color: rgba(100,116,139,0.3) transparent;
+}
+.ops-dashboard.light .sidebar-left::-webkit-scrollbar-thumb,
+.ops-dashboard.light .main-content::-webkit-scrollbar-thumb {
+  background: rgba(100,116,139,0.18);
+}
+.ops-dashboard.light .sidebar-left:hover::-webkit-scrollbar-thumb,
+.ops-dashboard.light .main-content:hover::-webkit-scrollbar-thumb {
+  background: rgba(100,116,139,0.3);
 }
 
 .dash-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border-light); background: var(--panel-bg); backdrop-filter: blur(12px); flex-shrink: 0; }
@@ -1000,9 +1039,7 @@ watch([viewMode, themeMode, mainView, selectedReport], () => {
 .meta-tag.severity { border: none; }
 .report-summary { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.7; flex: 1; }
 .report-time { margin: 4px 0 0; font-size: 11px; color: var(--text-muted); }
-.gen-btn { display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(0,212,255,0.3); background: rgba(0,212,255,0.08); color: var(--accent-cyan); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; flex-shrink: 0; }
-.gen-btn:hover { background: rgba(0,212,255,0.15); border-color: var(--accent-cyan); box-shadow: var(--glow-cyan); }
-.gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 
 .chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .chart-card { border-radius: var(--radius); background: var(--panel-bg); border: 1px solid var(--border-light); padding: 14px; transition: all 0.2s ease; }
